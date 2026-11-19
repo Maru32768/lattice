@@ -443,6 +443,8 @@ mod tests {
         assert_eq!(check("400エラーと400応答を返す。", "It returns an error."), ["400", "400"], "each place it is written");
         assert_eq!(unverified("😀は2倍と2万", &Article::new(["20,000"])), [(3, 4)], "UTF-16 offsets, the 2 of 2万 not among them");
         assert_eq!(check("\u{ff11}\u{ff12}\u{ff18}MBを使う。", "uses 128MB"), Vec::<String>::new(), "full-width digits");
+        assert_eq!(check("\u{ff11}\u{ff12}\u{ff19}MBを使う。", "uses 128MB"), ["\u{ff11}\u{ff12}\u{ff19}"], "read as digits, returned as written");
+        assert_eq!(check("128MBを使う。", "uses \u{ff11}\u{ff12}\u{ff18}MB"), Vec::<String>::new(), "full-width digits in the article");
         assert_eq!(check("p99は38.9秒", "p99 rose to 38.95 seconds"), ["38.9"], "not a prefix of another number");
     }
 
