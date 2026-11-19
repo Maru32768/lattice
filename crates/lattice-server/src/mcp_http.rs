@@ -300,7 +300,7 @@ impl Activity {
             if log.len() == MAX_CALLS {
                 log.pop_front();
             }
-            log.push_back(CallInfo { at_ms: now_ms(), tool: clip(tool), outcome });
+            log.push_back(CallInfo { at_ms: now_ms(), tool: tool.to_string(), outcome });
         }
         (self.changed)();
     }
