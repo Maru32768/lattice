@@ -265,6 +265,7 @@ test("picks that take the row out of the list, scrolled to its end, and bring it
     .click();
   await expect(list(app).locator(".row", { hasText: title })).toHaveCount(0);
   await expect.poll(() => body.evaluate((e) => e.scrollTop), "the shorter list pulls its scroll back").toBeLessThan(top);
+  await frames(app);
   expect((await picker(app).boundingBox())!, "that is the pick's doing, not the reader's: the picker stays").toMatchObject({ x, y });
 
   await picker(app)
