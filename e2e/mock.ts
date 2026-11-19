@@ -310,7 +310,7 @@ function view(id: number): ArticleView | null {
           { id: 2000 + id, type: "translate", article_id: id, params: null, status: "pending", attempt_count: 0, last_error: null, next_run_at: null },
         ]
       : jobsOf(a),
-    summary: summary ? { text: summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
+    summary: summary ? { text: summary, items: null, created_at: new Date(NOW).toISOString(), stale: false } : null,
     note: notes.get(id) ?? null,
   };
 }

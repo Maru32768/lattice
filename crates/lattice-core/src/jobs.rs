@@ -679,12 +679,13 @@ mod tests {
         let input = p.llm.calls.lock().unwrap()[0].clone();
         assert_eq!(
             input,
-            "<article>\n# https://example.com/a\n\n## Intro\nSnapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.\nスナップショット分離について日本語で書かれた段落です。\n```\nSELECT 1;\n```\n</article>\n\nSummarize the article above in Japanese.",
-            "the blocks in their order, the code fenced"
+            "<article>\n# https://example.com/a\n\n[1] ## Intro\n[2] Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.\n[3] スナップショット分離について日本語で書かれた段落です。\n[4]\n```\nSELECT 1;\n```\n</article>\n\nSummarize the article above in Japanese.",
+            "the blocks in their order, labelled, the code fenced"
         );
         let v = s.get_article(id, "ja").unwrap().unwrap();
         let sum = v.summary.unwrap();
         assert_eq!((sum.text.as_str(), sum.stale), ("要約です。\n\n・要点", false));
+        assert_eq!(sum.items.unwrap().summary[0].block_ids, [v.blocks[1].id], "label 2 is the paragraph after the heading");
         s.exec_for_test(&format!("UPDATE articles SET content_hash = 'changed' WHERE id = {id}"));
         assert!(s.get_article(id, "ja").unwrap().unwrap().summary.unwrap().stale);
     }

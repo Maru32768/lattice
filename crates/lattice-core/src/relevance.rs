@@ -503,7 +503,7 @@ mod tests {
         assert!(v["stats"]["chars"].as_u64().unwrap() > EXCERPT_CHARS as u64);
         assert_eq!(v["summary"], "");
 
-        s.insert_summary(id, "normal", "WAL の fsync の順序を測定で比べる。", "h", "fake", None, "v").unwrap();
+        s.insert_summary(id, "normal", "WAL の fsync の順序を測定で比べる。", None, "h", "fake", None, "v").unwrap();
         let v = source(&s, id).unwrap().unwrap();
         assert_eq!(v["summary"], "WAL の fsync の順序を測定で比べる。");
         assert!(v["text"].as_str().unwrap().chars().count() <= EXCERPT_WITH_SUMMARY_CHARS + 6, "a summary leaves less room for excerpts");
@@ -648,13 +648,13 @@ mod tests {
 
         summarize::set_auto(&s, Auto::All).unwrap();
         s.exec_for_test("DELETE FROM processing_jobs WHERE type = 'summarize'");
-        s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "summary-v1").unwrap();
-        s.insert_summary(ids[2], "normal", "要約", "h", "fake", None, "summary-v1-x-instr-0123456789ab").unwrap();
+        s.insert_summary(ids[0], "normal", "要約", None, "h", "fake", None, "summary-v1").unwrap();
+        s.insert_summary(ids[2], "normal", "要約", None, "h", "fake", None, "summary-v1-x-instr-0123456789ab").unwrap();
         after_ingest(&s);
         assert_eq!(queued(&s), [ids[1]], "every article without a summary, rated or not; stale ones, with the user's instructions or without, are left alone");
 
         s.exec_for_test("DELETE FROM processing_jobs WHERE type = 'summarize'");
-        s.insert_summary(ids[1], "normal", "要約", "h", "fake", None, summarize::PROMPT_VERSION).unwrap();
+        s.insert_summary(ids[1], "normal", "要約", None, "h", "fake", None, summarize::PROMPT_VERSION).unwrap();
         after_ingest(&s);
         assert!(queued(&s).is_empty(), "nor is a current one");
     }
@@ -790,7 +790,7 @@ mod tests {
                 );
                 store_fetched(&s, id, &Fetched { final_url: url, status: 200, content_type: None, html }).unwrap();
                 if let Some(sum) = a["summary"].as_str() {
-                    s.insert_summary(id, "normal", sum, "h", "fake", None, "v").unwrap();
+                    s.insert_summary(id, "normal", sum, None, "h", "fake", None, "v").unwrap();
                 }
                 (id, a)
             })
