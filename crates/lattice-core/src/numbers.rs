@@ -776,7 +776,9 @@ mod tests {
         {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
+        assert_eq!(check("1.5mのケーブル", "a 1.5m cable"), Vec::<String>::new(), "the digits keep their own value");
         assert_eq!(check("5mの距離", "5000000 users"), ["5"], "a summary's 5m stays five metres");
+        assert_eq!(check("図5b", "Figure 5 (b)"), Vec::<String>::new(), "a summary's 5b stays five");
     }
 
     #[test]
