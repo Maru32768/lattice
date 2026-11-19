@@ -57,7 +57,7 @@ export async function pickScope(page: Page, name: string) {
 export async function filterByTag(page: Page, tag: string) {
   await list(page).getByRole("button", { name: "タグ", exact: true }).click();
   const pv = page.getByRole("dialog", { name: "タグで絞り込む" });
-  await pv.getByRole("textbox").fill(tag);
+  await pv.getByRole("combobox").fill(tag);
   await page.keyboard.press("Enter");
   await page.keyboard.press("Escape");
   await expect(pv).toBeHidden();
