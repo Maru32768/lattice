@@ -5,6 +5,7 @@ import { PickList } from "../ui/PickList";
 import { filterSections, type PickOption, type PickSection } from "../ui/pickRows";
 import { Icon, Kbd, type IconName } from "../ui/Icon";
 import { useT } from "../i18n";
+import { holdPlace } from "../reader/useReadingPlace";
 
 /** Multi-select of groups with find-or-create, styled like the facet popover. */
 export function GroupPicker({
@@ -185,9 +186,15 @@ export function GroupChips({
     if (request > seen.current && add.current) {
       // The palette asks wherever the article is read: a picker hung from a chip scrolled out of view opens out of it.
       const box = scroller(add.current);
-      const top = box?.scrollTop ?? 0;
+      const top = box?.scrollTop;
+      const release = box ? holdPlace(box) : () => {};
       add.current.scrollIntoView({ block: "nearest" });
-      back.current = box && box.scrollTop !== top ? () => box.scrollTo({ top }) : null;
+      // With the chips in view there is nothing to undo, and a scroll the reader makes while the picker is open stays.
+      if (box?.scrollTop === top) {
+        release();
+      } else {
+        back.current = release;
+      }
       setAnchor(add.current);
     }
     seen.current = request;

@@ -155,26 +155,50 @@ test("picks that rewrap the Reader's chips at the top of the view leave its grou
   expect((await add.boundingBox())!.y, "the picks moved the ＋ button down a line").toBeGreaterThan(before);
 });
 
-test("the palette's この記事をグループに追加… opens the picker in view far down the article, and closing it puts the article back", async ({ app }) => {
-  await app.setViewportSize({ width: 1440, height: 400 });
-  const a = members(mvcc.id)[0];
-  await list(app).locator(".row", { hasText: a.title! }).click();
-  const doc = app.locator(".doc-scroll").first();
-  await doc.evaluate((e) => (e.scrollTop = e.scrollHeight));
-  await expect(app.locator(".art-chips")).not.toBeInViewport();
-  const place = () =>
-    app.evaluate(
-      (id) => (JSON.parse(localStorage.getItem("lattice.readingPlaces") ?? "[]") as [string, unknown][]).find(([k]) => k === id)?.[1] ?? null,
-      String(a.id),
-    );
-  await expect.poll(place).not.toBeNull();
-  const kept = await place();
-  const top = await doc.evaluate((e) => e.scrollTop);
+/** The reading place stored for article `id`. */
+const storedPlace = (app: Page, id: number) =>
+  app.evaluate(
+    (key) =>
+      (JSON.parse(localStorage.getItem("lattice.readingPlaces") ?? "[]") as [string, { block: number; at: number }][]).find(([k]) => k === key)?.[1] ?? null,
+    String(id),
+  );
 
+/** Opens the group picker from the palette's この記事をグループに追加…. */
+async function addFromPalette(app: Page) {
   await app.keyboard.press("Control+p");
   await app.keyboard.type("この記事をグループに追加");
   await app.getByRole("option", { name: "この記事をグループに追加…" }).click();
   await expect(picker(app)).toBeInViewport();
+}
+
+test("the palette's この記事をグループに追加… opens the picker in view far down the article, and closing it puts the text back where it was read", async ({
+  app,
+}) => {
+  await app.setViewportSize({ width: 900, height: 400 });
+  await list(app)
+    .locator(".row", { hasText: members(mvcc.id)[0].title! })
+    .click();
+  const doc = app.locator(".doc-scroll").first();
+  await doc.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  const chips = app.locator(".art-chips");
+  await expect(chips).not.toBeInViewport();
+  const block = await doc.evaluate((view) => {
+    const top = view.getBoundingClientRect().top;
+    return Number([...view.querySelectorAll("[id^='b-']")].find((b) => b.getBoundingClientRect().bottom > top)!.id.slice(2));
+  });
+  const high = (await chips.boundingBox())!.height;
+
+  await addFromPalette(app);
+  // The layout can still settle by a pixel or two after the jump to the end, so the place to come back to is the one
+  // kept as the palette scrolled the article.
+  const held = (await storedPlace(app, members(mvcc.id)[0].id))!;
+  expect(held, "the article's place is the block it was read at").toMatchObject({ block });
+  /** How far the view's top is from the held place, in px. */
+  const off = () =>
+    doc.evaluate((view, p) => {
+      const r = view.querySelector(`#b-${p.block}`)!.getBoundingClientRect();
+      return Math.abs(view.getBoundingClientRect().top - (r.top + p.at * r.height));
+    }, held);
   const add = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
   await expect
     .poll(async () => {
@@ -184,12 +208,31 @@ test("the palette's この記事をグループに追加… opens the picker in 
     }, "under its chip")
     .toEqual({ gap: 4, overlaps: true });
   await expect(picker(app).getByRole("combobox")).toBeFocused();
+  await picker(app)
+    .getByRole("option", { name: new RegExp(rust.name) })
+    .click();
+  await expect.poll(async () => (await chips.boundingBox())!.height, "the new chip takes another line").toBeGreaterThan(high);
   await app.keyboard.press("Escape");
   await expect(picker(app)).toBeHidden();
-  await expect.poll(() => doc.evaluate((e) => e.scrollTop), "back where it was read").toBe(top);
-  // The place is saved once scrolling rests: give it longer than that.
-  await app.waitForTimeout(600);
-  expect(await place(), "and its reading place kept").toEqual(kept);
+  await expect.poll(off, "the text is back where it was read, by the block it was at").toBeLessThanOrEqual(1);
+});
+
+test("opening another article while the palette's group picker is open keeps the reading place of the first", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 400 });
+  const a = members(mvcc.id)[0];
+  await list(app).locator(".row", { hasText: a.title! }).click();
+  await app
+    .locator(".doc-scroll")
+    .first()
+    .evaluate((e) => (e.scrollTop = e.scrollHeight));
+  const place = () => storedPlace(app, a.id);
+  await expect.poll(place).not.toBeNull();
+  const kept = await place();
+
+  await addFromPalette(app);
+  await list(app).locator(".row").filter({ hasNotText: a.title! }).first().click();
+  await expect(picker(app)).toBeHidden();
+  expect(await place(), "the palette scrolled it to the chips, not the reader").toEqual(kept);
 });
 
 test("picks that take the row out of the list, scrolled to its end, and bring it back leave the group picker where it was", async ({ app }) => {
