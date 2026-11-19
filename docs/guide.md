@@ -296,6 +296,8 @@ When the server is not running (or is still loading the model), translation fail
 
 Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it.
 
+- In an open summary, the numbers after a sentence or key point refer to the passages it comes from. To go to a passage in the Reader, click its number. In the Page view's summary, a click also switches to the Reader.
+- A number in the summary that the article does not contain gets a wavy underline and is listed below the summary. A number rounded from one in the article, or converted to another unit, is underlined and listed too.
 - For an article over 100,000 characters, Lattice sends the start and the end to the AI and leaves out the middle.
 - **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
 - **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
