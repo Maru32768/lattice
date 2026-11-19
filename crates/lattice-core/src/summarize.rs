@@ -353,6 +353,43 @@ mod tests {
     }
 
     #[test]
+    fn a_summary_goes_stale_when_only_the_code_or_a_table_it_read_changes() {
+        let s = Store::open_in_memory().unwrap();
+        let url = "https://example.com/a";
+        let fetch = |code: &str, latency: &str| {
+            let (id, _) = s.upsert_pending(url, url, "example.com").unwrap();
+            let html = format!(
+                "<html><body><article><p>Write skew happens when two transactions read overlapping data and write disjoint data.</p>
+                 <pre><code>{code}</code></pre>
+                 <table><thead><tr><th>Isolation</th><th>p99</th></tr></thead><tbody><tr><td>Serializable</td><td>{latency}</td></tr></tbody></table>
+                 </article></body></html>"
+            );
+            crate::ingest::store_fetched(&s, id, &crate::fetch::Fetched { final_url: url.into(), status: 200, content_type: None, html }).unwrap()
+        };
+        let summarized = |id: i64| {
+            let hash = s.summary_source(id).unwrap().unwrap().content_hash;
+            s.insert_summary(id, SUMMARY_TYPE, "要約", &hash, "fake", None, PROMPT_VERSION).unwrap();
+        };
+        let stale = |id: i64| {
+            let mut view = s.get_article(id, "ja").unwrap().unwrap();
+            mark_stale(&s, &mut view).unwrap();
+            view.summary.unwrap().stale
+        };
+        let id = fetch("BEGIN ISOLATION LEVEL SERIALIZABLE;", "12 ms");
+        let kinds: Vec<String> = s.summary_source(id).unwrap().unwrap().blocks.into_iter().map(|(kind, _)| kind).collect();
+        assert_eq!(kinds, ["paragraph", "code", "table"]);
+        summarized(id);
+        assert!(!stale(id));
+        assert_eq!(fetch("BEGIN ISOLATION LEVEL SERIALIZABLE;", "12 ms"), id);
+        assert!(!stale(id), "the same page again");
+        fetch("BEGIN ISOLATION LEVEL REPEATABLE READ;", "12 ms");
+        assert!(stale(id), "the code changed");
+        summarized(id);
+        fetch("BEGIN ISOLATION LEVEL REPEATABLE READ;", "30 ms");
+        assert!(stale(id), "a table cell changed");
+    }
+
+    #[test]
     fn sends_code_fenced_and_tables_and_caps_a_long_one_at_a_line_end() {
         let b = |kind: &str, text: &str| (kind.to_string(), text.to_string());
         // 1,000 lines of 10 chars with their newline: 10,000 in all.

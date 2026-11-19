@@ -61,11 +61,12 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00040_translation_page_article.sql"),
     include_str!("../db/migrations/00041_article_auto_title.sql"),
     include_str!("../db/migrations/00042_chat_thread_llm.sql"),
+    include_str!("../db/migrations/00043_content_hash_of_what_a_summary_reads.sql"),
 ];
-/// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
-/// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
-/// 38 still says it recomputes; migrations are append-only, so this is where that is corrected.
-const REHASH_AT: usize = 39;
+/// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
+/// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
+/// migrations are append-only, so this is where that is corrected.
+const REHASH_AT: usize = 43;
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
 /// then folding http into https (28; a feed linking http:// showed its saved page as unsaved).
@@ -462,7 +463,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     })
 }
 
-/// The text summaries, quizzes and translations read (`PROSE_KINDS`): no images, code or tables.
+/// The text quizzes and translations read (`PROSE_KINDS`): no images, code or tables.
 fn prose(blocks: &[Block]) -> impl Iterator<Item = &str> {
     blocks.iter().filter(|b| PROSE_KINDS.contains(&b.kind.as_str())).map(|b| b.text.as_str())
 }
@@ -485,21 +486,23 @@ fn text_hash<'a>(texts: impl Iterator<Item = &'a str>) -> String {
     sha256_hex(texts.flat_map(str::split_whitespace).collect::<String>())
 }
 
+/// Of the text a summary reads, code and tables included (`summary_source`). A quiz reads only the prose, so a change
+/// to code or a table alone makes it out of date too.
 fn content_hash(blocks: &[Block]) -> String {
-    text_hash(prose(blocks))
+    text_hash(all_text(blocks))
 }
 
-/// `content_hash` was once of every block, image blocks and paragraph breaks included (`REHASH_AT`): recomputed from the
-/// stored blocks of every article that has one, an extraction that failed since included (it keeps its blocks). The
-/// summaries and quizzes that recorded the old hash move with it, as their text is the same.
+/// `content_hash` was once of other text (`REHASH_AT`): recomputed from the stored blocks of every article that has
+/// one, an extraction that failed since included (it keeps its blocks). The summaries and quizzes that recorded the old
+/// hash move with it, as their text is the same.
 fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     let articles: Vec<(i64, String)> = tx
         .prepare("SELECT id, content_hash FROM articles WHERE content_hash IS NOT NULL")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_>>()?;
-    let mut text = tx.prepare(STORED_PROSE)?;
+    let mut text = tx.prepare(STORED_TEXT)?;
     for (id, old) in articles {
-        let texts: Vec<String> = text.query_map(params![id, json(&PROSE_KINDS)], |r| r.get(0))?.collect::<Result<_>>()?;
+        let texts: Vec<String> = text.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
         let hash = text_hash(texts.iter().map(String::as_str));
         tx.execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash])?;
         for table in ["summaries", "quizzes"] {
@@ -1882,7 +1885,7 @@ mod tests {
     #[test]
     fn upgrading_recomputes_every_stored_content_hash_once_and_moves_its_summaries() {
         let conn = Connection::open_in_memory().unwrap();
-        let before = MIGRATIONS.iter().position(|m| m.contains("joined with nothing between them")).unwrap();
+        let before = MIGRATIONS.iter().position(|m| m.contains("covers code and tables too")).unwrap();
         assert_eq!(before + 1, REHASH_AT, "the recompute runs after the migration that says so");
         for sql in &MIGRATIONS[..before] {
             conn.execute_batch(sql).unwrap();
@@ -1908,8 +1911,8 @@ mod tests {
             s.conn().prepare("SELECT content_hash FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(
             hashes,
-            [text_hash(["説明文続き"].into_iter()), text_hash(["Some", "words"].into_iter())],
-            "a Japanese paragraph broken at the image hashes as one, and the code is not what a summary reads"
+            [text_hash(["説明文続き", "let x = 1;"].into_iter()), text_hash(["Some", "words"].into_iter())],
+            "a Japanese paragraph broken at the image hashes as one, and the code is what a summary reads too"
         );
         let current: Vec<bool> = s
             .conn()
