@@ -1289,9 +1289,9 @@ mod tests {
                 // Before hundred an end may have two digits (fifteen to twenty-five hundred), but before hundred thousand or
                 // hundred million only one: twenty to thirty hundred thousand is not English.
                 let scale_words = p % 3 != 2 || high < 10 || (p == 2 && high < 100);
-                // Written whole at hundreds, between and its and would meet as in between five hundred and one thousand,
-                // read as 501,000.
-                let between_whole = p != 2 || high < 10;
+                // Written whole at hundreds, a left end that ends in hundred meets the and, as in between five hundred and one
+                // thousand, read as 501,000.
+                let between_whole = p != 2 || high < 10 || low % 10 == 0;
                 let (lo, hi) = (low * 10u128.pow(p), high * 10u128.pow(p));
                 let summaries = [
                     format!("{}～{}", sections(lo, |s| s.to_string()), sections(hi, |s| s.to_string())),
