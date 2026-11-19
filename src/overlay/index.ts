@@ -88,7 +88,20 @@ const SKIP =
   "script,style,textarea,input,code,pre,noscript,svg,math,select,option,button,nav,header,footer," +
   "[role='navigation'],[role='banner'],[role='contentinfo'],[contenteditable=''],[contenteditable='true']," +
   "[translate='no'],.notranslate,[data-lattice-ui]";
-const BLOCK_DISPLAY = new Set(["block", "flex", "grid", "list-item", "table", "table-row", "table-cell", "table-caption", "flow-root"]);
+const BLOCK_DISPLAY = new Set([
+  "block",
+  "flex",
+  "grid",
+  "list-item",
+  "table",
+  "table-header-group",
+  "table-row-group",
+  "table-footer-group",
+  "table-row",
+  "table-cell",
+  "table-caption",
+  "flow-root",
+]);
 const SENTENCE = "lattice-sentence";
 const HOVER_MS = 300;
 const BATCH_PARTS = 12;
@@ -131,8 +144,15 @@ const state = {
 
 const invoke: Invoke = (cmd, args) => (window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd, args) : Promise.reject(new Error("no IPC")));
 
+const TABLE_TAGS = new Set(["table", "thead", "tbody", "tfoot", "tr", "th", "td"]);
 const isSentence = (n: Node): n is SentenceSpan => n instanceof HTMLElement && n.classList.contains(SENTENCE);
-const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display);
+/**
+ * A table and its parts are blocks however they are shown (a theme's inline-block table, a grid table's rows of
+ * `display: contents`, a responsive one's inline-block cells), and so is a box that holds a table: taken as one leaf,
+ * a sentence would be wrapped across the cells. Not any inline box that holds blocks: a flex item is a block by its
+ * display, and KaTeX lays out a formula in table rows, both inside a sentence.
+ */
+const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display) || TABLE_TAGS.has(el.localName) || el.querySelector("table") !== null;
 
 function findLeafBlocks(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
@@ -143,7 +163,8 @@ function findLeafBlocks(root: Element): HTMLElement[] {
     const kids = Array.from(el.children);
     if (kids.some(isBlock)) {
       kids.forEach(walk);
-    } else if (el instanceof HTMLElement && (el.textContent ?? "").trim().length >= 2) {
+    } else if (el instanceof HTMLElement && ((el.textContent ?? "").trim().length >= 2 || /\p{Script=Han}/u.test(el.textContent ?? ""))) {
+      // One ideograph is a word (a table's 年), one letter or mark is not.
       out.push(el);
     }
   };
@@ -206,7 +227,8 @@ function partsOf(el: HTMLElement): string[] | null {
     return null;
   }
   const { parts } = splitByLineBreaks(snippetHtml(el));
-  if (parts.length === 0 || !parts.some((p) => normalizeText(plainText(p).replace(/⟦\d+⟧/gu, "")))) {
+  // Figures alone have nothing to translate, and a table of them would send each cell on its own.
+  if (!parts.some((p) => /\p{L}/u.test(plainText(p)))) {
     el.dataset.latticeBlock = "skip";
     return null;
   }
@@ -895,6 +917,10 @@ function originalText(n: Node): string {
   return n.nodeType === Node.TEXT_NODE ? (n.nodeValue ?? "") : Array.from(n.childNodes, originalText).join("");
 }
 
+/** A table's text as the Reader keeps it: its cells apart, also where the page's markup has no space between them. */
+const tableText = (table: Element) =>
+  Array.from(table.querySelectorAll("tr"), (row) => Array.from(row.querySelectorAll("th, td"), originalText).join(" ")).join(" ");
+
 function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): boolean {
   unfound?.reader?.stop();
   unfound = null;
@@ -916,7 +942,10 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
   const begins = (t: string) => t.startsWith(want) && (inside || !/[\p{L}\p{N}]/u.test(t.slice(want.length)));
   const exactly = place ? texts.findIndex((t, k) => t.startsWith(want) && needle(t) === want && shown(k)) : -1;
   const i = exactly >= 0 ? exactly : place ? texts.findIndex((t, k) => begins(t) && shown(k)) : -1;
-  const el = blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1];
+  const el =
+    blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1] ??
+    // A search result's table is one block in the Reader, its cells joined, and each cell one here. The innermost, as a page may be laid out in tables.
+    (place ? undefined : Array.from(document.querySelectorAll("table")).findLast((t) => normalizeText(tableText(t)).includes(want)));
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
     unfound = { text, at, reader: place ? watchReader() : undefined };
