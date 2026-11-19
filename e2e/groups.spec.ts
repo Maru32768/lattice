@@ -155,6 +155,35 @@ test("picks that rewrap the Reader's chips at the top of the view leave its grou
   expect((await add.boundingBox())!.y, "the picks moved the ＋ button down a line").toBeGreaterThan(before);
 });
 
+test("closing the Reader's group picker gives the article its scroll anchoring back", async ({ app }) => {
+  await app.setViewportSize({ width: 900, height: 400 });
+  const a = members(mvcc.id)[0];
+  await list(app).locator(".row", { hasText: a.title! }).click();
+  await app.locator(".art-chips").getByRole("button", { name: "＋ グループ" }).click();
+  await expect(picker(app)).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(picker(app)).toBeHidden();
+  const doc = app.locator(".doc-scroll").first();
+  await doc.evaluate((e) => (e.scrollTop = e.scrollHeight / 2));
+  await expect.poll(() => storedPlace(app, a.id), "the place is saved once scrolling rests").not.toBeNull();
+  /** The block at the top of the article's view, and how far the view starts into it. */
+  const read = () =>
+    doc.evaluate((view) => {
+      const top = view.getBoundingClientRect().top;
+      const el = [...view.querySelectorAll("[id^='b-']")].find((b) => b.getBoundingClientRect().bottom > top)!;
+      return { block: el.id, into: top - el.getBoundingClientRect().top };
+    });
+  const was = await read();
+  // A translation arriving above the place read makes a block there taller.
+  await doc
+    .locator("[id^='b-']")
+    .first()
+    .evaluate((el) => (el.style.paddingBottom = "150px"));
+  await frames(app);
+  const now = await read();
+  expect({ block: now.block, near: Math.abs(now.into - was.into) <= 1 }, "the text stays where it was read").toEqual({ block: was.block, near: true });
+});
+
 /** The reading place stored for article `id`. */
 const storedPlace = (app: Page, id: number) =>
   app.evaluate(
