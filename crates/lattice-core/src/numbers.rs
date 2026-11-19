@@ -70,7 +70,7 @@ impl Dec {
 }
 
 /// A number's value; a version (`3.12.1`) or a number too long for `Dec` by its digits.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 enum Num {
     Dec(Dec),
     Text(String),
@@ -319,13 +319,17 @@ const MONTHS: [&str; 12] = ["january", "february", "march", "april", "may", "jun
 const SINGLES: [(&str, u128); 11] =
     [("a", 1), ("an", 1), ("single", 1), ("once", 1), ("twice", 2), ("double", 2), ("thrice", 3), ("triple", 3), ("quadruple", 4), ("dozen", 12), ("sept", 9)];
 
+/// The value of a number word: `zero` to `nineteen`, or `twenty` to `ninety`.
+fn cardinal(w: &str) -> Option<u128> {
+    let at = |list: &[&str]| list.iter().position(|x| *x == w).map(|i| i as u128);
+    at(&UNITS).or_else(|| at(&TENS).map(|i| 20 + 10 * i))
+}
+
 /// The value of a word alone: a number word, an ordinal, a month or its abbreviation, or one of `SINGLES`.
 fn word_value(w: &str) -> Option<u128> {
     let at = |list: &[&str]| list.iter().position(|x| *x == w);
     let short = |list: &[&str]| (w.len() == 3).then(|| list.iter().position(|x| x.starts_with(w))).flatten();
-    at(&UNITS)
-        .map(|i| i as u128)
-        .or_else(|| at(&TENS).map(|i| 20 + 10 * i as u128))
+    cardinal(w)
         .or_else(|| at(&ORDINALS).or_else(|| at(&MONTHS)).or_else(|| short(&MONTHS)).map(|i| i as u128 + 1))
         .or_else(|| SINGLES.iter().find(|(s, _)| *s == w).map(|(_, v)| *v))
 }
@@ -353,10 +357,10 @@ fn words(cs: &[char]) -> Vec<Dec> {
             let (prev_at, prev) = &words[k - 1];
             *at == prev_at + prev.len() + 1 && matches!(cs[at - 1], ' ' | '-')
         };
-        if !joined && let Some((total, cur)) = run.take() {
-            out.extend(total.plus(cur));
+        if !joined {
+            out.extend(run.take().and_then(|(total, cur)| total.plus(cur)));
         }
-        let unit = UNITS.iter().position(|u| u == w).map(|n| n as u128).or_else(|| TENS.iter().position(|t| t == w).map(|n| 20 + 10 * n as u128));
+        let unit = cardinal(w);
         let scale = SCALES.iter().find(|(s, _)| s == w).map(|(_, p)| *p);
         match (unit, scale, run) {
             (Some(n), _, _) => {
@@ -376,11 +380,7 @@ fn words(cs: &[char]) -> Vec<Dec> {
                     run = None;
                 }
             }
-            (None, None, _) => {
-                if let Some((total, cur)) = run.take() {
-                    out.extend(total.plus(cur));
-                }
-            }
+            (None, None, _) => out.extend(run.take().and_then(|(total, cur)| total.plus(cur))),
         }
         match w.as_str() {
             "half" => out.push(Dec::new(5, -1)),
