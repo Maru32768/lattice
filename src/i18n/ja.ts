@@ -1401,7 +1401,7 @@ export const ja = {
   "mcpSettings.deleteDescUser":
     "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。Claude Codeでは、{remove}で登録も消してください。",
   "mcpSettings.deleteDescLocal":
-    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で登録も消してください。",
+    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で登録も消してください。消した後は、「Claude Code全体」の登録があれば、そのプロジェクトでもそちらが使われます。",
   "mobileSettings.mode": "このPCから配信",
   "mobileSettings.modeDesc": "PCの起動中だけ、スマホからライブラリを読めます。",
   "mobileSettings.off": "オフ",

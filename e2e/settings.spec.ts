@@ -389,6 +389,9 @@ test("agent registrations copy commands for all of Claude Code or one project, k
   await expect(removeProject, "a project's own is removed where it was added").toContainText(
     "そのプロジェクトのフォルダで、claude mcp remove lattice -s localで登録も消してください。",
   );
+  await expect(removeProject, "removing it hands the project to the registration for all of Claude Code").toContainText(
+    "消した後は、「Claude Code全体」の登録があれば、そのプロジェクトでもそちらが使われます。",
+  );
   await removeProject.getByRole("button", { name: "削除", exact: true }).click();
   await expect(row("Research")).toHaveCount(0);
   await expect(role("Claude Code"), "the other registration stays").toHaveValue("read");

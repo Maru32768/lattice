@@ -1419,7 +1419,7 @@ export const en = {
   "mcpSettings.deleteDescUser":
     "Its token stops working from the next call, for agents already connected too. In Claude Code, also remove the registration with {remove}.",
   "mcpSettings.deleteDescLocal":
-    "Its token stops working from the next call, for agents already connected too. In that project's folder, also remove the registration with {remove}.",
+    "Its token stops working from the next call, for agents already connected too. In that project's folder, also remove the registration with {remove}. After that, the project uses the registration for all of Claude Code, if there is one.",
   "mobileSettings.mode": "Serve from this PC",
   "mobileSettings.modeDesc": "While this PC is on, a phone can read the library.",
   "mobileSettings.off": "Off",
