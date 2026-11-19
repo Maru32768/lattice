@@ -11,7 +11,7 @@ export function markNumbers(text: string, numbers: string[]): { text: string; ma
   // Longest first, so 8万 is marked whole rather than its 8.
   const alternatives = numbers
     .toSorted((a, b) => b.length - a.length)
-    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .map((n) => RegExp.escape(n))
     .join("|");
   const re = new RegExp(`(?<![\\d.,])(${alternatives})(?![\\d]|[.,]\\d)`);
   return text
