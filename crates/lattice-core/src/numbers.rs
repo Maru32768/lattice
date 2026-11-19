@@ -84,6 +84,9 @@ struct Mention {
     value: Num,
     /// The same digits read otherwise, which an article may have meant: `{1,100}` as 1 and 100, `1M` as 1.
     others: Vec<Num>,
+    /// A summary may mean `others` as much as `value`: 52 after `1946-` is 1952 or 52 (`2019～20年` against
+    /// `2019年から20年`).
+    either: bool,
 }
 
 /// Every value `texts` write: numbers in digits, also read the other ways an article may mean them; fractions;
@@ -103,13 +106,18 @@ impl Article {
         }
         Self(values)
     }
+
+    /// Whether the article has a value the summary's `m` may mean.
+    fn has(&self, m: &Mention) -> bool {
+        self.0.contains(&m.value) || (m.either && m.others.iter().any(|o| self.0.contains(o)))
+    }
 }
 
 /// Where `text` writes in digits a number whose value `article` lacks, in order: UTF-16 ranges, as JavaScript slices
 /// strings, so the Reader marks exactly what was checked.
 pub fn unverified(text: &str, article: &Article) -> Vec<(usize, usize)> {
     let utf16: Vec<usize> = std::iter::once(0).chain(text.chars().scan(0, |at, c| Some(*at + c.len_utf16()).inspect(|&n| *at = n))).collect();
-    mentions(&folded(text)).into_iter().filter(|m| !article.0.contains(&m.value)).map(|m| (utf16[m.start], utf16[m.end])).collect()
+    mentions(&folded(text)).into_iter().filter(|m| !article.has(m)).map(|m| (utf16[m.start], utf16[m.end])).collect()
 }
 
 /// Chars with full-width digits and odd spaces and hyphens made ASCII, one for one so positions carry over.
@@ -189,6 +197,7 @@ fn mentions(cs: &[char]) -> Vec<Mention> {
         }
         let (mut end, token) = digits_at(cs, i);
         let (mut value, mut others) = read(&token);
+        let mut either = false;
         if let Num::Dec(first) = value {
             let (joined, at) = japanese(cs, first, end);
             if let Some(v) = joined {
@@ -198,10 +207,10 @@ fn mentions(cs: &[char]) -> Vec<Mention> {
                 (value, end) = (Num::Dec(first.shifted(places)), at);
             } else if let Some(year) = out.last().and_then(|prev| year_after(cs, prev, i, &token)) {
                 others.push(value);
-                value = Num::Dec(year);
+                (value, either) = (Num::Dec(year), true);
             }
         }
-        out.push(Mention { start: i, end, value, others });
+        out.push(Mention { start: i, end, value, others, either });
         i = end;
     }
     out
@@ -478,7 +487,9 @@ mod tests {
         assert_eq!(check("Python 3.12.1で", "Python 3.12.1"), Vec::<String>::new());
         assert_eq!(check("Python 3.12.2で", "Python 3.12.1 and 2"), ["3.12.2"], "a version by its text");
         assert_eq!(check("1946～52年分と1990-99年", "for 1946-1952 and 1990 to 1999"), Vec::<String>::new(), "a year cut short after a dash");
-        assert_eq!(check("1946～53年分", "for 1946-1952, 53 times"), ["53"], "53 there is the year 1953");
+        assert_eq!(check("2019～20年に", "2019年から20年にかけて"), Vec::<String>::new(), "a year cut short may be the year or the number");
+        assert_eq!(check("2024-11-19に", "on November 19, 2024"), Vec::<String>::new());
+        assert_eq!(check("1946～53年分", "for 1946-1952"), ["53"], "neither 1953 nor 53");
     }
 
     #[test]
