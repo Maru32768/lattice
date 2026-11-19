@@ -120,7 +120,7 @@ impl Article {
             for m in &mut mentions {
                 m.others.extend(any_case_suffix(&cs, m.start).map(Num::Dec));
             }
-            values.extend(fractions(&cs, &mentions).chain(ranges(&cs, &mentions)).map(Num::Dec));
+            values.extend(fractions(&cs, &mentions).chain(ranges(&cs, &mentions)).chain(digit_readings(&cs, &mentions)).map(Num::Dec));
             values.extend(mentions.into_iter().flat_map(|m| std::iter::once(m.value).chain(m.others)));
             // An en dash writes a range, never one number: five hundred–one thousand is not 501,000.
             let mut spelled = cs.clone();
@@ -340,6 +340,23 @@ fn fractions<'a>(cs: &'a [char], mentions: &'a [Mention]) -> impl Iterator<Item 
         let whole = k.checked_sub(1).map(|j| &mentions[j]).filter(|n| n.end + 1 == a.start && cs[n.end] == ' ').and_then(int);
         Some(whole.and_then(|n| Dec::int(n).plus(part)).unwrap_or(part))
     })
+}
+
+/// Other ways an article writes digits: `.05` for 0.05 and `10^6` for a power.
+fn digit_readings(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
+    let mut out = Vec::new();
+    for m in mentions {
+        let (_, token) = digits_at(cs, m.start);
+        if m.start > 0 && cs[m.start - 1] == '.' && !(m.start > 1 && cs[m.start - 2].is_ascii_digit()) {
+            out.extend(Dec::parse(&format!("0.{token}")));
+        }
+        if cs.get(m.end) == Some(&'^')
+            && let (Num::Dec(base), (_, Some(power))) = (&m.value, token_at(cs, m.end + 1))
+        {
+            out.extend(base.whole().zip(power.whole()).and_then(|(b, p)| b.checked_pow(u32::try_from(p).ok()?)).map(Dec::int));
+        }
+    }
+    out
 }
 
 const CURRENCIES: [char; 5] = ['$', '€', '£', '¥', '￥'];
@@ -878,6 +895,19 @@ mod tests {
         ] {
             assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
         }
+    }
+
+    #[test]
+    fn a_decimal_without_its_zero_and_a_power_count() {
+        for (summary, article) in [("0.05", "p < .05"), ("0.5", "a .5 rating"), ("100万", "10^6 samples"), ("1024", "2^10 bytes")] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        for (summary, article, why) in
+            [("0.5", "version 5", "a dot comes before the digits"), ("0.78", "1,234.56.78", "the dot follows no digit"), ("8", "2-3", "a power follows ^")]
+        {
+            assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
+        }
+        assert_eq!(check("99", "10^99"), Vec::<String>::new(), "a power too large for a value is left out");
     }
 
     #[test]
