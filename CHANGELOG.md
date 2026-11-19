@@ -4,6 +4,11 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Sources for summaries.** Each sentence and key point of a summary ends with the numbers of the passages it comes from. Click one to go to that passage in the Reader.
+- **A check of the numbers in summaries.** A number in a summary that the article does not contain gets a wavy underline, and the summary lists such numbers below it.
+
 ### Changed
 
 - **Summaries are written differently.** The first sentence of a summary states the article's main claim or conclusion. Before, many summaries started by describing the article. The key points keep the article's specific names, numbers and results. Lattice sends the AI a whole article of up to 100,000 characters, and the start and the end of a longer one (before, articles were cut at 40,000). It sends tables and code too, up to 2,000 characters each. A long article in English or Korean sometimes got its summary in that language; Lattice now asks for Japanese after the article as well.
