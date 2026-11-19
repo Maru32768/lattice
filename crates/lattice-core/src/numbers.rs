@@ -970,6 +970,7 @@ mod tests {
             assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
         }
         assert_eq!(check("99", "10^99"), Vec::<String>::new(), "a power too large for a value is left out");
+        assert_eq!(check("0.22", ".22 of them"), Vec::<String>::new(), "a dot at the start of the text");
     }
 
     #[test]
