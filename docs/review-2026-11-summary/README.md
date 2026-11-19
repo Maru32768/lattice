@@ -18,8 +18,8 @@
 |---|---|
 | `id` | 通し番号 |
 | `milestone` | ロードマップの項目とスライス(`J16-1`・`J16-2`) |
-| `round` | 何回目のレビューか。`ponytail`・`simplify`・`prose`は片づけと推敲、`1`〜`3`は2つの観点のレビュー、`fable`・`codex`は別のモデルのレビュー、`followup`はその修正の差分の追加の確認 |
-| `reviewer` | `correctness`・`test-quality`・`both`(両方が見つけた)・`fable`・`codex`・`ponytail-review`・`simplify`・`prose-polish`・`parent`(親が挙げたもの) |
+| `round` | 何回目のレビューか。`ponytail`・`simplify`・`prose`は片づけと推敲、`1`〜`3`は2つの観点のレビュー、`fable`・`codex`は別のモデルのレビュー、`followup`はその修正の差分の追加の確認、`final`は最終確認 |
+| `reviewer` | `correctness`・`test-quality`・`both`(両方が見つけた)・`fable`・`codex`・`ponytail-review`・`simplify`・`prose-polish`・`final-check`・`parent`(親が挙げたもの) |
 | `commit` | レビューした範囲の先頭のコミット |
 | `severity` | `high`・`medium`・`low`(Must・Should・Couldに当たる。片づけと推敲は`low`) |
 | `category` | `correctness`・`security`・`test-coverage`・`performance`・`robustness`・`ux`・`docs`・`simplification` |
