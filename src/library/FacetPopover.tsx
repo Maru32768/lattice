@@ -39,13 +39,11 @@ function TagFilter({ facets, onFacets, base, all, anchor, onClose }: Props) {
       e.preventDefault();
       pick(active.key);
     } else if (e.key === "Enter") {
-      e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
         return onClose();
       }
-      if (active) {
-        pick(active.key);
-      }
+      // The list then picks the highlighted tag.
       setQ("");
     } else if (e.key === "Tab" && q && active) {
       e.preventDefault();
