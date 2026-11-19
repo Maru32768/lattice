@@ -22,9 +22,7 @@ pub struct McpServer {
 
 #[derive(Default)]
 struct Running {
-    server: Option<Server>,
-    /// The running server's; a new server starts with none.
-    activity: Option<Arc<Activity>>,
+    server: Option<(Server, Arc<Activity>)>,
     /// Why the server is not running although it is on.
     error: Option<String>,
 }
@@ -60,10 +58,9 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     let app = handle.state::<App>();
     let mcp_server = handle.state::<McpServer>();
     let mut running = mcp_server.running.lock().await;
-    if let Some(server) = running.server.take() {
+    if let Some((server, _)) = running.server.take() {
         server.stop().await;
     }
-    running.activity = None;
     running.error = None;
     if !mcp::enabled(&app.store)? {
         return Ok(());
@@ -77,8 +74,7 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     match lattice_server::start(ADDR, mcp_http::router(app.store.clone(), app.providers.clone(), on_applied, activity.clone())).await {
         Ok(server) => {
             log::info!("MCP server listening on {}", server.addr);
-            running.server = Some(server);
-            running.activity = Some(activity);
+            running.server = Some((server, activity));
         }
         Err(e) => {
             log::warn!("MCP server on {ADDR}: {e}");
@@ -105,7 +101,7 @@ fn view(r: mcp::Registration, activity: Option<&Activity>) -> McpRegistration {
 async fn status(mcp_server: &McpServer, app: &App, loc: &Location) -> Result<McpStatus, String> {
     let (error, activity) = {
         let running = mcp_server.running.lock().await;
-        (running.error.clone(), running.activity.clone())
+        (running.error.clone(), running.server.as_ref().map(|(_, activity)| activity.clone()))
     };
     let registrations = mcp::registrations(&app.store)?.into_iter().map(|r| view(r, activity.as_deref())).collect();
     Ok(McpStatus { enabled: mcp::enabled(&app.store)?, error, fell_back: loc.warning.is_some(), registrations })
