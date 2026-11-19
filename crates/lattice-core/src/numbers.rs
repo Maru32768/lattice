@@ -446,6 +446,7 @@ mod tests {
         assert_eq!(check("\u{ff11}\u{ff12}\u{ff19}MBを使う。", "uses 128MB"), ["\u{ff11}\u{ff12}\u{ff19}"], "read as digits, returned as written");
         assert_eq!(check("128MBを使う。", "uses \u{ff11}\u{ff12}\u{ff18}MB"), Vec::<String>::new(), "full-width digits in the article");
         assert_eq!(check("p99は38.9秒", "p99 rose to 38.95 seconds"), ["38.9"], "not a prefix of another number");
+        assert_eq!(check("1,234.5件", "1234.5 rows"), Vec::<String>::new(), "a decimal after thousands groups");
     }
 
     #[test]
@@ -513,6 +514,7 @@ mod tests {
         assert_eq!(check("2019～20年に", "2019年から20年にかけて"), Vec::<String>::new(), "a year cut short may be the year or the number");
         assert_eq!(check("2024-11-19に", "on November 19, 2024"), Vec::<String>::new());
         assert_eq!(check("1946～53年分", "for 1946-1952"), ["53"], "neither 1953 nor 53");
+        assert_eq!(check("2020-2021年", "from 2020 to 2021"), Vec::<String>::new(), "only two digits are a year cut short");
     }
 
     #[test]
