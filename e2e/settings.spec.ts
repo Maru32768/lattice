@@ -366,6 +366,10 @@ test("an agent registration copies its command and changes role, and a new token
   await expect(remove, "a new registration's command would meet the old one in Claude Code").toContainText("claude mcp remove lattice -s user");
   await remove.getByRole("button", { name: "削除", exact: true }).click();
   await expect(app.getByText("登録はまだありません")).toBeVisible();
+
+  await app.getByLabel("MCPサーバーを動かす").uncheck();
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "enable", on: false } });
+  await expect(app.getByLabel("MCPサーバーを動かす")).not.toBeChecked();
 });
 
 test("serving to a phone shows the QR code, warns about the open network, and a new token changes the address", async ({ app }) => {
