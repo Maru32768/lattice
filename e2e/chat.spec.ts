@@ -479,7 +479,7 @@ async function chooseAI(app: Page, path: (string | RegExp)[], pick: string) {
     await app.getByRole("menuitem", { name, exact: true }).click();
   }
   const radio = app.getByRole("menuitemradio", { name: pick, exact: true });
-  // The submenus open to the left, over the parent's items: a pointer that jumps there in one step closes them, one moved by hand does not.
+  // A submenu opens to the parent's left here: a pointer that jumps onto it in one step closes it, one moved by hand does not.
   const b = (await radio.boundingBox())!;
   await app.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
   await radio.click();
