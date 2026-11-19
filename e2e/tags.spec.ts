@@ -45,6 +45,10 @@ test("tag popover: every tag in the set, search, AND / any, Backspace drops the 
   await app.keyboard.press("Backspace");
   await expect(listCount(app)).toHaveText(`${postgres} / ${all}`);
   await expect(pv.getByRole("button", { name: "postgresを解除" })).toBeVisible();
+  await search.fill("postg");
+  await app.keyboard.press("Backspace");
+  await expect(search, "Backspace while typing deletes a letter").toHaveValue("post");
+  await expect(listCount(app), "and keeps the tags").toHaveText(`${postgres} / ${all}`);
 
   await search.fill("no-such-tag");
   await expect(pv.getByText("該当なし")).toBeVisible();
