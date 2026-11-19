@@ -1393,7 +1393,7 @@ export const en = {
   "mcpSettings.enabledDesc": "Only this PC can connect. Other PCs and phones cannot.",
   "mcpSettings.registrations": "Registrations",
   "mcpSettings.registrationsDesc":
-    "Make a registration for each agent, and run the command Copy command copies in a terminal. Read only reads articles and feeds; Edit can also change titles, collections, genres and feeds. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
+    "Make a registration for each agent, press Copy command, and run the copied command in a terminal. Read lets an agent read articles and feeds; Edit also lets it change titles, collections, genres and feeds. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
   "mcpSettings.none": "No registrations yet",
   "mcpSettings.new": "New registration",
   "mcpSettings.role": "Role",
