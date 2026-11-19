@@ -220,6 +220,11 @@ function SubMenu({ parts: P, item, height }: { parts: Parts; item: MenuItem; hei
     <P.Sub>
       <P.SubTrigger asChild disabled={item.disabled}>
         <button role="menuitem" className="sub" disabled={item.disabled}>
+          {item.checked !== undefined && (
+            <span className="check" aria-hidden="true">
+              {item.checked ? "✓" : ""}
+            </span>
+          )}
           <span className="grow">{item.label}</span>
           <Icon name="right" size="sm" />
         </button>
