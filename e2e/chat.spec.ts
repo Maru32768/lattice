@@ -570,6 +570,11 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await choose(["Gemini API"], "その他(モデルIDを入力)");
   await expect(modelId, "the ID typed for Claude CLI stays with it").toHaveValue("");
   await expect(ai).toHaveText("Gemini API");
+  await ai.click();
+  await app.getByRole("menuitem", { name: "Gemini API", exact: true }).click();
+  await expect(radio("その他(モデルIDを入力)")).toHaveAttribute("aria-checked", "true");
+  await expect(radio("既定(gemini-flash-latest)"), "an empty ID is not the default model").toHaveAttribute("aria-checked", "false");
+  await app.keyboard.press("Escape");
   await choose(["Gemini API"], "既定(gemini-flash-latest)");
   await expect(ai).toHaveText("Gemini API");
   await expect(modelId).toHaveCount(0);
