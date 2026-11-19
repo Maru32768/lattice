@@ -180,7 +180,7 @@ export function GroupChips({
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   // Only a request made while mounted: the Reader remounts per article, and other tabs see it drop to 0.
   const seen = useRef(request);
-  /** Puts the article back where it was read, after the palette scrolled it to the chips. */
+  /** Puts the article back where it was read, after the palette scrolled it to the chips, and the focus in it. */
   const back = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (request > seen.current && add.current) {
@@ -193,16 +193,22 @@ export function GroupChips({
       if (box?.scrollTop === top) {
         release();
       } else {
-        back.current = release;
+        back.current = () => {
+          release();
+          // Not on the ＋, which is out of view again: a key would open the picker there, and the palette, as it closes,
+          // would scroll the article to it.
+          box?.focus({ preventScroll: true });
+        };
       }
       setAnchor(add.current);
     }
     seen.current = request;
   }, [request]);
   const close = () => {
-    setAnchor(null);
-    back.current?.();
+    const goBack = back.current;
     back.current = null;
+    setAnchor(null);
+    goBack?.();
   };
   return (
     <>

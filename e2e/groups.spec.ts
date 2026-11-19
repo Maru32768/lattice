@@ -193,12 +193,12 @@ test("the palette's この記事をグループに追加… opens the picker in 
   // kept as the palette scrolled the article.
   const held = (await storedPlace(app, members(mvcc.id)[0].id))!;
   expect(held, "the article's place is the block it was read at").toMatchObject({ block });
-  /** How far the view's top is from the held place, in px. */
-  const off = () =>
+  /** How far the view's top is from `place`, in px. */
+  const off = (place = held) =>
     doc.evaluate((view, p) => {
       const r = view.querySelector(`#b-${p.block}`)!.getBoundingClientRect();
       return Math.abs(view.getBoundingClientRect().top - (r.top + p.at * r.height));
-    }, held);
+    }, place);
   const add = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
   await expect
     .poll(async () => {
@@ -214,7 +214,14 @@ test("the palette's この記事をグループに追加… opens the picker in 
   await expect.poll(async () => (await chips.boundingBox())!.height, "the new chip takes another line").toBeGreaterThan(high);
   await app.keyboard.press("Escape");
   await expect(picker(app)).toBeHidden();
-  await expect.poll(off, "the text is back where it was read, by the block it was at").toBeLessThanOrEqual(1);
+  await expect.poll(() => off(), "the text is back where it was read, by the block it was at").toBeLessThanOrEqual(1);
+  await expect(doc, "with the focus in it, not on the ＋ out of view").toBeFocused();
+
+  await addFromPalette(app);
+  const again = (await storedPlace(app, members(mvcc.id)[0].id))!;
+  await add.click();
+  await expect(picker(app)).toBeHidden();
+  await expect.poll(() => off(again), "the ＋ button closes it the same way").toBeLessThanOrEqual(1);
 });
 
 test("opening another article while the palette's group picker is open keeps the reading place of the first", async ({ app }) => {
