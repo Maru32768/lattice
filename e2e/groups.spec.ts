@@ -250,6 +250,22 @@ test("the palette's この記事をグループに追加… opens the picker und
   expect(await app.evaluate((el) => document.activeElement === el, focused), "and the focus goes back where the palette left it").toBe(true);
 });
 
+test("a press on the chat's question box while the palette's group picker is open keeps the keyboard there", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 600 });
+  await nav(app).getByRole("button", { name: "対話" }).click();
+  const q = app.getByRole("textbox", { name: "質問", exact: true });
+  await expect(q).toBeVisible();
+  await list(app)
+    .locator(".row", { hasText: members(mvcc.id)[0].title! })
+    .click();
+  await addFromPalette(app);
+  await q.click();
+  await expect(picker(app)).toBeHidden();
+  await app.keyboard.type("abc");
+  await expect(q).toHaveValue("abc");
+  await expect(q).toBeFocused();
+});
+
 test("picks that take the row out of the list, scrolled to its end, and bring it back leave the group picker where it was", async ({ app }) => {
   await app.setViewportSize({ width: 1440, height: 420 });
   await navItem(app, mvcc.name).click();
