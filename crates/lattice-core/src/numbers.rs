@@ -467,6 +467,7 @@ mod tests {
             assert_eq!(check(ok, article), Vec::<String>::new(), "{ok}");
         }
         assert_eq!(check("16GBと10MB", "16 GB and 10 MB"), Vec::<String>::new(), "a unit's letters are not a suffix");
+        assert_eq!(check("1.5M件", "took 1.5 seconds"), ["1.5M"], "the suffix is part of the value");
         assert_eq!(check("1万3千行", "13 thousand lines"), Vec::<String>::new());
     }
 
