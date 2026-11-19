@@ -337,6 +337,7 @@ test("a failed library read leaves the chat scope loading until the other reads 
   });
   await shell.goto("/");
   await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await expect(shell.getByRole("alert"), "the failed read is reported").toContainText("list_genres failed");
   await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
   await chatScope(shell).click();
   const picker = scopeDialog(shell);
