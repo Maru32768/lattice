@@ -93,6 +93,8 @@ pub fn serve(ctx: &Ctx, detected_dir: Option<&Path>, rt: &Runtime, mut input: im
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
     use lattice_core::chain::{self, LlmChain};
     use lattice_core::embed::LocalE5;
     use lattice_core::jobs::Providers;
@@ -103,7 +105,7 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let llm = LlmChain::new(chain::load(&store).unwrap());
         let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));
-        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, role: Role::Edit }
+        Ctx { store: Arc::new(store), providers: Arc::new(Providers { llm, embedder, http: lattice_core::fetch::client() }), role: Role::Edit }
     }
 
     #[test]

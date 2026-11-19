@@ -151,6 +151,8 @@ pub struct Effects {
     pub article: Option<i64>,
     pub vocab: bool,
     pub fetch: bool,
+    /// Feeds or their folders changed. A new feed may also have queued its entries' LLM filter.
+    pub feeds: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]

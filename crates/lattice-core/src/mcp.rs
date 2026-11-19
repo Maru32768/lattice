@@ -155,7 +155,7 @@ mod tests {
         assert_eq!((renewed.id.as_str(), renewed.name.as_str()), (a.id.as_str(), "Claude Code"));
         edit(&s, &Edit::Delete { id: a.id.clone() }).unwrap();
         assert_eq!(authenticate(&s, &renewed.token).unwrap(), None);
-        assert_eq!(registrations(&s).unwrap(), [b.clone()], "the other one stays");
+        assert_eq!(registrations(&s).unwrap(), std::slice::from_ref(&b), "the other one stays");
         edit(&s, &Edit::Delete { id: a.id }).unwrap();
         assert_eq!(registrations(&s).unwrap(), [b], "a registration that is gone changes nothing");
     }

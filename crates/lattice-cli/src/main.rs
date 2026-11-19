@@ -9,6 +9,7 @@ mod mcp;
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use lattice_core::chain::{self, LlmChain};
@@ -92,7 +93,7 @@ fn open(cli: &Cli) -> Result<(Ctx, Option<PathBuf>), String> {
     } else {
         Role::Read
     };
-    Ok((Ctx { store, providers, role }, detected_dir))
+    Ok((Ctx { store: Arc::new(store), providers: Arc::new(providers), role }, detected_dir))
 }
 
 /// A `warning` or `error` line. Backend messages are coded JSON (`msg!`, `{"code","params"}`):
@@ -130,13 +131,12 @@ fn fail(format: Format, e: &str) -> ExitCode {
 /// Runs until the process is stopped or the library moves. Jobs that the served requests queue wait for
 /// the app's runners (design-review §23). Only the real library is served, as in the app: a stand-in would
 /// show a phone old articles and turn away its token.
-async fn serve(store: Store, detected_dir: Option<PathBuf>, allow_write: bool, lan: bool, port: u16) -> Result<(), String> {
+async fn serve(store: Arc<Store>, detected_dir: Option<PathBuf>, allow_write: bool, lan: bool, port: u16) -> Result<(), String> {
     if detected_dir.is_some() && location::detect().is_ok_and(|now| now.warning.is_some()) {
         return Err(msg!("mobile.fellBack"));
     }
     // The server's errors go to its log, and nothing else shows them here.
     let _ = log::set_logger(&StderrLogger).map(|()| log::set_max_level(log::LevelFilter::Warn));
-    let store = std::sync::Arc::new(store);
     let url_store = store.clone();
     let ip = if lan {
         Ipv4Addr::UNSPECIFIED
@@ -144,7 +144,7 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, allow_write: bool, l
         Ipv4Addr::LOCALHOST
     };
     // What the phone sends is only stored and queued here, so there is nothing further to tell anyone.
-    let on_applied: Option<lattice_server::OnApplied> = allow_write.then(|| std::sync::Arc::new(|_: &mobile::Effects| {}) as lattice_server::OnApplied);
+    let on_applied: Option<lattice_server::OnApplied> = allow_write.then(|| Arc::new(|_: &mobile::Effects| {}) as lattice_server::OnApplied);
     let server = lattice_server::start((ip, port).into(), lattice_server::router(store, on_applied)).await.map_err(|e| e.to_string())?;
     let reachable = if lan {
         mobile::lan_ip()
