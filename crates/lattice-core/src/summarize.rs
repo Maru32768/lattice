@@ -586,6 +586,14 @@ mod tests {
         let now = s.summary_source(id).unwrap().unwrap();
         assert_eq!((now.content_hash, now.block_ids[0]), (src.content_hash.clone(), ids[0]), "the same text, the first paragraph kept");
         assert!(stale(id), "a key point cites a block that is gone, though another it cites is kept");
+        let store = |summary: &[i64]| {
+            let items = Items { summary: vec![item("SIはwrite skewを許す。", summary, &[])], key_points: vec![] };
+            s.insert_summary(id, SUMMARY_TYPE, &format_summary(&items), Some(&items), &src.content_hash, "fake", None, PROMPT_VERSION).unwrap();
+        };
+        store(&[ids[0], ids[2]]);
+        assert!(stale(id), "a sentence cites a block that is gone");
+        store(&[ids[0]]);
+        assert!(!stale(id), "every block it cites is kept");
     }
 
     #[test]
