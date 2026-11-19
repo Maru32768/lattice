@@ -343,6 +343,12 @@ test("an agent registration copies its command and changes role, and a new token
 
   await app.getByRole("button", { name: "トークンを作り直す" }).click();
   const regenerate = app.getByRole("alertdialog", { name: "「Claude Code」のトークンを作り直しますか？" });
+  await regenerate.getByRole("button", { name: "キャンセル" }).click();
+  expect(
+    (await callsOf(app, "mcp_edit")).map((c) => (c as { edit: { kind: string } }).edit.kind),
+    "nothing before the answer",
+  ).not.toContain("regenerate");
+  await app.getByRole("button", { name: "トークンを作り直す" }).click();
   await expect(regenerate, "Claude Code keeps the old token until its registration is removed").toContainText("claude mcp remove lattice -s user");
   await regenerate.getByRole("button", { name: "作り直す", exact: true }).click();
   await expect(app.getByRole("button", { name: "コマンドをコピー" }), "the new token makes a new command").toBeVisible();
