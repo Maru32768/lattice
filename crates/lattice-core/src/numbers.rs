@@ -1032,4 +1032,267 @@ mod tests {
         assert_eq!(Dec::parse(&"9".repeat(31)), None);
         assert_eq!(check(&"9".repeat(40), &"9".repeat(40)), Vec::<String>::new(), "too long for a value, compared by its digits");
     }
+
+    /// `n` in English words, American (`one hundred twenty-three`) or British (`one hundred and twenty-three`).
+    fn english(n: u128, british: bool) -> String {
+        let below_hundred = |r: usize| match r {
+            0..20 => UNITS[r].to_string(),
+            _ if r.is_multiple_of(10) => TENS[r / 10 - 2].to_string(),
+            _ => format!("{}-{}", TENS[r / 10 - 2], UNITS[r % 10]),
+        };
+        let mut words = Vec::new();
+        for (p, scale) in [(12, "trillion"), (9, "billion"), (6, "million"), (3, "thousand"), (0, "")] {
+            let group = (n / 10u128.pow(p) % 1000) as usize;
+            if group == 0 {
+                continue;
+            }
+            if group >= 100 {
+                words.push(format!("{} hundred", UNITS[group / 100]));
+            }
+            if group >= 100 && !group.is_multiple_of(100) && british {
+                words.push("and".into());
+            }
+            if !group.is_multiple_of(100) {
+                words.push(below_hundred(group % 100));
+            }
+            if !scale.is_empty() {
+                words.push(scale.into());
+            }
+        }
+        words.join(" ")
+    }
+
+    fn english_ordinal(cardinal: &str) -> String {
+        let (head, last) = cardinal.split_at(cardinal.rfind([' ', '-']).map_or(0, |i| i + 1));
+        let last = match last {
+            "one" => "first".into(),
+            "two" => "second".into(),
+            "three" => "third".into(),
+            "five" => "fifth".into(),
+            "eight" => "eighth".into(),
+            "nine" => "ninth".into(),
+            "twelve" => "twelfth".into(),
+            w => w.strip_suffix('y').map_or_else(|| format!("{w}th"), |stem| format!("{stem}ieth")),
+        };
+        format!("{head}{last}")
+    }
+
+    const KANJI_DIGITS: [char; 10] = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+    /// `n` in 万, 億 and 兆 sections (`1234万5678`), each nonzero section written by `section`.
+    fn sections(n: u128, section: impl Fn(u128) -> String) -> String {
+        [(12, "兆"), (8, "億"), (4, "万"), (0, "")]
+            .into_iter()
+            .filter_map(|(p, unit)| Some(n / 10u128.pow(p) % 10_000).filter(|s| *s > 0).map(|s| format!("{}{unit}", section(s))))
+            .collect()
+    }
+
+    /// A section below 万 with 千 and 百 (`5千6百78`).
+    fn sen_hyaku(s: u128) -> String {
+        let mut out = String::new();
+        for (p, unit) in [(3, '千'), (2, '百')] {
+            if !(s / 10u128.pow(p)).is_multiple_of(10) {
+                out.push_str(&format!("{}{unit}", s / 10u128.pow(p) % 10));
+            }
+        }
+        if !s.is_multiple_of(100) {
+            out.push_str(&(s % 100).to_string());
+        }
+        out
+    }
+
+    /// A section below 万 in kanji (`五千六百七十八`), the 一 before 千, 百 and 十 left out.
+    fn kanji_section(s: u128) -> String {
+        let mut out = String::new();
+        for (p, unit) in [(3, '千'), (2, '百'), (1, '十')] {
+            match s / 10u128.pow(p) % 10 {
+                0 => {}
+                1 => out.push(unit),
+                d => out.extend([KANJI_DIGITS[d as usize], unit]),
+            }
+        }
+        if !s.is_multiple_of(10) {
+            out.push(KANJI_DIGITS[(s % 10) as usize]);
+        }
+        out
+    }
+
+    fn grouped(n: u128, separator: char) -> String {
+        let digits = n.to_string();
+        let mut out = String::new();
+        for (i, c) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i).is_multiple_of(3) {
+                out.push(separator);
+            }
+            out.push(c);
+        }
+        out
+    }
+
+    /// `n / 10^p` in digits when it has at most three decimals.
+    fn quotient(n: u128, p: u32) -> Option<String> {
+        let (whole, frac) = (n / 10u128.pow(p), n % 10u128.pow(p));
+        let frac = format!("{frac:0width$}", width = p as usize);
+        let frac = frac.trim_end_matches('0');
+        (frac.len() <= 3).then(|| {
+            if frac.is_empty() {
+                whole.to_string()
+            } else {
+                format!("{whole}.{frac}")
+            }
+        })
+    }
+
+    /// The ways a summary writes `n` in digits.
+    fn summary_notations(n: u128) -> Vec<String> {
+        let mut out = vec![n.to_string(), grouped(n, ','), sections(n, |s| s.to_string()), sections(n, |s| grouped(s, ',')), sections(n, sen_hyaku)];
+        for (p, suffix, word) in [(3, "k", "thousand"), (6, "M", "million"), (9, "B", "billion")] {
+            if n >= 10u128.pow(p) && (p == 9 || n < 10u128.pow(p + 3)) {
+                out.extend(quotient(n, p).into_iter().flat_map(|q| [format!("{q}{suffix}"), format!("{q} {word}")]));
+            }
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// The ways an article writes `n`: a summary's, and in words, kanji and other notations.
+    fn article_notations(n: u128) -> Vec<String> {
+        let mut out = summary_notations(n);
+        let american = english(n, false);
+        out.extend([american.clone(), english(n, true), english_ordinal(&american), sections(n, kanji_section)]);
+        out.push(n.to_string().chars().map(|c| KANJI_DIGITS[c as usize - '0' as usize]).collect());
+        if let Some(rest) = american.strip_prefix("one ").filter(|rest| SCALES.iter().any(|(s, _)| rest.starts_with(s))) {
+            out.push(format!("a {rest}"));
+        }
+        if !american.contains([' ', '-']) {
+            out.push(format!("{american}fold"));
+        }
+        if let Some(scale) = american.strip_prefix("one ").filter(|rest| !rest.contains(' ')) {
+            out.push(format!("{scale}fold"));
+        }
+        if n >= 1000 {
+            out.extend([grouped(n, '.'), grouped(n, ' ')]);
+        }
+        if let Some(p) = (1..13).find(|p| 10u128.pow(*p) == n) {
+            out.push(format!("10^{p}"));
+        }
+        for (p, suffixes) in [(6, ["m", "mn", "Mn", "MN", " m"]), (9, ["b", "bn", "Bn", "BN", " b"])] {
+            if n >= 10u128.pow(p) && (p == 9 || n < 10u128.pow(p + 3)) {
+                out.extend(quotient(n, p).into_iter().flat_map(|q| suffixes.map(|s| format!("{q}{s}"))));
+            }
+        }
+        if n.is_multiple_of(12) && n < 120 {
+            out.push(format!("{} dozen", english(n / 12, false)));
+        }
+        for (p, scale) in [(3, "thousand"), (6, "million"), (9, "billion")] {
+            let halves = 2 * n / 10u128.pow(p);
+            if (2 * n).is_multiple_of(10u128.pow(p)) && halves % 2 == 1 && halves < 20 {
+                out.push(if halves == 1 {
+                    format!("half a {scale}")
+                } else {
+                    format!("{} and a half {scale}", english(halves / 2, false))
+                });
+            }
+        }
+        out
+    }
+
+    /// A scale's power with the ways digits write it after a range's right end, and its English words. Digits take one
+    /// scale word (`4 hundred thousand` reads 400 in the summary too), so hundred thousand is written in words only.
+    const RANGE_SCALES: [(u32, &[&str], Option<&str>); 9] = [
+        (2, &[" hundred", "百"], Some("hundred")),
+        (3, &[" thousand", "k", "千"], Some("thousand")),
+        (4, &["万"], None),
+        (5, &["十万"], Some("hundred thousand")),
+        (6, &[" million", "M", "百万"], Some("million")),
+        (7, &["千万"], None),
+        (8, &["億"], Some("hundred million")),
+        (9, &[" billion", "B"], Some("billion")),
+        (12, &[" trillion", "兆"], Some("trillion")),
+    ];
+
+    /// A small xorshift, so the generated values are the same on every run.
+    fn xorshift(seed: &mut u64) -> u64 {
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        *seed
+    }
+
+    #[test]
+    fn every_notation_of_a_value_passes_against_every_other() {
+        // Each power of ten and the values around it, the multiples of twelve a dozen writes, and a few with many digits.
+        let mut values = vec![12, 24, 36, 108, 115, 2024, 12_345, 1_200_000, 12_345_678, 123_456_789, 9_999_999_999_999];
+        for p in 0..13 {
+            let power = 10u128.pow(p);
+            values.extend([power / 2, power - 1, power, power + 1, power * 101 / 100, power * 11 / 10, power * 3 / 2, power * 5 / 2]);
+        }
+        let mut seed = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..300 {
+            let mantissa = 1 + u128::from(xorshift(&mut seed) % 9999);
+            values.push(mantissa * 10u128.pow((xorshift(&mut seed) % 9) as u32));
+        }
+        values.retain(|n| *n > 0);
+        values.sort_unstable();
+        values.dedup();
+        // Each article with the summaries checked against it.
+        let mut cases: Vec<(String, Vec<String>)> = Vec::new();
+        for &n in &values {
+            let summaries = summary_notations(n);
+            cases.extend(article_notations(n).into_iter().map(|a| (a, summaries.clone())));
+        }
+        let mut ends = vec![(1, 2), (2, 3), (3, 4), (5, 10), (9, 15), (10, 20), (15, 25), (21, 22), (25, 30), (99, 100)];
+        ends.extend([(2, 350), (50, 600), (100, 200), (120, 150), (250, 350), (517, 602), (998, 999)]);
+        for _ in 0..40 {
+            let low = 1 + u128::from(xorshift(&mut seed) % 998);
+            ends.push((low, low + 1 + u128::from(xorshift(&mut seed)) % (999 - low)));
+        }
+        for &(low, high) in &ends {
+            for (p, digit_scales, word_scale) in RANGE_SCALES {
+                // A scale with hundred goes with one-digit ends only: twenty to thirty hundred thousand is not English, and
+                // the ends written whole would meet between five hundred and one thousand, read as 501,000.
+                if p % 3 == 2 && high >= 10 {
+                    continue;
+                }
+                let (lo, hi) = (low * 10u128.pow(p), high * 10u128.pow(p));
+                let summaries = [
+                    format!("{}～{}", sections(lo, |s| s.to_string()), sections(hi, |s| s.to_string())),
+                    format!("{}～{}", grouped(lo, ','), grouped(hi, ',')),
+                ];
+                let mut articles = Vec::new();
+                for scale in digit_scales {
+                    for separator in ["-", "\u{2013}", "\u{2014}", "~", "～", "〜", " to ", " - "] {
+                        articles.push(format!("{low}{separator}{high}{scale}"));
+                    }
+                    articles.extend([format!("between {low} and {high}{scale}"), format!("${low}-${high}{scale}"), format!("{low}{scale} to {high}{scale}")]);
+                }
+                // A one-digit left end against a right end with hundred (two to three hundred fifty thousand) reads as two
+                // hundred thousand. The ends are American: and ends a range's end (one hundred and twenty to one hundred
+                // and fifty thousand).
+                if let Some(scale) = word_scale.filter(|_| low >= 10 || high < 100) {
+                    let (l, h) = (english(low, false), english(high, false));
+                    for separator in [" to ", "-", "\u{2013}", "\u{2014}", " \u{2013} ", "~"] {
+                        articles.push(format!("{l}{separator}{h} {scale}"));
+                    }
+                    articles.push(format!("between {l} and {h} {scale}"));
+                }
+                let (l, h) = (english(lo, false), english(hi, false));
+                articles.extend([format!("{l} to {h}"), format!("{l}\u{2013}{h}"), format!("between {l} and {h}")]);
+                cases.extend(articles.into_iter().map(|a| (a, summaries.to_vec())));
+            }
+        }
+        let mut failed = Vec::new();
+        for (article, summaries) in &cases {
+            let read = Article::new([format!("about {article} items").as_str()]);
+            for summary in summaries {
+                let text = format!("約{summary}件");
+                if !unverified(&text, &read).is_empty() {
+                    failed.push((summary, article));
+                }
+            }
+        }
+        let pairs: usize = cases.iter().map(|(_, summaries)| summaries.len()).sum();
+        assert!(failed.is_empty(), "{} of {pairs} pairs flagged, the first: {:#?}", failed.len(), &failed[..failed.len().min(20)]);
+    }
 }
