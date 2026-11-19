@@ -32,7 +32,7 @@ const SESSION: &str = "mcp-session-id";
 const VERSION: &str = "mcp-protocol-version";
 /// More than one PC's agents keep open. Past it the session idle longest goes, and its client initializes again.
 const MAX_SESSIONS: usize = 64;
-const READ_ONLY: &str = "This tool changes the library, and this connection may only read it. The user can change that in Lattice: Settings › MCP.";
+const READ_ONLY: &str = "This tool changes the library, and this connection may only read it. The user can change that in Lattice: Settings › AI agents (MCP).";
 const NO_DELETING: &str = "Deleting over MCP needs the user's approval in Lattice, which this version cannot ask for. Nothing was deleted.";
 
 /// What the settings screen copies for a registration. User scope: the library is the user's, not one project's.
