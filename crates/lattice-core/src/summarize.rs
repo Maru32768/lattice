@@ -590,7 +590,7 @@ mod tests {
             let items = Items { summary: vec![item("SIはwrite skewを許す。", summary, &[])], key_points: vec![] };
             s.insert_summary(id, SUMMARY_TYPE, &format_summary(&items), Some(&items), &src.content_hash, "fake", None, PROMPT_VERSION).unwrap();
         };
-        store(&[ids[0], ids[2]]);
+        store(&[ids[2], ids[0]]);
         assert!(stale(id), "a sentence cites a block that is gone");
         store(&[ids[0]]);
         assert!(!stale(id), "every block it cites is kept");
