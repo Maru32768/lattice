@@ -41,6 +41,8 @@ export type * from "./LlmSettings";
 export type * from "./LocalBackup";
 export type * from "./LocationKind";
 export type * from "./MatchSource";
+export type * from "./McpEdit";
+export type * from "./McpRole";
 export type * from "./MobileIcons";
 export type * from "./MobileIndex";
 export type * from "./MobileOp";
