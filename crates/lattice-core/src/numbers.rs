@@ -468,21 +468,42 @@ mod tests {
 
     #[test]
     fn english_number_words_ordinals_and_months_count() {
-        let article = "Two consuming apps, six projects, twenty-seven states, three hundred users, a five-year-old laptop, once, \
-            three, four million customers, one-fifth of it, a 3 1/2 star rating, three and a half seconds, in October, under a day.";
-        for ok in ["2つの利用アプリ", "6プロジェクト", "27州", "300人", "5年前のノートPC", "1回", "4百万人", "5分の1", "3.5星", "3.5秒", "10月", "1日未満"]
-        {
-            assert_eq!(check(ok, article), Vec::<String>::new(), "{ok}");
+        // Each against an article of its own, so that no other word in it has the value.
+        for (summary, article) in [
+            ("2つの利用アプリ", "Two consuming apps"),
+            ("6プロジェクト", "six projects"),
+            ("27州", "twenty-seven states"),
+            ("300人", "three hundred users"),
+            ("5年前のノートPC", "a five-year-old laptop"),
+            ("1回", "once"),
+            ("4百万人", "four million customers"),
+            ("100万人", "a million users"),
+            ("5分の1", "one-fifth of it"),
+            ("3.5星", "a 3 1/2 star rating"),
+            ("3.5秒", "three and a half seconds"),
+            ("10月", "in October"),
+            ("10月", "Oct 2024"),
+            ("1日未満", "under a day"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
-        assert_eq!(check("7百万人", article), ["7百万"], "three, four million is not seven million");
+        assert_eq!(check("7百万人", "three, four million customers"), ["7百万"], "three, four million is not seven million");
         assert_eq!(check("305人と7人", "three hundred and five people, three and four"), ["7"], "and joins only after a scale word");
         assert_eq!(check("2倍", "It doubled."), ["2"], "only the words listed");
         assert_eq!(check("0.25ポイント", "a quarter percentage point"), Vec::<String>::new());
     }
 
     #[test]
+    fn the_articles_digits_count_in_their_other_readings_too() {
+        for (summary, article) in [("Python 3で", "Python 3.12.1"), ("1件", "1M tokens"), ("52件", "1946-52")] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+    }
+
+    #[test]
     fn kanji_numerals_and_odd_digits_in_the_article_count() {
         assert_eq!(check("3つの方式と23件", "三つの方式と二十三件"), Vec::<String>::new());
+        assert_eq!(check("1万件と2億人", "一万件と二億人"), Vec::<String>::new());
         assert_eq!(check("1〜100文字", "'^[a-zA-Z0-9 ]{1,100}$'"), Vec::<String>::new(), "a comma in a pattern, not a thousands separator");
         assert_eq!(check("Python 3.12.1で", "Python 3.12.1"), Vec::<String>::new());
         assert_eq!(check("Python 3.12.2で", "Python 3.12.1 and 2"), ["3.12.2"], "a version by its text");
