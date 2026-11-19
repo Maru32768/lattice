@@ -53,10 +53,12 @@ test("the Reader's group chips: pick a group, create one, remove one", async ({ 
   await expect(chips.locator(".chip", { hasText: mvcc.name })).toBeVisible();
 
   await chips.getByRole("button", { name: "＋ グループ" }).click();
+  const { x, y } = (await picker(app).boundingBox())!;
   await picker(app)
     .getByRole("option", { name: new RegExp(rust.name) })
     .click();
   await expect(chips.locator(".chip", { hasText: rust.name })).toBeVisible();
+  expect((await picker(app).boundingBox())!, "the new chip moves the ＋ button, not the picker").toMatchObject({ x, y });
   await expect(navItem(app, rust.name).locator(".n")).toHaveText(String(members(rust.id).length + 1));
   await expect(picker(app).getByRole("option", { name: new RegExp(rust.name) }), "a picked group stays listed, checked").toHaveAttribute(
     "aria-selected",

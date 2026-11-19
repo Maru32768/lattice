@@ -129,7 +129,25 @@ function keepFocus(e: Event) {
   }
 }
 
-/** A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on close. */
+/**
+ * Where `anchor` was in its pane when the popover opened. What the popover picks can replace, move or rewrap its
+ * anchor (a chip shows the picks): a popover that followed it would carry every row away from the pointer.
+ */
+function openedAt(anchor: HTMLElement, pane: Element | null) {
+  const a = anchor.getBoundingClientRect();
+  const p = pane?.getBoundingClientRect();
+  const dx = a.left - (p?.left ?? 0);
+  const dy = a.top - (p?.top ?? 0);
+  return {
+    contextElement: pane ?? undefined,
+    getBoundingClientRect: () => {
+      const q = pane?.getBoundingClientRect();
+      return new DOMRect((q?.left ?? 0) + dx, (q?.top ?? 0) + dy, a.width, a.height);
+    },
+  };
+}
+
+/** A dialog anchored below where `anchor` was when it opened, kept inside the anchor's pane; focus returns to the anchor (or its first button) on close. */
 export function Popover({
   anchor,
   label,
@@ -147,9 +165,10 @@ export function Popover({
   // Inside the pane, so a popover opened from the list stays off the page webview.
   const pane = anchor.closest("[data-pane]");
   const w = Math.min(width, (pane?.clientWidth ?? window.innerWidth) - 16);
+  const [at] = useState(() => openedAt(anchor, pane));
   return (
     <PV.Root open onOpenChange={(o) => !o && onClose()}>
-      <PV.Anchor virtualRef={{ current: anchor }} />
+      <PV.Anchor virtualRef={{ current: at }} />
       <PV.Portal>
         <PV.Content
           {...s}

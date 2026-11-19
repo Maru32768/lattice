@@ -94,16 +94,24 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await expect(listCount(app)).toHaveText(`${tagged(second).length} / ${all}`);
 });
 
-test("a click on a tag leaves every row where it was, also when the chosen tags first show", async ({ app }) => {
+test("a click on a tag leaves every row where it was, also when the chosen tags first show and the chip moves", async ({ shell: app }) => {
+  // In the widest list the tag chip moves ahead of the others on the first pick, and its label grows with each.
+  await app.addInitScript(() => localStorage.setItem("lattice.paneWidths", JSON.stringify({ list: 640 })));
+  await app.goto("/");
+  await expect(list(app).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   await openFilter(app);
   const pv = filter(app);
-  const third = pv.getByRole("option").nth(2);
-  const label = (await third.locator(".opt-l").textContent())!;
-  const y = (await third.boundingBox())!.y;
-  await third.click();
-  await expect(pv.getByRole("button", { name: `${label}を解除` })).toBeVisible();
-  await expect(third.locator(".opt-l")).toHaveText(label);
-  expect((await third.boundingBox())!.y, "the next click at the same place hits the same tag").toBe(y);
+  const { x, y } = (await pv.boundingBox())!;
+  for (const n of [2, 3, 4]) {
+    const row = pv.getByRole("option").nth(n);
+    const label = (await row.locator(".opt-l").textContent())!;
+    const at = (await row.boundingBox())!.y;
+    await row.click();
+    await expect(pv.getByRole("button", { name: `${label}を解除` })).toBeVisible();
+    await expect(row.locator(".opt-l")).toHaveText(label);
+    expect((await row.boundingBox())!.y, "the next click at the same place hits the same tag").toBe(at);
+    expect((await pv.boundingBox())!, "the popover stays where it opened").toMatchObject({ x, y });
+  }
 });
 
 test("Tab completes the search to the highlighted tag, and Enter then toggles that tag, also one outside the set", async ({ app }) => {
