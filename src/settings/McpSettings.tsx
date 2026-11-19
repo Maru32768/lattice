@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { mcp, type McpEdit, type McpOutcome, type McpRegistration, type McpRole, type McpScope, type McpStatus } from "../api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -39,14 +39,28 @@ export function McpSettings() {
   /** The command last copied: a regenerated token makes a new one, so the button offers to copy again. */
   const [copied, setCopied] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "regenerate" | "delete"; reg: McpRegistration } | null>(null);
+  /**
+   * Reads can overlap each other and an edit, and one that answers late would put an older status back: after a new
+   * token, its dead command. A read shows only if sent after the one on screen, and an edit's answer outranks every
+   * read still out.
+   */
+  const sent = useRef(0);
+  const shown = useRef(0);
 
   useEffect(() => {
     let timer = 0;
-    const reload = () =>
-      mcp
+    const reload = () => {
+      const n = ++sent.current;
+      return mcp
         .status()
-        .then(setStatus)
+        .then((s) => {
+          if (n > shown.current) {
+            shown.current = n;
+            setStatus(s);
+          }
+        })
         .catch((e: unknown) => setError(String(e)));
+    };
     void reload();
     const sub = listen("mcp-activity", () => {
       if (!timer) {
@@ -69,6 +83,7 @@ export function McpSettings() {
       return null;
     });
     if (s) {
+      shown.current = ++sent.current;
       setStatus(s);
     }
     return s !== null;

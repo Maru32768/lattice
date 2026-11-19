@@ -479,6 +479,36 @@ test("each registration shows its open sessions and latest calls, and the screen
   await expect(activity, "nothing is recorded while the server is off").toHaveCount(0);
 });
 
+test("a status read that answers after a new token does not bring back the old command", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eLate = ["mcp_status"];
+  });
+  const app = shell;
+  await app.goto("/");
+  await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  const reads = () => callsOf(app, "mcp_status").then((c) => c.length);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.getByLabel("MCPサーバーを動かす").check();
+  await app.getByLabel("新しい登録").fill("Claude Code");
+  await app.getByRole("button", { name: "登録する" }).click();
+  const row = app.locator(".set").filter({ has: app.locator(".h").getByText("Claude Code", { exact: true }) });
+  await expect(row.getByRole("button", { name: "コマンドをコピー" })).toBeVisible();
+
+  const before = await reads();
+  await app.evaluate(() => window.__e2e.emit("mcp-activity"));
+  await expect.poll(reads, "a read of the first token's status, not yet answered").toBe(before + 1);
+  await row.getByRole("button", { name: "トークンを作り直す" }).click();
+  await app.getByRole("alertdialog").getByRole("button", { name: "作り直す", exact: true }).click();
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.length)).toBe(3);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
+  await row.getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).toContain("Bearer t2");
+});
+
 test("serving to a phone shows the QR code, warns about the open network, and a new token changes the address", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("スマホで読む", { exact: true }).click();

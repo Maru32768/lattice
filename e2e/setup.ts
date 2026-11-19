@@ -18,6 +18,8 @@ declare global {
     };
     /** Set by an init script: commands whose calls wait for `__e2e.release`, as slow reads would. */
     __e2eHold?: string[];
+    /** Set by an init script: commands answered at once but delivered at `__e2e.release`, as a read that loses a race would. */
+    __e2eLate?: string[];
     /** Set by an init script: commands that fail, as a broken read would. */
     __e2eFail?: string[];
   }
@@ -29,7 +31,8 @@ const fromPage: typeof emit = async (event, payload) => {
   await emit(event, payload);
   delete (document as Partial<Document>).hasFocus;
 };
-const held = new Map((window.__e2eHold ?? []).map((cmd) => [cmd, [] as (() => void)[]]));
+const late = window.__e2eLate ?? [];
+const held = new Map([...(window.__e2eHold ?? []), ...late].map((cmd) => [cmd, [] as (() => void)[]]));
 function release(cmd: string, n = Infinity) {
   for (const go of held.get(cmd)?.splice(0, n) ?? []) {
     go();
@@ -56,7 +59,11 @@ mockIPC(
       }
     };
     const waiting = held.get(cmd);
-    return waiting ? new Promise<void>((go) => waiting.push(go)).then(run) : run();
+    if (!waiting) {
+      return run();
+    }
+    const answer = late.includes(cmd) ? Promise.resolve().then(run) : null;
+    return new Promise<void>((go) => waiting.push(go)).then(() => answer ?? run());
   },
   { shouldMockEvents: true },
 );
