@@ -398,7 +398,22 @@ fn respelled(words: &[Word]) -> Vec<Word> {
 fn words(cs: &[char]) -> Vec<Dec> {
     let list = word_list(cs);
     let respelled = respelled(&list);
-    [list, respelled].iter().flat_map(|list| read_words(cs, list)).collect()
+    [list, respelled].iter().flat_map(|list| [read_words(cs, list), years(cs, list)]).flatten().collect()
+}
+
+/// Years said in two parts: `nineteen eighty-four` (1984), `twenty twenty` (2020).
+fn years(cs: &[char], words: &[Word]) -> Vec<Dec> {
+    let value = |k: usize| words.get(k).and_then(|w| cardinal(&w.2));
+    (1..words.len())
+        .filter_map(|k| {
+            let (century, year) = (value(k - 1).filter(|c| (10..=20).contains(c))?, value(k).filter(|y| *y >= 10)?);
+            if !joined(cs, words, k) || cs[words[k].0 - 1] != ' ' {
+                return None;
+            }
+            let unit = value(k + 1).filter(|u| *u < 10 && TENS.contains(&words[k].2.as_str()) && joined(cs, words, k + 1));
+            Some(Dec::int(century * 100 + year + unit.unwrap_or(0)))
+        })
+        .collect()
 }
 
 /// The values of `words`. A run ends at anything but one space or hyphen between its words, and at `and` unless a scale
@@ -657,6 +672,27 @@ mod tests {
         }
         assert_eq!(check("50万人", "half the million users"), ["50万"], "half a, not half the");
         assert_eq!(check("24日", "two days"), ["24"], "only dozen counts twelve times");
+    }
+
+    #[test]
+    fn years_said_in_two_parts_count() {
+        for (summary, article) in
+            [("1984年", "in nineteen eighty-four"), ("1984年", "in nineteen eighty four"), ("2024年", "in twenty twenty-four"), ("2020年", "in twenty twenty")]
+        {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        for (summary, article, why) in [
+            ("520", "five twenty", "the first part is ten to twenty"),
+            ("3020", "thirty twenty", "the first part is ten to twenty"),
+            ("1905", "nineteen five", "the second part is ten or more"),
+            ("1980", "nineteen, eighty", "the parts are joined"),
+            ("2020", "twenty-twenty vision", "by a space"),
+            ("1920", "nineteen fifteen five", "a unit only after a ten"),
+            ("1992", "nineteen eighty twelve", "a unit is below ten"),
+            ("1984", "nineteen eighty, four", "the unit is joined"),
+        ] {
+            assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
+        }
     }
 
     #[test]
