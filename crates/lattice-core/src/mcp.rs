@@ -184,6 +184,22 @@ mod tests {
     }
 
     #[test]
+    fn a_name_is_taken_once_when_agents_register_it_at_the_same_time() {
+        let s = store();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let s = &s;
+                scope.spawn(move || {
+                    for i in 0..30 {
+                        let _ = edit(s, &Edit::Create { name: format!("agent {i}"), role: Role::Read });
+                    }
+                });
+            }
+        });
+        assert_eq!(registrations(&s).unwrap().len(), 30);
+    }
+
+    #[test]
     fn the_server_is_off_until_switched_on() {
         let s = store();
         assert!(!enabled(&s).unwrap());
