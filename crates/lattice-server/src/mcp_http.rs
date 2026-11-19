@@ -411,6 +411,7 @@ mod tests {
             counts.push(f.tool_count(&r.token, &session).await);
             let refused = f.call(&r.token, &session, "delete_article", json!({ "id": id })).await;
             assert_eq!(refused["isError"], true, "{name}");
+            assert!(refused["content"][0]["text"].as_str().unwrap().ends_with(NO_DELETING), "{name}: {refused}");
         }
         assert_eq!(counts, [10, 30, 35]);
         assert_eq!(f.titles().len(), 1, "nothing was deleted");
