@@ -7,7 +7,8 @@ const tagged = (t: string) => ARTICLES.filter((a) => a.tags.includes(t));
 const postgres = tagged("postgres").length;
 const both = tagged("postgres").filter((a) => a.tags.includes("mvcc")).length;
 const either = ARTICLES.filter((a) => a.tags.includes("postgres") || a.tags.includes("mvcc")).length;
-const tagsInSet = new Set(ARTICLES.flatMap((a) => a.tags)).size;
+const tags = [...new Set(ARTICLES.flatMap((a) => a.tags))];
+const tagsInSet = tags.length;
 const filter = (app: Page) => app.getByRole("dialog", { name: "タグで絞り込む" });
 const openFilter = (app: Page) => list(app).getByRole("button", { name: "タグ", exact: true }).click();
 
@@ -22,7 +23,7 @@ test("tag popover: every tag in the set, search, AND / any, Backspace drops the 
 
   await search.fill("postg");
   await expect(options.first()).toContainText("postgres");
-  await expect(pv.getByText(/^\d+件一致$/)).toBeVisible();
+  await expect(pv.getByText(`${tags.filter((t) => t.includes("postg")).length}件一致`, { exact: true })).toBeVisible();
   await search.dispatchEvent("keydown", { key: "Enter", isComposing: true });
   await search.dispatchEvent("keydown", { key: " ", isComposing: true });
   await expect(search, "the Enter and Space that end a conversion neither clear the search").toHaveValue("postg");
