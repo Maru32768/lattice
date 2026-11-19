@@ -82,6 +82,42 @@ test("the Reader's group chips: pick a group, create one, remove one", async ({ 
   await expect.poll(() => callsOf(app, "group_remove")).toEqual([{ id: mvcc.id, articles: [a.id] }]);
 });
 
+test("the Reader's group picker opens under its chip, and moves with it when the article scrolls and the window narrows", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 600 });
+  await list(app)
+    .locator(".row", { hasText: members(mvcc.id)[0].title! })
+    .click();
+  const chip = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
+  await chip.click();
+  await expect(picker(app)).toBeInViewport();
+  const under = async () => {
+    const c = (await chip.boundingBox())!;
+    const p = (await picker(app).boundingBox())!;
+    return {
+      gap: Math.round(p.y - c.y - c.height),
+      overlaps: p.x < c.x + c.width && c.x < p.x + p.width,
+      inWindow: p.x + p.width <= app.viewportSize()!.width,
+    };
+  };
+  const right = { gap: 4, overlaps: true, inWindow: true };
+  await expect.poll(under, "it opens just under its chip").toEqual(right);
+
+  await app.locator(".art-title").hover();
+  await app.mouse.wheel(0, 120);
+  await expect
+    .poll(() =>
+      app
+        .locator(".doc-scroll")
+        .first()
+        .evaluate((e) => e.scrollTop),
+    )
+    .toBeGreaterThan(0);
+  await expect.poll(under, "the article scrolls it with the chip").toEqual(right);
+
+  await app.setViewportSize({ width: 1100, height: 600 });
+  await expect.poll(under, "a narrower window moves it with the chip").toEqual(right);
+});
+
 test("an empty scope shows no filters, sort or Select", async ({ app }) => {
   await navItem(app, empty.name).click();
   await expect(list(app).locator(".empty")).toBeVisible();

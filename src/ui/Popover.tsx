@@ -129,25 +129,60 @@ function keepFocus(e: Event) {
   }
 }
 
+/** The nearest ancestor of `el` that scrolls its content, or null. */
+function scroller(el: Element) {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (/auto|scroll|overlay/.test(s.overflowX + s.overflowY)) {
+      return p;
+    }
+  }
+  return null;
+}
+
 /**
- * Where `anchor` was in its pane when the popover opened. What the popover picks can replace, move or rewrap its
- * anchor (a chip shows the picks): a popover that followed it would carry every row away from the pointer.
+ * Where `anchor` sits in the content it scrolls with: taken on opening, and again from the anchor of then when the
+ * window or the pane changes size. What the popover picks can replace, move or rewrap its anchor (a chip shows the
+ * picks), and a popover that followed it there would carry every row away from the pointer.
  */
-function openedAt(anchor: HTMLElement, pane: Element | null) {
-  const a = anchor.getBoundingClientRect();
-  const p = pane?.getBoundingClientRect();
-  const dx = a.left - (p?.left ?? 0);
-  const dy = a.top - (p?.top ?? 0);
+function anchorPlace(anchor: HTMLElement, pane: Element | null) {
+  let live = anchor;
+  const sizes = () => `${innerWidth} ${innerHeight} ${pane?.clientWidth} ${pane?.clientHeight}`;
+  const take = (el: HTMLElement) => {
+    const box = scroller(el);
+    const a = el.getBoundingClientRect();
+    const b = box?.getBoundingClientRect();
+    return {
+      box,
+      sizes: sizes(),
+      x: a.left - (b?.left ?? 0) + (box?.scrollLeft ?? 0),
+      y: a.top - (b?.top ?? 0) + (box?.scrollTop ?? 0),
+      w: a.width,
+      h: a.height,
+    };
+  };
+  let at = take(anchor);
   return {
-    contextElement: pane ?? undefined,
+    // floating-ui follows the scrolling of this element's ancestors, read once on opening.
+    contextElement: anchor,
     getBoundingClientRect: () => {
-      const q = pane?.getBoundingClientRect();
-      return new DOMRect((q?.left ?? 0) + dx, (q?.top ?? 0) + dy, a.width, a.height);
+      if (at.sizes !== sizes() && live.isConnected) {
+        at = take(live);
+      }
+      const b = at.box?.getBoundingClientRect();
+      return new DOMRect((b?.left ?? 0) + at.x - (at.box?.scrollLeft ?? 0), (b?.top ?? 0) + at.y - (at.box?.scrollTop ?? 0), at.w, at.h);
+    },
+    /** The anchor now: a pick can replace it. */
+    follow: (el: HTMLElement) => {
+      live = el;
     },
   };
 }
 
-/** A dialog anchored below where `anchor` was when it opened, kept inside the anchor's pane; focus returns to the anchor (or its first button) on close. */
+/**
+ * A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on
+ * close. It scrolls and resizes with the anchor, but stays where it is when a pick moves the anchor (`anchorPlace`).
+ */
 export function Popover({
   anchor,
   label,
@@ -165,7 +200,8 @@ export function Popover({
   // Inside the pane, so a popover opened from the list stays off the page webview.
   const pane = anchor.closest("[data-pane]");
   const w = Math.min(width, (pane?.clientWidth ?? window.innerWidth) - 16);
-  const [at] = useState(() => openedAt(anchor, pane));
+  const [at] = useState(() => anchorPlace(anchor, pane));
+  useLayoutEffect(() => at.follow(anchor), [at, anchor]);
   return (
     <PV.Root open onOpenChange={(o) => !o && onClose()}>
       <PV.Anchor virtualRef={{ current: at }} />
