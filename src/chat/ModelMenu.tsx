@@ -1,4 +1,3 @@
-import type { ProviderKind } from "../api";
 import { EFFORTS, PROVIDERS, type EntryChoice, presets } from "../settings/providers";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { Icon } from "../ui/Icon";
@@ -10,13 +9,10 @@ export type Choice = EntryChoice | null;
 /** The button beside the send button: it shows the AI the conversation asks and opens a menu of every provider's models and its efforts. */
 export function ModelMenu({ choice, onChange }: { choice: Choice; onChange: (c: Choice) => void }) {
   const t = useT();
-  // Another provider starts on its own defaults: its efforts are not the same set.
-  const pick = (kind: ProviderKind, model: string, custom: boolean): EntryChoice => {
-    const same = choice?.kind === kind;
-    return { kind, model: custom ? (same ? choice.model : "") : model, custom, effort: same ? choice.effort : "" };
-  };
   const providers: MenuItem[] = PROVIDERS.map((p) => {
+    // Another provider starts on its own defaults: its efforts are not the same set.
     const on = choice?.kind === p.value ? choice : null;
+    const effort = on?.effort ?? "";
     return {
       label: p.label,
       checked: on != null,
@@ -25,9 +21,9 @@ export function ModelMenu({ choice, onChange }: { choice: Choice; onChange: (c: 
         ...presets(t)[p.value].map((m) => ({
           label: m.label,
           checked: !!on && !on.custom && on.model === m.value,
-          onSelect: () => onChange(pick(p.value, m.value, false)),
+          onSelect: () => onChange({ kind: p.value, model: m.value, custom: false, effort }),
         })),
-        { label: t("modelSettings.other"), checked: !!on?.custom, onSelect: () => onChange(pick(p.value, "", true)) },
+        { label: t("modelSettings.other"), checked: !!on?.custom, onSelect: () => onChange({ kind: p.value, model: on?.model ?? "", custom: true, effort }) },
       ],
     };
   });
