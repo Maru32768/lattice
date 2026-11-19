@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GroupRow } from "../api";
-import { Popover } from "../ui/Popover";
+import { Popover, scroller } from "../ui/Popover";
 import { PickList } from "../ui/PickList";
 import { filterSections, type PickOption, type PickSection } from "../ui/pickRows";
 import { Icon, Kbd, type IconName } from "../ui/Icon";
@@ -179,14 +179,24 @@ export function GroupChips({
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   // Only a request made while mounted: the Reader remounts per article, and other tabs see it drop to 0.
   const seen = useRef(request);
+  /** Puts the article back where it was read, after the palette scrolled it to the chips. */
+  const back = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (request > seen.current) {
+    if (request > seen.current && add.current) {
       // The palette asks wherever the article is read: a picker hung from a chip scrolled out of view opens out of it.
-      add.current?.scrollIntoView({ block: "nearest" });
+      const box = scroller(add.current);
+      const top = box?.scrollTop ?? 0;
+      add.current.scrollIntoView({ block: "nearest" });
+      back.current = box && box.scrollTop !== top ? () => box.scrollTo({ top }) : null;
       setAnchor(add.current);
     }
     seen.current = request;
   }, [request]);
+  const close = () => {
+    setAnchor(null);
+    back.current?.();
+    back.current = null;
+  };
   return (
     <>
       {groups
@@ -206,13 +216,16 @@ export function GroupChips({
         aria-haspopup="dialog"
         aria-expanded={!!anchor}
         onClick={(e) => {
-          const el = e.currentTarget;
-          setAnchor((a) => (a ? null : el));
+          if (anchor) {
+            close();
+          } else {
+            setAnchor(e.currentTarget);
+          }
         }}
       >
         {t("reader.addToGroup")}
       </button>
-      {anchor && <GroupPicker groups={groups} selected={ids} onToggle={onToggle} onCreate={onCreate} anchor={anchor} onClose={() => setAnchor(null)} />}
+      {anchor && <GroupPicker groups={groups} selected={ids} onToggle={onToggle} onCreate={onCreate} anchor={anchor} onClose={close} />}
     </>
   );
 }

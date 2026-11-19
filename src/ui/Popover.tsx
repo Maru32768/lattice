@@ -130,7 +130,7 @@ function keepFocus(e: Event) {
 }
 
 /** The nearest ancestor of `el` that scrolls its content, or null. */
-function scroller(el: Element) {
+export function scroller(el: Element) {
   for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
     const s = getComputedStyle(p);
     if (/auto|scroll|overlay/.test(s.overflowX + s.overflowY)) {
@@ -225,7 +225,8 @@ export function Popover({
               return;
             }
             e.preventDefault();
-            (anchor.querySelector("button") ?? anchor).focus();
+            // Where the anchor is, not where the reader has scrolled to since.
+            (anchor.querySelector("button") ?? anchor).focus({ preventScroll: true });
           }}
           // The anchor toggles the popover itself: a press on it is not a press outside.
           onInteractOutside={(e) => anchor.contains(e.target as Node) && e.preventDefault()}
