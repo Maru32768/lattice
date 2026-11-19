@@ -565,7 +565,7 @@ Besides switching lists, the commands include:
 
 Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. **Send key** in **Settings › Summaries & chat** can make `Enter` send too. The AI answers only from your saved articles. The numbers in the answer are citations. Click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
 
-**Scope.** **Scope** chooses which articles the answer is based on. Type in the field at the top to narrow the list by name.
+**Scope.** **Scope** chooses which articles the answer is based on. In the list it opens, type in the field at the top to narrow it by name.
 
 - **This article**: the article in the focused tab
 - **All open articles**: the saved articles open in tabs in every window (you can also pick them one by one under it)

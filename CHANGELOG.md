@@ -10,7 +10,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Fixed
 
-- A focused drop-down in the chat pane, such as **AI**, showed two focus rings, one inside the other. It now shows one.
+- A focused drop-down in a chip, such as **AI** in the chat pane or **Search scope** in the search pane, showed two focus rings, one inside the other. It now shows one.
 
 ## [0.5.0] - 2026-11-18
 
