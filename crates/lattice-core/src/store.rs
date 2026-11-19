@@ -325,7 +325,7 @@ pub struct SummaryView {
     pub items: Option<crate::summarize::Items>,
     pub created_at: String,
     /// The article was re-extracted with different content since this summary was made
-    /// (`summarize::mark_stale` adds changed instructions).
+    /// (`summarize::mark_stale` adds changed instructions and cited blocks the article no longer has).
     pub stale: bool,
     #[serde(skip)]
     pub prompt_version: String,

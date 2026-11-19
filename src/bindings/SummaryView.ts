@@ -8,6 +8,6 @@ export type SummaryView = { text: string,
 items: SummaryItems | null, created_at: string, 
 /**
  * The article was re-extracted with different content since this summary was made
- * (`summarize::mark_stale` adds changed instructions).
+ * (`summarize::mark_stale` adds changed instructions and cited blocks the article no longer has).
  */
 stale: boolean, };

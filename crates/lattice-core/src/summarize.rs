@@ -3,6 +3,7 @@
 //! and point cites the blocks it comes from, and its numbers are checked against the article (J17).
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -310,10 +311,13 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
         .map_err(|e| e.to_string())
 }
 
-/// Also marks the summary stale when it was made under other instructions than the current ones.
+/// Also marks the summary stale when it was made under other instructions than the current ones, or cites a block
+/// the article no longer has: a re-extraction that only moves paragraph breaks keeps `content_hash` but not the ids.
 pub fn mark_stale(store: &Store, view: &mut ArticleView) -> Result<(), String> {
+    let have: HashSet<i64> = view.blocks.iter().map(|b| b.id).collect();
     if let Some(s) = view.summary.as_mut() {
         s.stale |= s.prompt_version != instructions::load(store)?.for_summary().version(PROMPT_VERSION);
+        s.stale |= s.items.iter().flat_map(|i| i.summary.iter().chain(&i.key_points)).flat_map(|i| &i.block_ids).any(|id| !have.contains(id));
     }
     Ok(())
 }
@@ -528,6 +532,31 @@ mod tests {
         assert!(!stale(PROMPT_VERSION), "made with the current prompt");
         assert!(stale("summary-v1"));
         assert!(stale("summary-v1-x-instr-0123456789ab"), "with the user's instructions too");
+    }
+
+    #[test]
+    fn a_summary_goes_stale_when_a_block_it_cites_is_gone_though_the_text_is_the_same() {
+        let s = Store::open_in_memory().unwrap();
+        let url = "https://example.com/a";
+        let fetch = |body: &str| {
+            let (id, _) = s.upsert_pending(url, url, "example.com").unwrap();
+            let html = format!("<html><body><article>{body}</article></body></html>");
+            crate::ingest::store_fetched(&s, id, &crate::fetch::Fetched { final_url: url.into(), status: 200, content_type: None, html }).unwrap()
+        };
+        let stale = |id: i64| {
+            let mut view = s.get_article(id, "ja").unwrap().unwrap();
+            mark_stale(&s, &mut view).unwrap();
+            view.summary.unwrap().stale
+        };
+        let (a, b) = ("Write skew happens when two transactions read overlapping data.", "Serializable snapshot isolation detects it at commit time.");
+        let id = fetch(&format!("<p>{a}</p><p>{b}</p>"));
+        let src = s.summary_source(id).unwrap().unwrap();
+        let items = Items { summary: vec![item("SSIはwrite skewを防ぐ。", &[src.block_ids[1]], &[])], key_points: vec![] };
+        s.insert_summary(id, SUMMARY_TYPE, &format_summary(&items), Some(&items), &src.content_hash, "fake", None, PROMPT_VERSION).unwrap();
+        assert!(!stale(id));
+        fetch(&format!("<p>{a} {b}</p>"));
+        assert_eq!(s.summary_source(id).unwrap().unwrap().content_hash, src.content_hash, "the same text in one paragraph");
+        assert!(stale(id), "the cited block is gone");
     }
 
     #[test]
