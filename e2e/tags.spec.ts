@@ -183,6 +183,25 @@ test("both tag popovers list thousands of tags, draw only those in view, and nam
   expect(await picker.count()).toBeLessThan(60);
 });
 
+test("a filter with no search keeps its keys: j moves, Enter picks, Backspace drops the last, Ctrl+Enter closes without a pick", async ({ app }) => {
+  await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
+  const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
+  const opts = pv.locator(".opt");
+  const chip = list(app).locator(".chip.on .chip-body");
+  await expect(opts.nth(0)).toHaveClass(/\bact\b/);
+  await app.keyboard.press("j");
+  await expect(opts.nth(1)).toHaveClass(/\bact\b/);
+  const genre = (await opts.nth(1).locator(".opt-l").textContent())!;
+  await app.keyboard.press("Enter");
+  await expect(chip).toContainText(genre);
+  await expect(opts.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await app.keyboard.press("Backspace");
+  await expect(chip).toHaveCount(0);
+  await app.keyboard.press("Control+Enter");
+  await expect(pv).toBeHidden();
+  await expect(chip, "Ctrl+Enter picks nothing").toHaveCount(0);
+});
+
 test("closing a facet popover returns focus to its chip, also after the first pick replaced the chip", async ({ app }) => {
   await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
   const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
