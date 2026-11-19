@@ -404,6 +404,7 @@ test("a scope chosen from outside shows on the chip, and one the list no longer 
   await navItem(app, "すべての記事").click();
   await expect(scope).toHaveText("現在の一覧: 未読");
   await scope.click();
+  await expect(scopeDialog(app).getByRole("option", { name: "全記事", exact: true })).toBeVisible();
   await expect(scopeDialog(app).getByRole("option", { name: "現在の一覧: 未読" }), "no longer offered").toHaveCount(0);
   await app.keyboard.press("Escape");
   const q = app.locator("#chat-q");
