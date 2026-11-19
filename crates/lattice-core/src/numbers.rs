@@ -229,31 +229,32 @@ fn year_after(cs: &[char], prev: &Mention, start: usize, token: &str) -> Option<
     Dec::int(year / 100 * 100).plus(Dec::parse(token)?)
 }
 
-/// `first` (ending at `end`) with the Japanese units after it, and where they end: `4百万`, `2億1,100万`, `3万3,500`.
-/// `None` when no unit follows.
+/// `first` (ending at `end`) with the Japanese units after it, and where they end: `4百万`, `2千500`, `2億1,100万`,
+/// `3万3,500`. `None` when no unit follows.
 fn japanese(cs: &[char], first: Dec, end: usize) -> (Option<Dec>, usize) {
-    let (mut total, mut cur, mut at, mut joined) = (Dec::ZERO, first, end, false);
+    // `part` holds the places below the next 万, 億 or 兆: 2千500万 is 2,500 of 万, not 2千 and 500万.
+    let (mut total, mut part, mut cur, mut at, mut joined) = (Dec::ZERO, Dec::ZERO, first, end, false);
     loop {
-        while let Some(p) = cs.get(at).copied().and_then(ja_small) {
-            (cur, at, joined) = (cur.shifted(p), at + 1, true);
-        }
-        let Some(p) = cs.get(at).copied().and_then(ja_large) else {
+        let c = cs.get(at).copied();
+        let sum = if let Some(p) = c.and_then(ja_small) {
+            part.plus(cur.shifted(p)).map(|part| (total, part))
+        } else if let Some(p) = c.and_then(ja_large) {
+            part.plus(cur).and_then(|v| total.plus(v.shifted(p))).map(|total| (total, Dec::ZERO))
+        } else {
             break;
         };
-        let Some(sum) = total.plus(cur.shifted(p)) else {
+        let Some(sum) = sum else {
             return (None, end);
         };
-        (total, cur, at, joined) = (sum, Dec::ZERO, at + 1, true);
+        (total, part, cur, at, joined) = (sum.0, sum.1, Dec::ZERO, at + 1, true);
         if cs.get(at).is_some_and(char::is_ascii_digit) {
             let (next_end, token) = digits_at(cs, at);
             if let (Num::Dec(next), _) = read(&token) {
                 (cur, at) = (next, next_end);
-                continue;
             }
         }
-        break;
     }
-    (joined.then(|| total.plus(cur)).flatten(), at)
+    (joined.then(|| total.plus(part).and_then(|v| v.plus(cur))).flatten(), at)
 }
 
 /// The power of ten of a `k`/`K`/`M`/`B`/`bn`/`mn` suffix or a scale word right after a number ending at `end`
@@ -465,6 +466,11 @@ mod tests {
         }
         assert_eq!(check("20万件超のセッション", "We study 207,000 sessions."), ["20万"], "a rounded number is not the article's");
         assert_eq!(check("8万人", "8 people"), ["8万"], "the unit is part of the value");
+        for (summary, article) in [("2千500件", "2,500 rows"), ("1千200万人", "12 million people"), ("1万2千500件", "12,500 rows"), ("2500件", "2千500件の行")]
+        {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        assert_eq!(check("2千500件", "2,000 and 500"), ["2千500"], "the digits after 千 are its lower places");
     }
 
     #[test]
