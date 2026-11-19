@@ -43,6 +43,12 @@ test("tag popover: every tag in the set, search, AND / any, Backspace drops the 
   await expect(listCount(app)).toHaveText(`${either} / ${all}`);
   await expect(list(app).locator(".chip.on .chip-body")).toHaveText("タグpostgres / mvcc");
   await expect(search, "a press on the mode keeps the focus in the search").toBeFocused();
+  await search.fill("mvcc");
+  await app.keyboard.press("Enter");
+  await expect(listCount(app), "Enter on a chosen tag drops it").toHaveText(`${postgres} / ${all}`);
+  await search.fill("mvcc");
+  await app.keyboard.press("Enter");
+  await expect(listCount(app)).toHaveText(`${either} / ${all}`);
 
   await app.keyboard.press("Backspace");
   await expect(listCount(app)).toHaveText(`${postgres} / ${all}`);
@@ -88,6 +94,11 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await expect(opts.nth(1).locator(".opt-l")).toHaveText(second);
   await expect(opts.nth(1)).toHaveClass(/\bact\b/);
   await expect(opts.nth(0)).toHaveAttribute("aria-selected", "false");
+  await app.keyboard.press("Space");
+  await expect(opts.nth(1), "Space again drops it").toHaveAttribute("aria-selected", "false");
+  await expect(list(app).locator(".chip.on")).toHaveCount(0);
+  await app.keyboard.press("Space");
+  await expect(opts.nth(1)).toHaveAttribute("aria-selected", "true");
 
   const first = (await opts.nth(0).locator(".opt-l").textContent())!;
   await pv.getByRole("combobox").fill(first);
