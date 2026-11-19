@@ -1412,7 +1412,7 @@ export const ja = {
   "mcpSettings.activity": "利用状況",
   "mcpSettings.activityDesc":
     "エージェントが始めたセッションと、登録ごとに最近の20件の呼び出しです。終わってもセッションを閉じないエージェントもあり、そのセッションも残るので、使われているかは最後のリクエストの時刻で見分けます。どちらも、MCPサーバーを止めるか、アプリを終了すると消えます。トークンを作り直すと、前のトークンのセッションもここから消えます。",
-  "mcpSettings.noActivity": "まだ使われていません",
+  "mcpSettings.noActivity": "セッションも呼び出しもありません",
   "mcpSettings.sessions": "セッション",
   "mcpSettings.noSessions": "セッションはありません",
   "mcpSettings.unknownClient": "名前のないクライアント",

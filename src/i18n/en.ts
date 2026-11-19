@@ -1431,7 +1431,7 @@ export const en = {
   "mcpSettings.activity": "Activity",
   "mcpSettings.activityDesc":
     "Sessions agents have started, and each registration's latest 20 calls. Some agents never close their sessions when they quit, and those sessions stay too, so tell whether one is in use by its last request. Turning the MCP server off or quitting the app clears both. A new token also clears the old token's sessions from here.",
-  "mcpSettings.noActivity": "Not used yet",
+  "mcpSettings.noActivity": "No sessions or calls",
   "mcpSettings.sessions": "Sessions",
   "mcpSettings.noSessions": "No sessions",
   "mcpSettings.unknownClient": "Unnamed client",

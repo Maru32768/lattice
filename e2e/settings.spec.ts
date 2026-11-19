@@ -433,7 +433,7 @@ test("each registration shows its open sessions and latest calls, and the screen
     await expect(app.getByLabel("新しい登録")).toHaveValue("");
   }
   const activity = app.getByRole("region", { name: "利用状況" });
-  await expect(activity).toContainText("まだ使われていません");
+  await expect(activity).toContainText("セッションも呼び出しもありません");
 
   const times = await app.evaluate(() => {
     const now = Date.now();
@@ -467,7 +467,7 @@ test("each registration shows its open sessions and latest calls, and the screen
     `${times.now} get 成功`,
   ]);
   await expect(activity.getByRole("group"), "an unused registration is left out").toHaveCount(1);
-  await expect(activity).not.toContainText("まだ使われていません");
+  await expect(activity).not.toContainText("セッションも呼び出しもありません");
 
   await app.evaluate(() => {
     window.__e2e.mcpActivity("r2", { sessions: [], calls: [{ at_ms: Date.now(), tool: "search", outcome: "succeeded" }] });
