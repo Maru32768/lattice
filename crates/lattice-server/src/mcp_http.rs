@@ -73,12 +73,20 @@ pub fn router(store: Arc<Store>, providers: Arc<Providers<LlmChain, LocalE5>>, o
 }
 
 /// A page in a browser on this PC could reach the server through a name pointed at 127.0.0.1 (DNS rebinding). Agents
-/// send no `Origin`; browsers send one with every POST, so a request that has one is refused before anything else.
+/// send no `Origin` and name the server by its address; a browser sends an `Origin` with every POST, and the page's own
+/// name as `Host` even where an old engine leaves `Origin` out. Either refuses the request before anything else.
 async fn refuse_browsers(request: Request, next: Next) -> Response {
-    if request.headers().contains_key(header::ORIGIN) {
+    let headers = request.headers();
+    let named_otherwise = headers.get(header::HOST).is_some_and(|host| !host.to_str().is_ok_and(names_this_server));
+    if headers.contains_key(header::ORIGIN) || named_otherwise {
         return error(StatusCode::FORBIDDEN, "forbidden");
     }
     next.run(request).await
+}
+
+fn names_this_server(host: &str) -> bool {
+    let port = ADDR.port();
+    [format!("127.0.0.1:{port}"), format!("localhost:{port}")].iter().any(|name| name.eq_ignore_ascii_case(host))
 }
 
 /// The caller's registration as stored now, and the key its sessions are kept under.
@@ -326,6 +334,11 @@ mod tests {
         for method in ["POST", "GET", "DELETE", "OPTIONS"] {
             let from_a_page = f.send(method, Some(&r.token), None, &[("origin", "http://127.0.0.1:8788")], init.clone()).await;
             assert_eq!(from_a_page.status(), StatusCode::FORBIDDEN, "{method}");
+        }
+        let rebound = f.send("POST", Some(&r.token), None, &[("host", "evil.example:8788")], init.clone()).await;
+        assert_eq!(rebound.status(), StatusCode::FORBIDDEN, "a page's own name pointed at this PC, with no Origin sent");
+        for host in [format!("127.0.0.1:{}", ADDR.port()), format!("LocalHost:{}", ADDR.port())] {
+            assert_eq!(f.send("POST", Some(&r.token), None, &[("host", &host)], init.clone()).await.status(), StatusCode::OK, "{host}");
         }
         assert_eq!(f.post(&r.token, None, init).await.status(), StatusCode::OK);
     }
