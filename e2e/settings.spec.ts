@@ -340,6 +340,7 @@ test("an agent registration copies its command and changes role, and a new token
 
   await role.selectOption("read");
   await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toMatchObject({ edit: { kind: "set_role", role: "read" } });
+  await expect(role, "the row shows its own registration's saved role").toHaveValue("read");
 
   await app.getByRole("button", { name: "トークンを作り直す" }).click();
   const regenerate = app.getByRole("alertdialog", { name: "「Claude Code」のトークンを作り直しますか？" });
