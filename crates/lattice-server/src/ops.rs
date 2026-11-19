@@ -878,9 +878,10 @@ mod tests {
         assert!(run(&ctx, Op::Uncollect { collection: g, article: id + 1 }).await.is_err(), "no such article");
         run(&ctx, Op::Uncollect { collection: g, article: id }).await.unwrap();
         assert_eq!(groups::list(s).unwrap()[0].count, 0);
+        run(&ctx, Op::Collect { collection: g, article: id }).await.unwrap();
         run(&ctx, Op::DeleteCollection { id: g }).await.unwrap();
         assert!(groups::list(s).unwrap().is_empty());
-        assert!(article(s, id).is_ok(), "the article stays");
+        assert_eq!(s.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 2, "every article stays, the collected one too");
         assert!(run(&ctx, Op::DeleteCollection { id: g }).await.is_err(), "already gone");
     }
 
