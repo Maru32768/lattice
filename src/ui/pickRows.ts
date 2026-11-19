@@ -81,9 +81,10 @@ export function stepRow(rows: readonly PickRow[], from: number, by: number): num
  * enabled option; -1 when none is.
  */
 export function defaultRow(rows: readonly PickRow[], query: string, selected: string | undefined): number {
-  // In case too: tags that differ only in a non-ASCII letter's case are two tags (SQLite's NOCASE folds ASCII only).
-  const q = query.trim();
-  const at = rows.findIndex((r) => enabled(r) && (q ? r.o.label === q : r.o.key === selected));
+  // Case as tag names compare (SQLite's NOCASE): Kafka is kafka, but Ärger and ärger are two tags.
+  const fold = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const q = fold(query.trim());
+  const at = rows.findIndex((r) => enabled(r) && (q ? fold(r.o.label) === q : r.o.key === selected));
   return at >= 0 ? at : rows.findIndex((r) => enabled(r));
 }
 

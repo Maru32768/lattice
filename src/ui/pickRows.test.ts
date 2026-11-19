@@ -103,7 +103,9 @@ test("the list opens on the selected option, or on the first enabled one when se
   assert.equal(defaultRow(ROWS, "", undefined), 1, "a multiple choice opens at the top");
   assert.equal(defaultRow(ROWS, " #wal(1件) ", "t1"), 7, "a query naming an option starts on it, wherever it is listed");
   const cased = pickRows([{ label: "", options: ["Ärger", "ärger"].map((x) => ({ key: x, label: x })) }]);
-  assert.equal(defaultRow(cased, "ärger", undefined), 1, "named in case too: a tag differing in case is another tag");
+  assert.equal(defaultRow(cased, "ärger", undefined), 1, "named in case too: a tag differing in a non-ASCII letter's case is another tag");
+  const ascii = pickRows([{ label: "", options: ["kafka-streams", "kafka"].map((x) => ({ key: x, label: x })) }]);
+  assert.equal(defaultRow(ascii, "Kafka", undefined), 1, "but in ASCII case, as tag names compare, it is the same tag");
   assert.equal(defaultRow(ROWS, "#rustls(1件)", undefined), 1, "but not on a disabled one");
 });
 
