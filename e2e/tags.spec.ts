@@ -90,6 +90,7 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   const none = (await opts.locator(".opt-l").allTextContents()).findIndex((l) => together(l) === "0");
   expect(none).toBeGreaterThanOrEqual(0);
   await expect(opts.nth(none), "a tag no such article has is faint").toHaveClass(/\bzero\b/);
+  await expect(opts.nth(1), "one they have is not").not.toHaveClass(/\bzero\b/);
   await expect(opts.nth(1), "a picked tag stays in its row, checked").toHaveAttribute("aria-selected", "true");
   await expect(opts.nth(1).locator(".opt-l")).toHaveText(second);
   await expect(opts.nth(1)).toHaveClass(/\bact\b/);
