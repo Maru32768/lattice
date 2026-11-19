@@ -26,6 +26,8 @@ import type {
   LlmSettings,
   ProviderHealth,
   Quiz,
+  McpEdit,
+  McpStatus,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
@@ -183,6 +185,9 @@ const store = {
     fell_back: false,
   } as MobileStatus,
   mobileToken: "token",
+  mcp: { enabled: false, running: false, error: null, fell_back: false, registrations: [] } as McpStatus,
+  /** Counts tokens made, so that each one differs. */
+  mcpTokens: 0,
   tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
   r2: {
     enabled: false,
@@ -1040,6 +1045,36 @@ export const handlers = {
     const url = store.mobile.url && `http://192.168.0.2:${store.mobile.settings.port}/#t=${store.mobileToken}`;
     store.mobile = { ...store.mobile, url };
     return store.mobile;
+  },
+  mcp_status: (): McpStatus => store.mcp,
+  mcp_edit: ({ edit }: { edit: McpEdit }): McpStatus => {
+    const command = () =>
+      `claude mcp add --transport http --scope user lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
+    const regs = store.mcp.registrations;
+    switch (edit.kind) {
+      case "enable":
+        store.mcp = { ...store.mcp, enabled: edit.on, running: edit.on };
+        break;
+      case "create": {
+        const name = edit.name.trim();
+        if (regs.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
+          throw JSON.stringify({ code: "mcp.nameTaken", params: { name } });
+        }
+        const made = command();
+        store.mcp = { ...store.mcp, registrations: [...regs, { id: `r${store.mcpTokens}`, name, role: edit.role, command: made }] };
+        break;
+      }
+      case "regenerate":
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command() } : r)) };
+        break;
+      case "set_role":
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
+        break;
+      case "delete":
+        store.mcp = { ...store.mcp, registrations: regs.filter((r) => r.id !== edit.id) };
+        break;
+    }
+    return store.mcp;
   },
   pick_data_dir: () => null,
   open_data_dir: none,

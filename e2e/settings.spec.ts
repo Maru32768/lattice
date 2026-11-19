@@ -19,6 +19,7 @@ const SECTIONS = [
   "アップデート",
   "バックアップ",
   "スマホで読む",
+  "AIエージェント(MCP)",
   "クラウドバックアップ(R2)",
   "エクスポート",
   "ログ・保存場所",
@@ -313,6 +314,47 @@ test("the palette opens a settings section by name", async ({ app }) => {
   await expect(app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option").first()).toHaveText(/^設定: 翻訳/);
   await app.keyboard.press("Enter");
   await expect(app.locator(".stg main h1")).toHaveText("翻訳");
+});
+
+test("an agent registration copies its command and changes role, and a new token or a deletion asks first", async ({ app }) => {
+  await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  await app.getByLabel("MCPサーバーを動かす").check();
+  await expect.poll(() => callsOf(app, "mcp_edit")).toEqual([{ edit: { kind: "enable", on: true } }]);
+  await expect(app.getByText("登録はまだありません")).toBeVisible();
+
+  const register = app.getByRole("button", { name: "登録する" });
+  await expect(register, "a name is needed").toBeDisabled();
+  await app.getByLabel("新しい登録").fill("Claude Code");
+  await app.getByLabel("ロール", { exact: true }).selectOption("edit");
+  await register.click();
+  await expect(app.getByLabel("新しい登録")).toHaveValue("");
+  const role = app.getByLabel("「Claude Code」のロール");
+  await expect(role).toHaveValue("edit");
+
+  await app.getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect(app.getByRole("button", { name: "コピーしました" })).toBeVisible();
+  const first = await app.evaluate(() => navigator.clipboard.readText());
+  expect(first).toMatch(/^claude mcp add --transport http .* --header "Authorization: Bearer \w+"$/);
+
+  await role.selectOption("read");
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toMatchObject({ edit: { kind: "set_role", role: "read" } });
+
+  await app.getByRole("button", { name: "トークンを作り直す" }).click();
+  const regenerate = app.getByRole("alertdialog", { name: "「Claude Code」のトークンを作り直しますか？" });
+  await regenerate.getByRole("button", { name: "作り直す", exact: true }).click();
+  await expect(app.getByRole("button", { name: "コマンドをコピー" }), "the new token makes a new command").toBeVisible();
+  await app.getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).not.toBe(first);
+
+  await app.getByLabel("新しい登録").fill("claude code");
+  await register.click();
+  await expect(app.getByRole("alert")).toHaveText("「claude code」という登録はもうあります");
+
+  await app.getByRole("button", { name: "削除", exact: true }).click();
+  await app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" }).getByRole("button", { name: "削除", exact: true }).click();
+  await expect(app.getByText("登録はまだありません")).toBeVisible();
 });
 
 test("serving to a phone shows the QR code, warns about the open network, and a new token changes the address", async ({ app }) => {

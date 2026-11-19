@@ -61,6 +61,7 @@ test("every settings section has an English title, and a backend error is shown 
     "Startup & taskbar",
     "Updates",
     "Backup",
+    "AI agents (MCP)",
     "Cloud backup (R2)",
     "Export",
     "Logs & storage",

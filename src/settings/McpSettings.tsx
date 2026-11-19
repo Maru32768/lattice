@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { mcp, type McpEdit, type McpRegistration, type McpRole, type McpStatus } from "../api";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { SetRow, Switch } from "../ui/SetRow";
+import { useT, type PlainKey } from "../i18n";
+
+// shortcut: no delete role here until the app can ask the user before each deletion an agent makes.
+const ROLES = { read: "mcpSettings.roleRead", edit: "mcpSettings.roleEdit" } as const satisfies Partial<Record<McpRole, PlainKey>>;
+type Offered = keyof typeof ROLES;
+
+/** Settings section for AI agents reaching the library over MCP (design-review §23). */
+export function McpSettings() {
+  const t = useT();
+  const [status, setStatus] = useState<McpStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<Offered>("read");
+  /** The command last copied: a regenerated token makes a new one, so the button offers to copy again. */
+  const [copied, setCopied] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<{ kind: "regenerate" | "delete"; reg: McpRegistration } | null>(null);
+
+  useEffect(() => {
+    mcp
+      .status()
+      .then(setStatus)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
+
+  async function edit(change: McpEdit) {
+    setError(null);
+    const s = await mcp.edit(change).catch((e: unknown) => {
+      setError(String(e));
+      return null;
+    });
+    if (s) {
+      setStatus(s);
+    }
+    return s !== null;
+  }
+
+  async function create() {
+    if (await edit({ kind: "create", name, role })) {
+      setName("");
+    }
+  }
+
+  function copy(command: string) {
+    navigator.clipboard.writeText(command).then(
+      () => setCopied(command),
+      (e: unknown) => setError(String(e)),
+    );
+  }
+
+  function confirm() {
+    const { kind, reg } = confirming!;
+    setConfirming(null);
+    void edit({ kind, id: reg.id });
+  }
+
+  const failure = error && (
+    <p role="alert" className="msg error-text">
+      {t.msg(error)}
+    </p>
+  );
+  if (!status) {
+    return failure;
+  }
+  const off = status.fell_back;
+  const roleOptions = (Object.keys(ROLES) as Offered[]).map((r) => (
+    <option key={r} value={r}>
+      {t(ROLES[r])}
+    </option>
+  ));
+  return (
+    <>
+      <section aria-labelledby="mcp-server">
+        <h2 id="mcp-server">{t("mcpSettings.server")}</h2>
+        <div className="grp">
+          <SetRow title={t("mcpSettings.enabled")} desc={t("mcpSettings.enabledDesc")} htmlFor="mcp-enabled">
+            <Switch id="mcp-enabled" checked={status.enabled} disabled={off} onChange={(on) => void edit({ kind: "enable", on })} />
+          </SetRow>
+        </div>
+        {off && <p className="note warn">{t("be.mcp.fellBack")}</p>}
+        {status.error && <p className="note err">{t.msg(status.error)}</p>}
+      </section>
+      <section aria-labelledby="mcp-registrations">
+        <h2 id="mcp-registrations">{t("mcpSettings.registrations")}</h2>
+        <p className="sec-d">{t("mcpSettings.registrationsDesc")}</p>
+        <div className="grp">
+          {status.registrations.map((reg) => (
+            <SetRow key={reg.id} title={reg.name}>
+              <select
+                className="input sm"
+                aria-label={t("mcpSettings.roleOf", { name: reg.name })}
+                value={reg.role}
+                disabled={off}
+                onChange={(e) => void edit({ kind: "set_role", id: reg.id, role: e.target.value as Offered })}
+              >
+                {roleOptions}
+              </select>
+              <button className="btn sm" onClick={() => copy(reg.command)} disabled={off}>
+                {t(copied === reg.command ? "mcpSettings.copied" : "mcpSettings.copy")}
+              </button>
+              <button className="btn sm" onClick={() => setConfirming({ kind: "regenerate", reg })} disabled={off}>
+                {t("mcpSettings.regenerate")}
+              </button>
+              <button className="btn sm danger" onClick={() => setConfirming({ kind: "delete", reg })} disabled={off}>
+                {t("common.delete")}
+              </button>
+            </SetRow>
+          ))}
+          {status.registrations.length === 0 && <SetRow title={t("mcpSettings.none")} />}
+          <SetRow title={t("mcpSettings.new")} htmlFor="mcp-new-name">
+            <input id="mcp-new-name" className="input sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Claude Code" disabled={off} />
+            <select className="input sm" aria-label={t("mcpSettings.role")} value={role} onChange={(e) => setRole(e.target.value as Offered)} disabled={off}>
+              {roleOptions}
+            </select>
+            <button className="btn sm pri" onClick={() => void create()} disabled={off || !name.trim()}>
+              {t("mcpSettings.create")}
+            </button>
+          </SetRow>
+        </div>
+      </section>
+      {failure}
+      {confirming && (
+        <ConfirmDialog
+          title={t(confirming.kind === "delete" ? "mcpSettings.confirmDelete" : "mcpSettings.confirmRegenerate", { name: confirming.reg.name })}
+          confirm={t(confirming.kind === "delete" ? "common.delete" : "mcpSettings.regenerateConfirm")}
+          onConfirm={confirm}
+          onCancel={() => setConfirming(null)}
+        >
+          <p>{t(confirming.kind === "delete" ? "mcpSettings.deleteDesc" : "mcpSettings.regenerateDesc")}</p>
+        </ConfirmDialog>
+      )}
+    </>
+  );
+}

@@ -717,6 +717,7 @@ Open **Settings** at the bottom of the navigation. Settings are grouped into **A
 | | **Updates** | [Updates](#updates) |
 | Data | **Backup**, **Cloud backup (R2)**, **Export**, **Logs & storage** | [Data and backups](#data-and-backups) |
 | | **Read on a phone** | [Read on a phone](#read-on-a-phone) |
+| | **AI agents (MCP)** | [CLI and MCP](#cli-and-mcp) |
 
 Type a section's name in the palette, for example **Settings: Translation**, to open that section directly.
 
