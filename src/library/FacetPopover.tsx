@@ -30,7 +30,7 @@ function TagFilter({ facets, onFacets, base, all, anchor, onClose }: Props) {
   const [q, setQ] = useState("");
   const querying = q.trim() !== "";
   const selected = facets.tags;
-  const tags = useMemo(() => universe("tags", all) as string[], [all]);
+  const tags = useMemo(() => [...countBy(all, "tags").keys()], [all]);
   const counts = useMemo(() => countBy(base, "tags"), [base]);
   const pick = (tag: string) => onFacets(toggle(facets, "tags", tag));
 
