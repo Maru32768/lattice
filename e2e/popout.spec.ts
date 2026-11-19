@@ -221,6 +221,25 @@ test("the chat window syncs article scopes, sends citations to main and docks ba
   expect(await stored(shell, CHAT)).toBeNull();
 });
 
+test("the chat window names a scope sent while its library loads once its options are in, and never as the one before", async ({ shell }) => {
+  await seed(shell, { [CHAT]: "1" });
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["list_tags", "list_genres"];
+  });
+  await shell.goto("/?window=chat");
+  const scope = chatScope(shell);
+  await expect(scope).toHaveText("全記事");
+  await shell.evaluate((key) => window.__e2e.emit("chat-request", { key }), JSON.stringify({ kind: "tag", name: "kafka" }));
+  await expect(scope, "not the scope it replaced").toHaveText("");
+  await shell.evaluate(() => window.__e2e.release("list_tags"));
+  const kafka = `#kafka(${ARTICLES.filter((x) => x.tags.includes("kafka")).length}件)`;
+  await expect(scope, "named by its tag while the genres are still out").toHaveText(kafka);
+  await scope.click();
+  await expect(scopeDialog(shell).getByText("読み込み中…")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.release("list_genres"));
+  await expect(scopeDialog(shell).locator("[role=option].act")).toHaveAccessibleName(kafka);
+});
+
 test("closing the chat window only closes it: main does not dock it, and 対話 then opens the dock", async ({ shell }) => {
   await seed(shell, { [CHAT]: "1" });
   await shell.goto("/?window=chat");

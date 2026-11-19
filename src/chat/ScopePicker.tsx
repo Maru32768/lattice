@@ -21,10 +21,11 @@ export function ScopePicker({
   const t = useT();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const shown = labelOf(sections, value);
-  // A scope no option offers any more (the list has left the scope it names) still asks over it: keep its name.
-  const [kept, setKept] = useState(shown);
-  if (shown !== undefined && shown !== kept) {
-    setKept(shown);
+  // A scope no option offers any more (the list has left the scope it names) still asks over it: keep its name. A
+  // scope the options do not have yet (set from outside while the library loads) has none to keep.
+  const [kept, setKept] = useState({ key: value, label: shown });
+  if (shown !== undefined && (shown !== kept.label || value !== kept.key)) {
+    setKept({ key: value, label: shown });
   }
   return (
     <>
@@ -45,7 +46,7 @@ export function ScopePicker({
           }
         }}
       >
-        <span className="opt-l">{shown ?? kept}</span>
+        <span className="opt-l">{shown ?? (kept.key === value ? kept.label : undefined)}</span>
         <Icon name="down" size="sm" />
       </button>
       {anchor && (
@@ -57,7 +58,7 @@ export function ScopePicker({
           onPick={(o) => {
             setAnchor(null);
             // Picked from the held options: it may have left the live ones, which then cannot name it.
-            setKept(o.label);
+            setKept({ key: o.key, label: o.label });
             onChange(o.key);
           }}
         />

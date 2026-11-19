@@ -286,10 +286,7 @@ export default function App() {
     hitGroups,
     flatHits,
   } = useSearch(shown, fail);
-  const chatGroups = useMemo(
-    () => (settled ? filterGroups(groupRows, genres, feeds, tags, t, folders) : null),
-    [settled, groupRows, genres, feeds, tags, t, folders],
-  );
+  const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t, folders), [groupRows, genres, feeds, tags, t, folders]);
   const searchGroups = useMemo(() => filterGroups(groupRows, genres, feeds, [], t, folders), [groupRows, genres, feeds, t, folders]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
@@ -1313,6 +1310,7 @@ export default function App() {
               article={chat.article}
               open={chat.docs}
               groups={chatGroups}
+              loading={!settled}
               request={chat.chatScope}
               onCite={openCitation}
               onClose={win.closeRequested}
@@ -1592,6 +1590,7 @@ export default function App() {
                 article={chat.article}
                 open={chat.docs}
                 groups={chatGroups}
+                loading={!settled}
                 request={chat.chatScope}
                 onCite={openCitation}
                 onClose={() => win.setChatOpen(false)}
