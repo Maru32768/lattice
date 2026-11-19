@@ -999,13 +999,40 @@ pub(crate) mod tests {
         for op in reads(7) {
             assert_eq!(op.effects(), Effects::default(), "{op:?}");
         }
-        for op in edits(7).into_iter().chain(deletions(7)) {
-            assert_ne!(op.effects(), Effects::default(), "{op:?}");
+        // The article itself, every list (an id no article has), and whether fetchers or the feed screen must hear.
+        let (one, lists, feeds) = ((7, false, false), (0, false, false), (0, false, true));
+        let expected = [
+            (0, true, false),
+            one,
+            one,
+            one,
+            one,
+            one,
+            one,
+            one,
+            one,
+            lists,
+            lists,
+            lists,
+            lists,
+            lists,
+            one,
+            one,
+            (0, true, true),
+            feeds,
+            feeds,
+            feeds,
+            one,
+            lists,
+            feeds,
+            feeds,
+            lists,
+        ];
+        let ops: Vec<Op> = edits(7).into_iter().chain(deletions(7)).collect();
+        assert_eq!(ops.len(), expected.len());
+        for (op, (article, fetch, feeds)) in ops.iter().zip(expected) {
+            assert_eq!(op.effects(), Effects { article: Some(article), fetch, feeds, ..Effects::default() }, "{op:?}");
         }
-        assert_eq!(Op::RenameArticle { id: 7, title: "x".into() }.effects(), Effects { article: Some(7), ..Effects::default() });
-        assert_eq!(Op::Collect { collection: 1, article: 7 }.effects().article, Some(7), "the article, not the collection");
-        assert!(Op::MoveFeed { id: 1, folder: None }.effects().feeds);
-        assert!(Op::Save { url: "https://example.com".into(), run: false }.effects().fetch);
     }
 
     #[test]
