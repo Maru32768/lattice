@@ -192,6 +192,24 @@ impl Message {
     pub fn is_initialize(&self) -> bool {
         self.id.is_some() && self.method.as_deref() == Some("initialize")
     }
+
+    /// The name and version `initialize` gives in `clientInfo`, as "name version": the agent's own words.
+    pub fn client(&self) -> Option<String> {
+        let info = &self.params["clientInfo"];
+        let name = info["name"].as_str()?.trim();
+        if name.is_empty() {
+            return None;
+        }
+        Some(match info["version"].as_str().map(str::trim).filter(|v| !v.is_empty()) {
+            Some(version) => format!("{name} {version}"),
+            None => name.to_string(),
+        })
+    }
+
+    /// The tool a `tools/call` request names, whether or not this server has it; `None` for any other message.
+    pub fn tool(&self) -> Option<&str> {
+        (self.id.is_some() && self.method.as_deref() == Some("tools/call")).then(|| self.params["name"].as_str().unwrap_or_default())
+    }
 }
 
 /// What a transport does with one message. All but running a tool is decided here, so stdio and HTTP answer alike.

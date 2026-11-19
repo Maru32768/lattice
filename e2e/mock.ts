@@ -27,6 +27,7 @@ import type {
   ProviderHealth,
   Quiz,
   McpEdit,
+  McpRegistration,
   McpStatus,
   MobileSettings,
   MobileStatus,
@@ -1053,7 +1054,8 @@ export const handlers = {
     const regs = store.mcp.registrations;
     switch (edit.kind) {
       case "enable":
-        store.mcp = { ...store.mcp, enabled: edit.on };
+        // The app starts each server with nothing recorded.
+        store.mcp = { ...store.mcp, enabled: edit.on, registrations: regs.map((r) => ({ ...r, sessions: [], calls: [] })) };
         break;
       case "create": {
         const name = edit.name.trim();
@@ -1072,12 +1074,14 @@ export const handlers = {
           scope: edit.scope,
           command: made,
           remove: `claude mcp remove lattice -s ${edit.scope}`,
+          sessions: [],
+          calls: [],
         };
         store.mcp = { ...store.mcp, registrations: [...regs, reg] };
         break;
       }
       case "regenerate":
-        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope) } : r)) };
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope), sessions: [] } : r)) };
         break;
       case "set_role":
         store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
@@ -1119,6 +1123,11 @@ export const pluginHandlers: Record<string, () => unknown> = {
   "plugin:window|inner_position": () => ({ x: 0, y: 0 }),
   "plugin:webview|set_webview_focus": none,
 };
+
+/** What an agent's requests leave on the MCP server for registration `id`, as the app would then report it. */
+export function mcpActivity(id: string, activity: Pick<McpRegistration, "sessions" | "calls">) {
+  store.mcp = { ...store.mcp, registrations: store.mcp.registrations.map((r) => (r.id === id ? { ...r, ...activity } : r)) };
+}
 
 export function handle(cmd: string, args: unknown): unknown {
   const h = (handlers as Record<string, (a: unknown) => unknown>)[cmd] ?? pluginHandlers[cmd];
