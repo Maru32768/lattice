@@ -194,18 +194,21 @@ function anchorPlace(anchor: HTMLElement, pane: Element | null) {
 
 /**
  * A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on
- * close. It scrolls and resizes with the anchor, but stays where it is when a pick moves the anchor (`anchorPlace`).
+ * close, or with `refocus` false to where it was when the popover opened. It scrolls and resizes with the anchor, but
+ * stays where it is when a pick moves the anchor (`anchorPlace`).
  */
 export function Popover({
   anchor,
   label,
   width,
+  refocus,
   onClose,
   children,
 }: {
   anchor: HTMLElement;
   label: string;
   width: number;
+  refocus?: boolean;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -214,6 +217,8 @@ export function Popover({
   const pane = anchor.closest("[data-pane]");
   const w = Math.min(width, (pane?.clientWidth ?? window.innerWidth) - 16);
   const [at] = useState(() => anchorPlace(anchor, pane));
+  // Radix gives the focus back to a trigger, and this popover has none: an anchor is not always where it came from.
+  const [before] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
   useLayoutEffect(() => at.follow(anchor), [at, anchor]);
   useLayoutEffect(() => {
     // Chromium scrolls the content to hold what is at the top of the view in place as a pick rewraps or adds what is
@@ -252,7 +257,7 @@ export function Popover({
             }
             e.preventDefault();
             // Where the anchor is, not where the reader has scrolled to since.
-            (anchor.querySelector("button") ?? anchor).focus({ preventScroll: true });
+            (refocus !== false ? (anchor.querySelector("button") ?? anchor) : before)?.focus({ preventScroll: true });
           }}
           // The anchor toggles the popover itself: a press on it is not a press outside.
           onInteractOutside={(e) => anchor.contains(e.target as Node) && e.preventDefault()}

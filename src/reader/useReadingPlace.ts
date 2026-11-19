@@ -18,14 +18,6 @@ const places = new Map<number, { article: number; seq: number | undefined; place
 /** The tab's Page view read `article` back to the top: the tab's Reader of it starts there too. */
 export const forgetTabPlace = (tab: number, article: number) => places.get(tab)?.article === article && places.delete(tab);
 
-const holders = new WeakMap<Element, () => () => void>();
-
-/**
- * Holds the article's place in `view`, a Reader's scroller, while a command scrolls it elsewhere: until the returned function
- * puts the view back there by its block, the place is not read off the screen, nor when the Reader goes away before that.
- */
-export const holdPlace = (view: Element) => holders.get(view)?.() ?? (() => {});
-
 /**
  * Keeps tab `tab`'s place in `article` across a remount, and the article's place across opening it again, for the scroller
  * given the ref it returns. A new jump request (`seq`) is where the reader asked to go, so it replaces the place.
@@ -72,12 +64,8 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     let unshown = preferred && !wentToStored;
     const shownBlock = unshown ? placeAt(false)?.block : undefined;
 
-    let held: { place: ReadingPlace | null; top: number } | undefined;
-    /** The place on screen (or the one held), kept for the article; undefined while the Reader is hidden and has none to read. */
+    /** The place on screen, kept for the article; undefined while the Reader is hidden and has none to read. */
     const keep = () => {
-      if (held) {
-        return held.place;
-      }
       if (view.clientHeight === 0) {
         return undefined;
       }
@@ -111,32 +99,13 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
       }
       return place;
     };
-    holders.set(view, () => {
-      const place = keep();
-      if (place === undefined) {
-        return () => {};
-      }
-      const mine = { place, top: view.scrollTop };
-      held = mine;
-      return () => {
-        if (held !== mine) {
-          return;
-        }
-        held = undefined;
-        if (!place || !goTo(place)) {
-          view.scrollTop = mine.top;
-        }
-      };
-    });
     const stop = keepOnRest(view, keep);
     return () => {
       stop();
-      holders.delete(view);
       const place = keep();
       if (place !== undefined) {
-        places.set(tab, { article, seq, place, top: held?.top ?? view.scrollTop, t: Date.now() });
+        places.set(tab, { article, seq, place, top: view.scrollTop, t: Date.now() });
       }
-      held = undefined;
     };
   }, [tab, article, seq, shown]);
   return scroller;

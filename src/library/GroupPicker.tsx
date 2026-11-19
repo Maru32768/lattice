@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { GroupRow } from "../api";
-import { Popover, scroller } from "../ui/Popover";
+import { Popover } from "../ui/Popover";
 import { PickList } from "../ui/PickList";
 import { filterSections, type PickOption, type PickSection } from "../ui/pickRows";
 import { Icon, Kbd, type IconName } from "../ui/Icon";
 import { useT } from "../i18n";
-import { holdPlace } from "../reader/useReadingPlace";
 
 /** Multi-select of groups with find-or-create, styled like the facet popover. */
 export function GroupPicker({
@@ -14,6 +13,7 @@ export function GroupPicker({
   onToggle,
   onCreate,
   anchor,
+  refocus,
   onClose,
 }: {
   groups: GroupRow[];
@@ -22,6 +22,8 @@ export function GroupPicker({
   /** Creates the group and returns its id; the picker then selects it. */
   onCreate: (name: string) => Promise<number>;
   anchor: HTMLElement;
+  /** False: closing it puts the focus back where it was when it opened, not on `anchor`. */
+  refocus?: boolean;
   onClose: () => void;
 }) {
   const t = useT();
@@ -32,6 +34,7 @@ export function GroupPicker({
       onToggle={onToggle}
       onCreate={onCreate}
       anchor={anchor}
+      refocus={refocus}
       onClose={onClose}
       icon="folder"
       text={{ label: t("groupPicker.label"), find: t("groupPicker.find"), create: (name) => t("groupPicker.create", { name }), none: t("groupPicker.none") }}
@@ -77,6 +80,7 @@ function Picker<K extends number | string>({
   onToggle,
   onCreate,
   anchor,
+  refocus,
   onClose,
   icon,
   text,
@@ -87,6 +91,7 @@ function Picker<K extends number | string>({
   /** Makes the option and returns its id; the picker then selects it. */
   onCreate: (name: string) => Promise<K>;
   anchor: HTMLElement;
+  refocus?: boolean;
   onClose: () => void;
   icon: IconName;
   text: { label: string; find: string; create: (name: string) => string; none: string };
@@ -120,7 +125,7 @@ function Picker<K extends number | string>({
   }
 
   return (
-    <Popover anchor={anchor} label={text.label} width={300} onClose={onClose}>
+    <Popover anchor={anchor} label={text.label} width={300} refocus={refocus} onClose={onClose}>
       <PickList
         label={text.label}
         search={text.find}
@@ -167,6 +172,7 @@ export function GroupChips({
   onToggle,
   onCreate,
   request,
+  pin,
 }: {
   groups: GroupRow[];
   /** The groups the article is in. */
@@ -174,42 +180,22 @@ export function GroupChips({
   onToggle: (id: number, on: boolean) => void;
   onCreate: (name: string) => Promise<number>;
   request: number;
+  /**
+   * Where the palette's request opens the picker: under the Reader's toolbar. The palette asks wherever the article is
+   * read, and scrolling the article up to its chips would move the place read.
+   */
+  pin: React.RefObject<HTMLElement | null>;
 }) {
   const t = useT();
-  const add = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState<{ anchor: HTMLElement; palette: boolean } | null>(null);
   // Only a request made while mounted: the Reader remounts per article, and other tabs see it drop to 0.
   const seen = useRef(request);
-  /** Puts the article back where it was read, after the palette scrolled it to the chips, and the focus in it. */
-  const back = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (request > seen.current && add.current) {
-      // The palette asks wherever the article is read: a picker hung from a chip scrolled out of view opens out of it.
-      const box = scroller(add.current);
-      const top = box?.scrollTop;
-      const release = box ? holdPlace(box) : () => {};
-      add.current.scrollIntoView({ block: "nearest" });
-      // With the chips in view there is nothing to undo, and a scroll the reader makes while the picker is open stays.
-      if (box?.scrollTop === top) {
-        release();
-      } else {
-        back.current = () => {
-          release();
-          // Not on the ＋, which is out of view again: a key would open the picker there, and the palette, as it closes,
-          // would scroll the article to it.
-          box?.focus({ preventScroll: true });
-        };
-      }
-      setAnchor(add.current);
+    if (request > seen.current && pin.current) {
+      setOpen({ anchor: pin.current, palette: true });
     }
     seen.current = request;
-  }, [request]);
-  const close = () => {
-    const goBack = back.current;
-    back.current = null;
-    setAnchor(null);
-    goBack?.();
-  };
+  }, [request, pin]);
   return (
     <>
       {groups
@@ -224,21 +210,27 @@ export function GroupChips({
           </span>
         ))}
       <button
-        ref={add}
         className="chip dashed"
         aria-haspopup="dialog"
-        aria-expanded={!!anchor}
+        aria-expanded={!!open}
         onClick={(e) => {
-          if (anchor) {
-            close();
-          } else {
-            setAnchor(e.currentTarget);
-          }
+          const el = e.currentTarget;
+          setOpen((o) => (o ? null : { anchor: el, palette: false }));
         }}
       >
         {t("reader.addToGroup")}
       </button>
-      {anchor && <GroupPicker groups={groups} selected={ids} onToggle={onToggle} onCreate={onCreate} anchor={anchor} onClose={close} />}
+      {open && (
+        <GroupPicker
+          groups={groups}
+          selected={ids}
+          onToggle={onToggle}
+          onCreate={onCreate}
+          anchor={open.anchor}
+          refocus={!open.palette}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </>
   );
 }
