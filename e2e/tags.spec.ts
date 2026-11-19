@@ -263,6 +263,22 @@ test("a filter with no search keeps its keys: j moves, Enter picks, Backspace dr
   await expect(chip, "Ctrl+Enter picks nothing").toHaveCount(0);
 });
 
+test("the tag editor opened from a row moves with the list's scroll", async ({ app }) => {
+  const title = (await list(app).locator(".row").nth(1).locator(".t").textContent())!;
+  const row = list(app).locator(".row", { hasText: title });
+  await row.click({ button: "right" });
+  await app.getByRole("menu", { name: "記事のメニュー" }).getByRole("menuitem", { name: "タグを編集…" }).click();
+  const pv = app.getByRole("dialog", { name: "タグ" });
+  await expect(pv).toBeInViewport();
+  const r = (await row.boundingBox())!;
+  const p = (await pv.boundingBox())!;
+  await list(app)
+    .locator(".list-body")
+    .evaluate((e) => (e.scrollTop = 60));
+  await expect.poll(async () => Math.round((await row.boundingBox())!.y - r.y)).toBe(-60);
+  await expect.poll(async () => Math.round((await pv.boundingBox())!.y - p.y), "the editor moves with its row").toBe(-60);
+});
+
 test("closing a facet popover returns focus to its chip, also after the first pick replaced the chip", async ({ app }) => {
   await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
   const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
