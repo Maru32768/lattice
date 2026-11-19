@@ -1286,8 +1286,7 @@ export const en = {
   "settingsView.relevance": "Importance",
   "settingsView.relevanceLead":
     "The LLM rates each article from 1 to 5 against “About you”, with a one-line reason. Used by the “Most important first” sort, the Importance filter and Important in the sidebar. Ratings weigh both how close an article is to your interests and what you would gain from reading it. After you edit your profile, or when an update changes how articles are rated, earlier ratings are marked as rated by earlier criteria.",
-  "relevanceSettings.noProfile":
-    "“About you” is empty, so articles are not rated. Describe your work and interests in Settings › About you to start rating.",
+  "relevanceSettings.noProfile": "“About you” is empty, so articles are not rated. Describe your work and interests in Settings › About you to start rating.",
   "relevanceSettings.auto": "Rate newly saved articles",
   "relevanceSettings.autoDesc": "Runs only while “About you” is filled in. Rates up to 20 articles per LLM call.",
   "relevanceSettings.threshold": "Lowest importance in Important",
