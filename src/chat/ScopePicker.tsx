@@ -14,7 +14,7 @@ export function ScopePicker({
 }: {
   value: string;
   sections: PickSection[];
-  /** The library has not loaded: `sections` lacks its scopes. */
+  /** The library's reads are still out: `sections` may lack some of its scopes. */
   loading: boolean;
   onChange: (key: string) => void;
 }) {
