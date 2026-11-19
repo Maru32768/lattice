@@ -1036,6 +1036,17 @@ mod tests {
     }
 
     #[test]
+    fn long_runs_of_number_words_groups_and_kanji_pairs_read_in_linear_time() {
+        // Read again from each word, group or pair, each of these took from 13 s to over 2 minutes in a debug build.
+        for (unit, times) in [("one-", 1_000), (" 000", 16_000), ("一二十", 3_000)] {
+            let text = format!("1{}", unit.repeat(times));
+            let started = std::time::Instant::now();
+            Article::new([text.as_str()]);
+            assert!(started.elapsed() < std::time::Duration::from_secs(10), "{unit:?} × {times} took {:?}", started.elapsed());
+        }
+    }
+
+    #[test]
     fn decimals_compare_by_value() {
         assert_eq!(Dec::parse("0.120").map(|d| d.shifted(6)), Some(Dec::int(120_000)));
         assert_eq!(Dec::ratio(1, 3), None);
