@@ -466,8 +466,15 @@ mod tests {
         }
         assert_eq!(check("20万件超のセッション", "We study 207,000 sessions."), ["20万"], "a rounded number is not the article's");
         assert_eq!(check("8万人", "8 people"), ["8万"], "the unit is part of the value");
-        for (summary, article) in [("2千500件", "2,500 rows"), ("1千200万人", "12 million people"), ("1万2千500件", "12,500 rows"), ("2500件", "2千500件の行")]
-        {
+        for (summary, article) in [
+            ("2千500件", "2,500 rows"),
+            ("1千200万人", "12 million people"),
+            ("1万2千500件", "12,500 rows"),
+            ("2500件", "2千500件の行"),
+            ("2千5百件", "2,500 rows"),
+            ("1万2,300件", "1万2千3百件"),
+            ("3,500万円", "3千5百万円"),
+        ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
         assert_eq!(check("2千500件", "2,000 and 500"), ["2千500"], "the digits after 千 are its lower places");
