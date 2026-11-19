@@ -56,8 +56,7 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
         server.stop().await;
     }
     running.error = None;
-    // An agent would read and write the stand-in copy.
-    if handle.state::<Location>().warning.is_some() || !mcp::enabled(&app.store)? {
+    if !mcp::enabled(&app.store)? {
         return Ok(());
     }
     let tell = handle.clone();
