@@ -127,7 +127,13 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
     let reply = match step(&message, registration.role) {
         Step::Silent => return StatusCode::ACCEPTED.into_response(),
         Step::Reply(reply) => reply,
-        Step::Call { id, op } => tool_reply(id, st.call(&registration, op).await),
+        Step::Call { id, op } => {
+            // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway, leaving a job it
+            // claimed claimed until the app quits, and the app never told what was written.
+            let st = st.clone();
+            let role = registration.role;
+            tool_reply(id, tokio::spawn(async move { st.call(role, op).await }).await.unwrap_or_else(|e| Err(e.to_string())))
+        }
     };
     let mut response = json(StatusCode::OK, &reply);
     if let Some(id) = opened.and_then(|id| HeaderValue::from_str(&id).ok()) {
@@ -196,8 +202,8 @@ impl McpState {
 
     /// Runs a tool call, then tells the app what may have changed: after a failure too, since one can stop halfway,
     /// and a reload that finds nothing new costs little.
-    async fn call(&self, registration: &Registration, op: Op) -> Result<Out, String> {
-        let role = permit(registration.role, &op)?;
+    async fn call(&self, role: Role, op: Op) -> Result<Out, String> {
+        let role = permit(role, &op)?;
         let effects = op.effects();
         let outcome = ops::run(&Ctx { store: self.store.clone(), providers: self.providers.clone(), role }, op).await;
         if effects != Effects::default() {
@@ -224,7 +230,10 @@ mod tests {
     }
 
     fn fixture() -> Fixture {
-        let Ctx { store, providers, .. } = crate::ops::tests::ctx();
+        fixture_with(crate::ops::tests::ctx())
+    }
+
+    fn fixture_with(Ctx { store, providers, .. }: Ctx) -> Fixture {
         let applied = Arc::new(Mutex::new(Vec::new()));
         let log = applied.clone();
         let app = router(store.clone(), providers, Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)));
@@ -405,6 +414,40 @@ mod tests {
         let wrong = f.call(&r.token, &session, "rename_article", json!({ "id": id, "name": "Typo" })).await;
         assert_eq!(wrong["isError"], true, "an argument the tool does not take");
         assert_eq!(f.applied.lock().unwrap().len(), 1, "nothing ran");
+    }
+
+    #[tokio::test]
+    async fn a_call_runs_to_the_end_and_tells_the_app_when_the_agent_hangs_up() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://localhost:{}/late", listener.local_addr().unwrap().port());
+        let page = axum::Router::new().route(
+            "/late",
+            axum::routing::get(|| async {
+                tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                (
+                    [(header::CONTENT_TYPE, "text/html")],
+                    "<html><head><title>Late</title></head><body><p>It came late, but it came in the end.</p></body></html>",
+                )
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, page).await });
+        let mut ctx = crate::ops::tests::ctx();
+        let local = lattice_core::network::NetworkSettings { allow: vec!["localhost".into()], ..Default::default() };
+        Arc::get_mut(&mut ctx.providers).unwrap().http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
+        let f = fixture_with(ctx);
+        let agent = f.register("agent", Role::Edit);
+        let session = f.initialize(&agent.token).await;
+        let call = f.call(&agent.token, &session, "save", json!({ "url": url, "run": true }));
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(200), call).await.is_err(), "the page has not answered yet");
+        for _ in 0..50 {
+            if !f.applied.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert_eq!(*f.applied.lock().unwrap(), [Some(0)], "the app hears of the save");
+        let articles = f.store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap();
+        assert_eq!(articles[0].fetch_status, "ok", "the fetch ran to the end rather than staying claimed until the app quits");
     }
 
     #[test]
