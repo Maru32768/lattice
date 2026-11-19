@@ -329,6 +329,9 @@
 .summary-row .first { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .summary-body { padding-left: 38px; font-size: 13.5px; line-height: 1.7; color: var(--ink2); }
 .summary-body p { margin: 8px 0 4px; white-space: pre-wrap; }
+.summary-points { margin: 4px 0 8px; padding-left: 1.4em; list-style: "・"; }
+.summary-body mark.unverified { background: none; color: inherit; text-decoration: underline wavy var(--warn); text-underline-offset: 3px; }
+.summary-body .summary-unverified { font-size: 12px; color: var(--ink3); }
 .summary-meta { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--ink3); }
 .summary-meta .tb { height: 20px; padding: 0 4px; font-size: 11.5px; }
 .summary-note { padding-left: 38px; font-size: 12px; }

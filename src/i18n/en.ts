@@ -979,6 +979,11 @@ export const en = {
   "reader.summaryStale":
     "The article or the summary settings (Settings › Summaries & chat) have changed, or an app update has changed how summaries are made. Regenerate to apply them",
   "reader.summaryFailed": "Summary failed: {last_error}",
+  "reader.summaryCite": "Source {n}",
+  "reader.summarySource": "Summary source",
+  "reader.summaryUnverified": "This number is not in the article",
+  "reader.summaryUnverifiedList": "Numbers not found in the article: {numbers}",
+  "reader.summaryNumberSeparator": ", ",
   "reader.markUnread": "Mark as unread",
   "reader.markRead": "Mark as read",
   "reader.renderHint": "Renders the page in a hidden background browser and saves the article again from what it shows",

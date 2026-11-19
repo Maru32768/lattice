@@ -14,6 +14,7 @@ import type {
   QuizQuestion,
   RejectedEntry,
   ReviewItem,
+  SummaryView,
   VocabEntry,
 } from "../src/api.ts";
 
@@ -390,8 +391,18 @@ export function jobsOf(a: ArticleRow): JobRow[] {
     : [];
 }
 
-export const SUMMARIES: Record<number, string> = {
-  [SNAPSHOT_ID]: "- スナップショット分離は、トランザクション開始時点のスナップショットから読む。\n- PostgreSQLはMVCCで実装する。\n- write skewは防げない。",
+/** Each cites blocks of `SNAPSHOT_BLOCKS` by id, and one block (199) the article no longer has. */
+export const SUMMARIES: Record<number, Pick<SummaryView, "text" | "items">> = {
+  [SNAPSHOT_ID]: {
+    text: "スナップショット分離は、トランザクション開始時点のスナップショットから読む。\n\n・PostgreSQL 9.1以降はMVCCで実装する。\n・write skewは防げない。",
+    items: {
+      summary: [{ text: "スナップショット分離は、トランザクション開始時点のスナップショットから読む。", block_ids: [102], unverified: [] }],
+      key_points: [
+        { text: "PostgreSQL 9.1以降はMVCCで実装する。", block_ids: [103, 199, 102], unverified: ["9.1"] },
+        { text: "write skewは防げない。", block_ids: [106], unverified: [] },
+      ],
+    },
+  },
 };
 
 export const JOBS: JobOverview = {
