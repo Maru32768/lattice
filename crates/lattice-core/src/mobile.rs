@@ -428,6 +428,8 @@ mod tests {
         for url in ["ftp://pc", "pc.example", "https://pc/path", "https://user:pw@pc", "https://pc?x=1", "https://pc#t=1", "javascript:alert(1)"] {
             assert!(refused(8787, url), "{url}");
         }
+        let kept = settings(&s).unwrap();
+        assert_eq!((kept.mode, kept.port), (ServerMode::Off, DEFAULT_PORT), "a refused save stores none of it");
         assert!(!refused(8787, "http://192.168.0.2:8787"));
     }
 
