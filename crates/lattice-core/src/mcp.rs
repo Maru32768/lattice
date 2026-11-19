@@ -220,10 +220,12 @@ mod tests {
     #[test]
     fn a_name_and_all_of_claude_code_are_taken_once_when_registered_at_the_same_time() {
         let s = store();
+        let together = std::sync::Barrier::new(8);
         std::thread::scope(|scope| {
             for t in 0..8 {
-                let s = &s;
+                let (s, together) = (&s, &together);
                 scope.spawn(move || {
+                    together.wait();
                     let _ = edit(s, &Edit::Create { name: format!("all {t}"), role: Role::Read, scope: Scope::User });
                     for i in 0..30 {
                         let _ = edit(s, &Edit::Create { name: format!("agent {i}"), role: Role::Read, scope: Scope::Local });
