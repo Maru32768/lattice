@@ -1457,6 +1457,7 @@ export const en = {
   "mobile.noText": "There is no text.",
   "be.mobile.publicUrl": "The address must start with http:// or https:// and have no path",
   "be.mobile.port": "The port must be from {min} to {max}",
+  "be.mobile.portTaken": "Port {port} is the AI agents (MCP) server's. Choose another port",
   "be.tailscale.notFound": "Could not run the tailscale command. Check that Tailscale is installed: {error}",
   "be.tailscale.allowHttps": "HTTPS is not allowed on this tailnet yet. Open {link}, allow it, then press the button again.",
   "be.tailscale.timedOut": "Tailscale did not answer. Check that it is running.",

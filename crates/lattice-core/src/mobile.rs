@@ -309,6 +309,11 @@ pub fn save_settings(store: &Store, s: &MobileSettings) -> Result<(), String> {
         // As text: the catalog would write a number as 1,024.
         return Err(msg!("mobile.port", min = MIN_PORT.to_string(), max = u16::MAX.to_string()));
     }
+    // Not only would one of the two servers fail to start: Tailscale Serve, or any tunnel set up for the phone's
+    // port, would carry other devices to the MCP server once that one held the port.
+    if s.port == crate::mcp::PORT {
+        return Err(msg!("mobile.portTaken", port = s.port.to_string()));
+    }
     let public_url = clean_public_url(&s.public_url)?;
     let mode = match s.mode {
         ServerMode::Off => "off",
@@ -417,6 +422,7 @@ mod tests {
         let s = store();
         let refused = |port, url: &str| save_settings(&s, &MobileSettings { mode: ServerMode::Lan, port, public_url: url.into() }).is_err();
         assert!(refused(80, ""));
+        assert!(refused(crate::mcp::PORT, ""), "the MCP server's: a tunnel to the phone's port would reach it");
         for url in ["ftp://pc", "pc.example", "https://pc/path", "https://user:pw@pc", "https://pc?x=1", "https://pc#t=1", "javascript:alert(1)"] {
             assert!(refused(8787, url), "{url}");
         }

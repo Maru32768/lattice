@@ -1439,6 +1439,7 @@ export const ja = {
   "mobile.noText": "本文がありません。",
   "be.mobile.publicUrl": "アドレスはhttp://かhttps://で始まり、パスを含まない形で入れてください",
   "be.mobile.port": "ポートは{min}〜{max}にしてください",
+  "be.mobile.portTaken": "ポート{port}はAIエージェント(MCP)のサーバーが使うので、別のポートにしてください",
   "be.tailscale.notFound": "tailscaleコマンドを実行できませんでした。Tailscaleが入っているか確かめてください: {error}",
   "be.tailscale.allowHttps": "このtailnetではまだHTTPSが許可されていません。{link}を開いて許可してから、もう一度押してください。",
   "be.tailscale.timedOut": "Tailscaleが答えませんでした。Tailscaleが動いているか確かめてください。",

@@ -25,6 +25,8 @@ const ENABLED: &str = "mcp.enabled";
 /// Every registration, token included, as one list: a backup drops it whole rather than keeping names whose tokens are gone.
 const REGISTRATIONS: &str = "secret.mcp_registrations";
 const MAX_NAME_CHARS: usize = 64;
+/// On loopback only. Fixed, so the command a registration copies stays right.
+pub const PORT: u16 = 8788;
 
 /// Two edits at once would each write back the list they read, and one change would be lost.
 static EDITING: Mutex<()> = Mutex::new(());

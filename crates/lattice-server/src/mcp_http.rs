@@ -25,7 +25,7 @@ use crate::ops::{self, Ctx, Op, Out};
 use crate::{OnApplied, bearer, error, internal_error, json};
 
 /// Loopback only: another machine on the network cannot even connect.
-pub const ADDR: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8788));
+pub const ADDR: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, mcp::PORT));
 const ENDPOINT: &str = "/mcp";
 const SESSION: &str = "mcp-session-id";
 const VERSION: &str = "mcp-protocol-version";
