@@ -472,22 +472,37 @@ test("the chat scope lists thousands of tags while drawing only the ones in view
   await expect.poll(() => askedScopes(app)).toEqual([{ kind: "filter", filter: { kind: "tag", name: last } }]);
 });
 
+/** Opens the chat's AI menu and picks `pick`, from the submenus `path` names. */
+async function chooseAI(app: Page, path: (string | RegExp)[], pick: string) {
+  await app.getByRole("button", { name: "回答するAI" }).click();
+  for (const name of path) {
+    await app.getByRole("menuitem", { name, exact: true }).click();
+  }
+  const radio = app.getByRole("menuitemradio", { name: pick, exact: true });
+  // The submenus open to the left, over the parent's items: a pointer that jumps there in one step closes them, one moved by hand does not.
+  const b = (await radio.boundingBox())!;
+  await app.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
+  await radio.click();
+}
+
+test("Enter in the model ID box keeps the drafted question", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const q = app.locator("#chat-q");
+  await q.fill("draft question");
+  await chooseAI(app, ["Claude CLI"], "その他(モデルIDを入力)");
+  const modelId = app.getByLabel("回答するモデルのID");
+  await modelId.fill("my-model");
+  await modelId.press("Enter");
+  await expect(q).toHaveValue("draft question");
+  expect(await callsOf(app, "chat_ask")).toEqual([]);
+});
+
 test("each conversation asks the AI chosen for it, and opening it again brings the choice back", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const ai = app.getByRole("button", { name: "回答するAI" });
   const modelId = app.getByLabel("回答するモデルのID");
   const radio = (name: string) => app.getByRole("menuitemradio", { name, exact: true });
-  /** Opens the AI menu and picks `pick`, from the submenus `path` names. */
-  const choose = async (path: (string | RegExp)[], pick: string) => {
-    await ai.click();
-    for (const name of path) {
-      await app.getByRole("menuitem", { name, exact: true }).click();
-    }
-    // The submenus open to the left, over the parent's items: a pointer that jumps there in one step closes them, one moved by hand does not.
-    const b = (await radio(pick).boundingBox())!;
-    await app.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
-    await radio(pick).click();
-  };
+  const choose = (path: (string | RegExp)[], pick: string) => chooseAI(app, path, pick);
   const asked = async () => (await callsOf(app, "chat_ask")).map((x) => (x as { llm: unknown }).llm);
   const q = app.locator("#chat-q");
   const pickThread = async (title: string) => {

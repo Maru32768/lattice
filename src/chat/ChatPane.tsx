@@ -372,6 +372,12 @@ export function ChatPane({
                 aria-label={t("chatPane.llmModelId")}
                 spellCheck={false}
                 autoFocus
+                // In the form, Enter would submit it and send the question; only the send key sends.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                  }
+                }}
               />
             )}
             <span className="push" />
