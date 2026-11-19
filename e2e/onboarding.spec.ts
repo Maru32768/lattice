@@ -1,4 +1,4 @@
-import { test, expect } from "./harness.ts";
+import { test, expect, callsOf, list } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
 
 test("the empty library explains AI defaults and data sharing, and opens provider settings", async ({ app }) => {
@@ -21,4 +21,23 @@ test("the empty library explains AI defaults and data sharing, and opens provide
   await app.keyboard.press("Escape");
   await firstRun.getByRole("button", { name: "AIプロバイダの設定", exact: true }).click();
   await expect(app.locator(".stg main h1")).toHaveText("AIプロバイダ");
+});
+
+test("a library read overtaken by a later one does not show the first run over the library", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["list_articles"];
+  });
+  await shell.goto("/");
+  const reads = async () => (await callsOf(shell, "list_articles")).length;
+  await expect.poll(reads, { timeout: 30_000 }).toBeGreaterThan(0);
+  const first = await reads();
+  await shell.evaluate(() => window.__e2e.emit("article-changed", 1));
+  await expect.poll(reads).toBeGreaterThan(first);
+  await shell.evaluate((n) => window.__e2e.release("list_articles", n), first);
+  await shell.waitForTimeout(300);
+  const firstRun = shell.getByRole("region", { name: "最初の記事を入れる" });
+  await expect(firstRun, "the overtaken read's articles are dropped, and the later read is still out").toBeHidden();
+  await shell.evaluate(() => window.__e2e.release("list_articles"));
+  await expect(list(shell).locator(".row").first()).toBeVisible();
+  await expect(firstRun).toBeHidden();
 });

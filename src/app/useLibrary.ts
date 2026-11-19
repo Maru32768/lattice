@@ -10,8 +10,9 @@ type Count = { name: string; count: number };
  */
 export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
-  /** Every read of a refresh has landed, or one failed. */
   const [loaded, setLoaded] = useState(false);
+  /** Every read of a refresh has settled: the chat's scopes wait for the tags, genres, groups, feeds and folders. */
+  const [settled, setSettled] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   /** Feed folders (H25), in the user's order. */
   const [folders, setFolders] = useState<FolderRow[]>([]);
@@ -37,6 +38,7 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
         }
         setNow(Date.now());
         setArticles(a);
+        setLoaded(true);
       }),
       api.listFeeds().then(setFeeds),
       api.listFeedFolders().then(setFolders),
@@ -46,7 +48,7 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
       api.relevanceStatus().then(setRelevance),
     ])
       .catch(fail)
-      .finally(() => setLoaded(true));
+      .finally(() => setSettled(true));
   };
   const setSort = (s: ArticleSort) => {
     sortRef.current = s;
@@ -74,5 +76,5 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
     return () => void sub.then((f) => f());
   }, []);
 
-  return { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon };
+  return { articles, loaded, settled, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon };
 }
