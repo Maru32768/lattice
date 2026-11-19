@@ -1286,8 +1286,9 @@ mod tests {
         }
         for &(low, high) in &ends {
             for (p, digit_scales, word_scale) in RANGE_SCALES {
-                // A scale word with hundred goes with one-digit ends only: twenty to thirty hundred thousand is not English.
-                let scale_words = p % 3 != 2 || high < 10;
+                // Before hundred an end may have two digits (fifteen to twenty-five hundred), but before hundred thousand or
+                // hundred million only one: twenty to thirty hundred thousand is not English.
+                let scale_words = p % 3 != 2 || high < 10 || (p == 2 && high < 100);
                 // Written whole at hundreds, between and its and would meet as in between five hundred and one thousand,
                 // read as 501,000.
                 let between_whole = p != 2 || high < 10;
