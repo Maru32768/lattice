@@ -642,34 +642,54 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
     out
 }
 
-/// The values of kanji numerals: `三` in `三つ`, `二十三`, `一万`.
+fn kanji_digit(c: char) -> Option<u128> {
+    "〇一二三四五六七八九".chars().position(|d| d == c).map(|d| d as u128)
+}
+
+/// The values of kanji numerals: `三` in `三つ`, `二十三`, `一万`. Two digits one apart, alone, also read as either:
+/// `二三日` is two or three days and `三四百万` three or four million, besides 23 and 3,400万 by position (`一九九九`).
 fn kanji(cs: &[char]) -> Vec<Dec> {
-    let digit = |c: char| "〇一二三四五六七八九".chars().position(|d| d == c).map(|d| d as u128);
-    let is_kanji = |c: char| digit(c).is_some() || ja_small(c).is_some() || ja_large(c).is_some();
+    let is_kanji = |c: char| kanji_digit(c).is_some() || ja_small(c).is_some() || ja_large(c).is_some();
     let mut out = Vec::new();
     let mut i = 0;
     while i < cs.len() {
-        if !is_kanji(cs[i]) {
+        let end = cs[i..].iter().position(|&c| !is_kanji(c)).map_or(cs.len(), |n| i + n);
+        if end == i {
             i += 1;
             continue;
         }
-        let (mut total, mut section, mut cur) = (Dec::ZERO, Dec::ZERO, 0u128);
-        while let Some(&c) = cs.get(i).filter(|&&c| is_kanji(c)) {
-            if let Some(d) = digit(c) {
-                cur = cur.saturating_mul(10).saturating_add(d);
-            } else if let Some(p) = ja_small(c) {
-                section = section.plus(Dec::int(cur.max(1)).shifted(p)).unwrap_or(section);
-                cur = 0;
-            } else if let Some(p) = ja_large(c) {
-                let group = section.plus(Dec::int(cur)).filter(|g| g.m > 0).unwrap_or(Dec::int(1));
-                total = total.plus(group.shifted(p)).unwrap_or(total);
-                (section, cur) = (Dec::ZERO, 0);
+        let numeral = &cs[i..end];
+        out.extend(kanji_value(numeral));
+        let digit = |k: usize| numeral.get(k).copied().and_then(kanji_digit);
+        for k in 1..numeral.len() {
+            let pair = digit(k - 1).zip(digit(k)).is_some_and(|(a, b)| a + 1 == b);
+            if pair && (k < 2 || digit(k - 2).is_none()) && digit(k + 1).is_none() {
+                for skip in [k - 1, k] {
+                    let alone: Vec<char> = numeral.iter().enumerate().filter(|(j, _)| *j != skip).map(|(_, c)| *c).collect();
+                    out.extend(kanji_value(&alone));
+                }
             }
-            i += 1;
         }
-        out.extend(total.plus(section).and_then(|v| v.plus(Dec::int(cur))));
+        i = end;
     }
     out
+}
+
+fn kanji_value(numeral: &[char]) -> Option<Dec> {
+    let (mut total, mut section, mut cur) = (Dec::ZERO, Dec::ZERO, 0u128);
+    for &c in numeral {
+        if let Some(d) = kanji_digit(c) {
+            cur = cur.saturating_mul(10).saturating_add(d);
+        } else if let Some(p) = ja_small(c) {
+            section = section.plus(Dec::int(cur.max(1)).shifted(p)).unwrap_or(section);
+            cur = 0;
+        } else if let Some(p) = ja_large(c) {
+            let group = section.plus(Dec::int(cur)).filter(|g| g.m > 0).unwrap_or(Dec::int(1));
+            total = total.plus(group.shifted(p)).unwrap_or(total);
+            (section, cur) = (Dec::ZERO, 0);
+        }
+    }
+    total.plus(section).and_then(|v| v.plus(Dec::int(cur)))
 }
 
 #[cfg(test)]
@@ -972,6 +992,23 @@ mod tests {
         }
         assert_eq!(check("2020-2021年", "from 2020 to 2021"), Vec::<String>::new());
         assert_eq!(check("4021件", "2020-2021"), ["4021"], "only two digits are a year cut short");
+    }
+
+    #[test]
+    fn two_kanji_digits_one_apart_read_as_either() {
+        for (summary, article) in [
+            ("2～3日", "二三日"),
+            ("23日", "二十三日"),
+            ("300万～400万人", "三四百万人"),
+            ("12～13人", "十二三人"),
+            ("20～30人", "二三十人"),
+            ("1999年", "一九九九年"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        for (summary, article, why) in [("2", "二四日", "one apart"), ("12", "一二三件", "a pair alone"), ("23", "一二三件", "a pair alone")] {
+            assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
+        }
     }
 
     #[test]
