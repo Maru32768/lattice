@@ -531,7 +531,9 @@ mod tests {
         assert_eq!(check("2024-11-19に", "on November 19, 2024"), Vec::<String>::new());
         assert_eq!(check("1946～53年分", "for 1946-1952"), ["53"], "neither 1953 nor 53");
         assert_eq!(check("2019\u{ff0d}20年と2019\u{2015}20年", "from 2019 to 2020"), Vec::<String>::new(), "a full-width hyphen and a horizontal bar");
-        assert_eq!(check("1952年", "for 1946\u{ff0d}52"), Vec::<String>::new());
+        for article in ["for 1946\u{ff0d}52", "for 1946\u{2013}52", "for 1946\u{2014}52", "for 1946~52"] {
+            assert_eq!(check("1952年", article), Vec::<String>::new(), "{article:?}");
+        }
         assert_eq!(check("2020-2021年", "from 2020 to 2021"), Vec::<String>::new());
         assert_eq!(check("4021件", "2020-2021"), ["4021"], "only two digits are a year cut short");
     }
