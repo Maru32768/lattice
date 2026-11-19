@@ -376,6 +376,12 @@ test("agent registrations copy commands for all of Claude Code or one project, k
   await expect(row("Claude Code").getByRole("button", { name: "コマンドをコピー" }), "the new token makes a new command").toBeVisible();
   await row("Claude Code").getByRole("button", { name: "コマンドをコピー" }).click();
   await expect.poll(clipboard).not.toBe(first);
+  await row("Research").getByRole("button", { name: "トークンを作り直す" }).click();
+  const regenerateProject = app.getByRole("alertdialog", { name: "「Research」のトークンを作り直しますか？" });
+  await expect(regenerateProject, "a project's own is removed where it was added").toContainText(
+    "そのプロジェクトのフォルダで、claude mcp remove lattice -s localで前の登録を消してから、新しいコマンドを実行してください。",
+  );
+  await regenerateProject.getByRole("button", { name: "キャンセル" }).click();
 
   await app.getByLabel("新しい登録").fill("claude code");
   await register.click();
