@@ -411,6 +411,11 @@ test("agent registrations copy commands for all of Claude Code or one project, k
   await removeAll.getByRole("button", { name: "削除", exact: true }).click();
   await expect(app.getByText("登録はまだありません")).toBeVisible();
   await expect(scope, "free for all of Claude Code again").toHaveValue("user");
+  await scope.selectOption("local");
+  await app.getByLabel("新しい登録").fill("Notes");
+  await register.click();
+  await expect(row("Notes"), "the scope picked, not the default").toContainText("1つのプロジェクト");
+  await expect(scope, "the next one starts from the default again").toHaveValue("user");
 
   await app.getByLabel("MCPサーバーを動かす").uncheck();
   await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "enable", on: false } });
