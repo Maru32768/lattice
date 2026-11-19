@@ -75,6 +75,18 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await expect(list(app).locator(".chip.on .chip-body")).toHaveText(`タグ${second}`);
 });
 
+test("a click on a tag leaves every row where it was, also when the chosen tags first show", async ({ app }) => {
+  await openFilter(app);
+  const pv = filter(app);
+  const third = pv.getByRole("option").nth(2);
+  const label = (await third.locator(".opt-l").textContent())!;
+  const y = (await third.boundingBox())!.y;
+  await third.click();
+  await expect(pv.getByRole("button", { name: `${label}を解除` })).toBeVisible();
+  await expect(third.locator(".opt-l")).toHaveText(label);
+  expect((await third.boundingBox())!.y, "the next click at the same place hits the same tag").toBe(y);
+});
+
 test("Tab completes the search to the highlighted tag, and Enter then toggles that tag, also one outside the set", async ({ app }) => {
   const other = ARTICLES.find((a) => !a.tags.includes("kafka"))!;
   await app.evaluate(async (id) => {

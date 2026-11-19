@@ -60,7 +60,6 @@ export function PickList<O extends PickOption>({
   empty,
   mono,
   head,
-  above,
   children,
 }: {
   /** The listbox's name. */
@@ -87,8 +86,6 @@ export function PickList<O extends PickOption>({
   mono?: boolean;
   /** In the head, under the search field. */
   head?: ReactNode;
-  /** Between the head and the list. */
-  above?: ReactNode;
   /** Under the list. */
   children?: ReactNode;
 }) {
@@ -238,7 +235,6 @@ export function PickList<O extends PickOption>({
         </label>
         {head}
       </div>
-      {above}
       {open ? (
         <Virtuoso
           ref={list}

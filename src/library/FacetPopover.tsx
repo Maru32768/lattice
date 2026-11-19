@@ -92,26 +92,24 @@ function TagFilter({ facets, onFacets, base, all, anchor, onClose }: Props) {
             </div>
           )
         }
-        above={
-          !querying &&
-          selected.length > 0 && (
-            <>
-              <div className="ph">
-                {t("facetPopover.selected")}
-                <span>{selected.length}</span>
-              </div>
-              <div className="pv-chips">
-                {selected.map((tag) => (
-                  <button key={tag} className="chip on mono" onClick={() => pick(tag)} aria-label={t("facetPopover.unselect", { tag })}>
-                    {tag}
-                    <Icon name="x" size="sm" />
-                  </button>
-                ))}
-              </div>
-            </>
-          )
-        }
       >
+        {/* Under the list: above it, the first pick and every new line of chips would move the rows under the pointer. */}
+        {!querying && selected.length > 0 && (
+          <>
+            <div className="ph">
+              {t("facetPopover.selected")}
+              <span>{selected.length}</span>
+            </div>
+            <div className="pv-chips">
+              {selected.map((tag) => (
+                <button key={tag} className="chip on mono" onClick={() => pick(tag)} aria-label={t("facetPopover.unselect", { tag })}>
+                  {tag}
+                  <Icon name="x" size="sm" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <div className="pv-foot hints">
           {querying ? (
             <>
