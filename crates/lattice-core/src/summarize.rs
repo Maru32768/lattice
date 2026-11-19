@@ -388,7 +388,7 @@ mod tests {
         let reply = json!({
             "summary": [
                 {"text": " 1,129件のテストが3.9秒で終わる。 ", "sources": [1, 1001, 2000, 1, 0, 9999, -2, 2.5, "2", 2.0]},
-                {"text": "2.5倍速い。", "sources": []},
+                {"text": " 2.5倍速い。", "sources": []},
                 {"text": " ", "sources": [1]}
             ],
             "key_points": [{"text": "2,000件のblock", "sources": [2]}, {"text": "", "sources": [2]}]
