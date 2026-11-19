@@ -303,3 +303,20 @@ test("closing a facet popover returns focus to its chip, also after the first pi
   await expect(pv, "the replaced chip still toggles its popover closed").toBeHidden();
   await expect(list(app).getByRole("button", { name: "ジャンル", exact: true })).toBeFocused();
 });
+
+test("another dimension's chip pressed while a filter is open opens its filter under that chip", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await list(app).getByRole("button", { name: "重要度", exact: true }).click();
+  await expect(app.getByRole("dialog", { name: "重要度で絞り込む" })).toBeInViewport();
+  const chip = list(app).getByRole("button", { name: "ジャンル", exact: true });
+  await chip.click();
+  const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
+  await expect(pv).toBeInViewport();
+  await expect
+    .poll(async () => {
+      const c = (await chip.boundingBox())!;
+      const p = (await pv.boundingBox())!;
+      return { gap: Math.round(p.y - c.y - c.height), dx: Math.round(p.x - c.x) };
+    })
+    .toEqual({ gap: 4, dx: 0 });
+});
