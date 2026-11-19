@@ -568,15 +568,24 @@ mod tests {
             mark_stale(&s, &mut view).unwrap();
             view.summary.unwrap().stale
         };
-        let (a, b) = ("Write skew happens when two transactions read overlapping data.", "Serializable snapshot isolation detects it at commit time.");
-        let id = fetch(&format!("<p>{a}</p><p>{b}</p>"));
+        let (a, b, c) = (
+            "Write skew happens when two transactions read overlapping data.",
+            "Serializable snapshot isolation detects it at commit time.",
+            "It aborts one of the two transactions.",
+        );
+        let id = fetch(&format!("<p>{a}</p><p>{b}</p><p>{c}</p>"));
         let src = s.summary_source(id).unwrap().unwrap();
-        let items = Items { summary: vec![item("SSIはwrite skewを防ぐ。", &[src.block_ids[1]], &[])], key_points: vec![] };
+        let ids = &src.block_ids;
+        let items = Items {
+            summary: vec![item("SIはwrite skewを許す。", &[ids[0]], &[])],
+            key_points: vec![item("SSIは片方を中断する", &[ids[0], ids[1]], &[])],
+        };
         s.insert_summary(id, SUMMARY_TYPE, &format_summary(&items), Some(&items), &src.content_hash, "fake", None, PROMPT_VERSION).unwrap();
         assert!(!stale(id));
-        fetch(&format!("<p>{a} {b}</p>"));
-        assert_eq!(s.summary_source(id).unwrap().unwrap().content_hash, src.content_hash, "the same text in one paragraph");
-        assert!(stale(id), "the cited block is gone");
+        fetch(&format!("<p>{a}</p><p>{b} {c}</p>"));
+        let now = s.summary_source(id).unwrap().unwrap();
+        assert_eq!((now.content_hash, now.block_ids[0]), (src.content_hash.clone(), ids[0]), "the same text, the first paragraph kept");
+        assert!(stale(id), "a key point cites a block that is gone, though another it cites is kept");
     }
 
     #[test]
