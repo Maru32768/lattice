@@ -277,7 +277,13 @@ fn superscript(base: &Url, node: &NodeRef, out: &mut Vec<Inline>) {
     let mut inner = Vec::new();
     collect_children(base, node, &mut inner);
     let raise = inner.iter().flat_map(|i| inline_text(i).chars()).all(raisable);
-    let lift = |v: String| if raise { raised(&v) } else { v };
+    let lift = |v: String| {
+        if raise {
+            raised(&v)
+        } else {
+            v
+        }
+    };
     for i in inner {
         match i {
             Inline::Text { v } => push_text(out, &lift(v)),
@@ -296,7 +302,11 @@ fn text_of(node: &NodeRef) -> String {
             out.push_str(&child.text());
         } else if child.has_name("sup") {
             let t = text_of(&child);
-            out.push_str(&if t.chars().all(raisable) { raised(&t) } else { t });
+            out.push_str(&if t.chars().all(raisable) {
+                raised(&t)
+            } else {
+                t
+            });
         } else if child.is_element() {
             out.push_str(&text_of(&child));
         }
