@@ -31,7 +31,6 @@ struct Running {
 #[ts(export)]
 pub struct McpStatus {
     enabled: bool,
-    running: bool,
     error: Option<String>,
     /// Running on a stand-in library because the real one could not be opened: nothing is served.
     fell_back: bool,
@@ -77,18 +76,12 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
 }
 
 async fn status(mcp_server: &McpServer, app: &App, loc: &Location) -> Result<McpStatus, String> {
-    let running = mcp_server.running.lock().await;
+    let error = mcp_server.running.lock().await.error.clone();
     let registrations = mcp::registrations(&app.store)?
         .into_iter()
         .map(|r| McpRegistration { command: mcp_http::add_command(&r.token), id: r.id, name: r.name, role: r.role })
         .collect();
-    Ok(McpStatus {
-        enabled: mcp::enabled(&app.store)?,
-        running: running.server.is_some(),
-        error: running.error.clone(),
-        fell_back: loc.warning.is_some(),
-        registrations,
-    })
+    Ok(McpStatus { enabled: mcp::enabled(&app.store)?, error, fell_back: loc.warning.is_some(), registrations })
 }
 
 #[tauri::command]

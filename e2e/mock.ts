@@ -185,7 +185,7 @@ const store = {
     fell_back: false,
   } as MobileStatus,
   mobileToken: "token",
-  mcp: { enabled: false, running: false, error: null, fell_back: false, registrations: [] } as McpStatus,
+  mcp: { enabled: false, error: null, fell_back: false, registrations: [] } as McpStatus,
   /** Counts tokens made, so that each one differs. */
   mcpTokens: 0,
   tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
@@ -1053,7 +1053,7 @@ export const handlers = {
     const regs = store.mcp.registrations;
     switch (edit.kind) {
       case "enable":
-        store.mcp = { ...store.mcp, enabled: edit.on, running: edit.on };
+        store.mcp = { ...store.mcp, enabled: edit.on };
         break;
       case "create": {
         const name = edit.name.trim();
