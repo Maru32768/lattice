@@ -75,6 +75,8 @@ export type * from "./SearchResult";
 export type * from "./Settings";
 export type * from "./SnapshotSettings";
 export type * from "./SnapshotStatus";
+export type * from "./SummaryItem";
+export type * from "./SummaryItems";
 export type * from "./SummaryView";
 export type * from "./TagCount";
 export type * from "./TailscaleStatus";

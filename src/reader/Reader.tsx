@@ -1,6 +1,7 @@
-import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type VocabCapture } from "../api";
+import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type SummaryItem, type VocabCapture } from "../api";
+import { citeNumbers, gapAfter, markNumbers, unverifiedNumbers } from "./summary";
 import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
@@ -648,11 +649,54 @@ function TagAdder({ onAdd }: { onAdd: (name: string) => void }) {
   );
 }
 
+/** A sentence or key point of a summary: the numbers the article lacks marked, then a button to each block it cites. */
+function SummaryText({ item, cites, view, onSource }: { item: SummaryItem; cites: Map<number, number>; view: ArticleView; onSource: (block: number) => void }) {
+  const t = useT();
+  return (
+    <>
+      {markNumbers(item).map((p, i) =>
+        p.mark ? (
+          <mark key={i} className="unverified" title={t("reader.summaryUnverified")}>
+            {p.text}
+          </mark>
+        ) : (
+          p.text
+        ),
+      )}
+      {item.block_ids
+        .filter((id) => cites.has(id))
+        .map((id) => (
+          <button
+            key={id}
+            className="cite"
+            onClick={() => onSource(id)}
+            title={view.blocks.find((b) => b.id === id)?.text.slice(0, 200)}
+            aria-label={t("reader.summaryCite", { n: cites.get(id)! })}
+          >
+            {cites.get(id)}
+          </button>
+        ))}
+    </>
+  );
+}
+
 /**
  * The summary row, opened to the full text on a click or the summary shortcut (`request` grows), closed at first
- * unless `initialOpen` (the Page view's strip shown by the shortcut).
+ * unless `initialOpen` (the Page view's strip shown by the shortcut). `onSource` shows a block the summary cites.
  */
-export function Summary({ view, onSummarize, request, initialOpen }: { view: ArticleView; onSummarize: () => void; request?: number; initialOpen?: boolean }) {
+export function Summary({
+  view,
+  onSummarize,
+  onSource,
+  request,
+  initialOpen,
+}: {
+  view: ArticleView;
+  onSummarize: () => void;
+  onSource: (block: number) => void;
+  request?: number;
+  initialOpen?: boolean;
+}) {
   const t = useT();
   const [open, setOpen] = useState(initialOpen === true);
   // Only a request made while mounted: the Reader remounts per article, and other tabs see it drop to 0.
@@ -672,6 +716,9 @@ export function Summary({ view, onSummarize, request, initialOpen }: { view: Art
       .split("\n")
       .map((l) => l.replace(/^\s*[-・*]\s*/, "").trim())
       .find(Boolean) ?? "";
+  const items = s?.items;
+  const cites = items ? citeNumbers(items, view.blocks) : new Map<number, number>();
+  const unverified = items ? unverifiedNumbers(items) : [];
   return (
     <section className="summary" aria-label={t("reader.summary")}>
       {s ? (
@@ -694,7 +741,32 @@ export function Summary({ view, onSummarize, request, initialOpen }: { view: Art
       )}
       {s && open && (
         <div className="summary-body">
-          <p>{s.text}</p>
+          {items ? (
+            <>
+              <p>
+                {items.summary.map((item, i) => (
+                  <Fragment key={i}>
+                    {gapAfter(items.summary[i - 1]?.text)}
+                    <SummaryText item={item} cites={cites} view={view} onSource={onSource} />
+                  </Fragment>
+                ))}
+              </p>
+              {items.key_points.length > 0 && (
+                <ul className="summary-points">
+                  {items.key_points.map((item, i) => (
+                    <li key={i}>
+                      <SummaryText item={item} cites={cites} view={view} onSource={onSource} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {unverified.length > 0 && (
+                <p className="summary-unverified">{t("reader.summaryUnverifiedList", { numbers: unverified.join(t("reader.summaryNumberSeparator")) })}</p>
+              )}
+            </>
+          ) : (
+            <p>{s.text}</p>
+          )}
           <div className="summary-meta">
             <span>{t("reader.generated", { date: new Date(s.created_at).toLocaleDateString(locale(t.lang), { month: "2-digit", day: "2-digit" }) })}</span>
             {running ? (
@@ -1094,7 +1166,9 @@ export function Reader({
                 </div>
               </div>
             )}
-            {!failed && <Summary view={view} onSummarize={act.onSummarize} request={summaryRequest} />}
+            {!failed && (
+              <Summary view={view} onSummarize={act.onSummarize} onSource={(b) => act.onFocusBlock(b, t("reader.summarySource"))} request={summaryRequest} />
+            )}
             {a.from_feed && (
               <div className="note warn center thin">
                 <span className="grow">

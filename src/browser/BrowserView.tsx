@@ -523,7 +523,7 @@ ${t("browserView.addToGroup", { name: saveGroup })}`
       {/* A strip above the page; the webview shrinks to the placeholder below it. */}
       {summary && shown && !failedOf(shown) && (
         <div className="page-summary">
-          <Summary view={shown} onSummarize={act!.onSummarize} initialOpen={summaryByKey} />
+          <Summary view={shown} onSummarize={act!.onSummarize} onSource={(b) => act!.onFocusBlock(b, t("reader.summarySource"))} initialOpen={summaryByKey} />
         </div>
       )}
       <div className="doc-body">

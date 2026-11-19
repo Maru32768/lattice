@@ -62,6 +62,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00041_article_auto_title.sql"),
     include_str!("../db/migrations/00042_chat_thread_llm.sql"),
     include_str!("../db/migrations/00043_content_hash_of_what_a_summary_reads.sql"),
+    include_str!("../db/migrations/00044_summary_items.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -320,9 +321,11 @@ pub struct JobRow {
 #[ts(export)]
 pub struct SummaryView {
     pub text: String,
+    /// The sentences and key points with the blocks they cite; `None` for a summary made before them (`summary-v3`).
+    pub items: Option<crate::summarize::Items>,
     pub created_at: String,
     /// The article was re-extracted with different content since this summary was made
-    /// (`summarize::mark_stale` adds changed instructions).
+    /// (`summarize::mark_stale` adds changed instructions and cited blocks the article no longer has).
     pub stale: bool,
     #[serde(skip)]
     pub prompt_version: String,
@@ -347,6 +350,8 @@ pub struct SummarySource {
     pub content_hash: String,
     /// (kind, text) of every block but images, in order; `summarize` picks what it sends.
     pub blocks: Vec<(String, String)>,
+    /// The id of each of `blocks`.
+    pub block_ids: Vec<i64>,
 }
 
 /// (source_hash, units, provider, model) of one cached translation.
@@ -673,9 +678,10 @@ impl Store {
         else {
             return Ok(None);
         };
-        let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
-        let blocks = st.query_map([article_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_>>()?;
-        Ok(Some(SummarySource { title, content_hash, blocks }))
+        let mut st = c.prepare("SELECT id, kind, text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
+        let rows: Vec<(i64, String, String)> = st.query_map([article_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_>>()?;
+        let (block_ids, blocks) = rows.into_iter().map(|(id, kind, text)| (id, (kind, text))).unzip();
+        Ok(Some(SummarySource { title, content_hash, blocks, block_ids }))
     }
 
     #[allow(clippy::too_many_arguments, reason = "the columns of one row")]
@@ -684,14 +690,15 @@ impl Store {
         article_id: i64,
         kind: &str,
         text: &str,
+        items: Option<&crate::summarize::Items>,
         source_hash: &str,
         provider: &str,
         model: Option<&str>,
         prompt_version: &str,
     ) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO summaries (article_id, type, text, source_hash, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![article_id, kind, text, source_hash, provider, model, prompt_version],
+            "INSERT INTO summaries (article_id, type, text, items, source_hash, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![article_id, kind, text, items.map(json), source_hash, provider, model, prompt_version],
         )?;
         Ok(())
     }
@@ -1121,10 +1128,10 @@ impl Store {
         let jobs = st.query_map([id], job_row)?.collect::<Result<_>>()?;
         let summary = c
             .query_row(
-                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash, s.prompt_version FROM summaries s JOIN articles a ON a.id = s.article_id
+                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash, s.prompt_version, s.items FROM summaries s JOIN articles a ON a.id = s.article_id
                  WHERE s.article_id = ?1 AND s.type = 'normal' ORDER BY s.id DESC LIMIT 1",
                 [id],
-                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
+                |r| Ok(SummaryView { text: r.get(0)?, items: opt_json_col(r, 4)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
         let note = c.query_row("SELECT body FROM article_notes WHERE article_id = ?1", [id], |r| r.get(0)).optional()?;
@@ -2095,7 +2102,7 @@ mod tests {
         s.add_tag(a, "mine").unwrap();
         s.add_tag(a, "both").unwrap();
         s.add_tag(b, "both").unwrap();
-        s.insert_summary(a, "normal", "要約", "h", "p", None, "v").unwrap();
+        s.insert_summary(a, "normal", "要約", None, "h", "p", None, "v").unwrap();
         s.enqueue_job("translate", a, "{}", "translate:a").unwrap();
         crate::images::save(&s, a, "https://a.dev/x.png", "image/png", b"\x89PNG only-a").unwrap();
         s.exec_for_test(&format!(
