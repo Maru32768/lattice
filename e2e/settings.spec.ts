@@ -323,6 +323,10 @@ test("an agent registration copies its command and changes role, and a new token
   await app.getByLabel("MCPサーバーを動かす").check();
   await expect.poll(() => callsOf(app, "mcp_edit")).toEqual([{ edit: { kind: "enable", on: true } }]);
   await expect(app.getByText("登録はまだありません")).toBeVisible();
+  await expect(
+    app.getByText("どちらのロールでも、記事、グループ、フィード、フォルダは削除できません。"),
+    "what each role may do, before one is picked",
+  ).toBeVisible();
 
   const register = app.getByRole("button", { name: "登録する" });
   await expect(register, "a name is needed").toBeDisabled();
