@@ -1395,7 +1395,7 @@ export const en = {
   "mcpSettings.registrationsDesc":
     "Make a registration for each agent, press Copy command, and run the copied Claude Code command in a terminal. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
   "mcpSettings.rolesDesc":
-    "Read lets an agent read articles and feeds and ask the AI about them; each question spends your AI provider's usage and stays in Chat as a conversation. Edit also lets it save URLs, tag, mark read and favorite, and change titles, collections, genres and feeds. Neither role can delete articles, collections, feeds or folders.",
+    "Read lets an agent read articles and feeds and ask the AI about them; each question costs AI usage and stays in Chat as a conversation. Edit also lets it save URLs, subscribe to feeds, tag, mark read and favorite, and change titles, collections, genres and feeds. The articles it saves, and those from feeds it subscribes to, cost AI usage too, for auto-classification and the like. Neither role can delete articles, collections, feeds or folders.",
   "mcpSettings.none": "No registrations yet",
   "mcpSettings.new": "New registration",
   "mcpSettings.role": "Role",
