@@ -101,6 +101,8 @@ test("the list opens on the selected option, or on the first enabled one when se
   assert.equal(defaultRow(ROWS, "wal", "t3"), 1, "a query starts at the first match");
   assert.equal(defaultRow(pickRows([{ label: "", options: [{ key: "a", label: "a", disabled: true }] }]), "", "a"), -1);
   assert.equal(defaultRow(ROWS, "", undefined), 1, "a multiple choice opens at the top");
+  assert.equal(defaultRow(ROWS, " #WAL(1件) ", "t1"), 7, "a query naming an option starts on it, wherever it is listed");
+  assert.equal(defaultRow(ROWS, "#rustls(1件)", undefined), 1, "but not on a disabled one");
 });
 
 test("a key's label is its first option's, disabled or not", () => {

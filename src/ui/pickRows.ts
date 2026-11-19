@@ -77,11 +77,12 @@ export function stepRow(rows: readonly PickRow[], from: number, by: number): num
 }
 
 /**
- * With no query, the option of a single choice's `selected` when it is enabled; otherwise the first enabled option; -1
- * when none is.
+ * With a query, the first enabled option named exactly so, ignoring case; with none, a single choice's `selected`.
+ * Otherwise the first enabled option; -1 when none is.
  */
 export function defaultRow(rows: readonly PickRow[], query: string, selected: string | undefined): number {
-  const at = query.trim() || selected === undefined ? -1 : rows.findIndex((r) => enabled(r) && r.o.key === selected);
+  const ql = query.trim().toLowerCase();
+  const at = rows.findIndex((r) => enabled(r) && (ql ? r.o.label.toLowerCase() === ql : r.o.key === selected));
   return at >= 0 ? at : rows.findIndex((r) => enabled(r));
 }
 

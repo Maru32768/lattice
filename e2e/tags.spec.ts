@@ -75,15 +75,38 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await expect(list(app).locator(".chip.on .chip-body")).toHaveText(`タグ${second}`);
 });
 
-test("Tab completes the search to the highlighted tag, and Enter then toggles that tag", async ({ app }) => {
+test("Tab completes the search to the highlighted tag, and Enter then toggles that tag, also one outside the set", async ({ app }) => {
+  const other = ARTICLES.find((a) => !a.tags.includes("kafka"))!;
+  await app.evaluate(async (id) => {
+    const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    await invoke("add_tag", { id, name: "stream" });
+    await window.__e2e.emit("article-changed", id);
+  }, other.id);
   await openFilter(app);
   const pv = filter(app);
   const search = pv.getByRole("combobox");
-  await search.fill("postg");
+  await search.fill("kafk");
   await app.keyboard.press("Tab");
-  await expect(search).toHaveValue("postgres");
+  await expect(search).toHaveValue("kafka");
   await app.keyboard.press("Enter");
-  await expect(listCount(app)).toHaveText(`${postgres} / ${all}`);
+  await expect(list(app).locator(".chip.on .chip-body")).toHaveText("タグkafka");
+
+  // "streaming" is in the set of kafka articles and "stream" is not: a new search lists it first.
+  const active = pv.locator("[role=option].act .opt-l");
+  await expect(async () => {
+    await search.fill("");
+    await search.fill("strea");
+    await expect(pv.locator(".opt-l", { hasText: /^stream$/ })).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await expect(active).toHaveText("streaming");
+  await app.keyboard.press("ArrowDown");
+  await expect(active).toHaveText("stream");
+  await app.keyboard.press("Tab");
+  await expect(search).toHaveValue("stream");
+  await expect(active, "the search names a tag: the highlight starts on it, not on the first match").toHaveText("stream");
+  await app.keyboard.press("Enter");
+  await expect(list(app).locator(".chip.on .chip-body")).toHaveText("タグkafka + stream");
+  await expect(listCount(app)).toHaveText(`0 / ${all}`);
 });
 
 test("both tag popovers list thousands of tags, draw only those in view, and name the highlighted one only while it is drawn", async ({ app }) => {

@@ -226,8 +226,8 @@ export function facetBase(scoped: ArticleRow[], f: Facets, dim: Dim): ArticleRow
 
 /**
  * The tag filter's sections for `q`, with `counts` the set's articles per tag (`facetBase`). With no query, every tag
- * in the set, by count. With a query, the matching tags in the set and then those outside it, each starting with the
- * tag named `q` and the tags that start with it.
+ * in the set, by count. With a query, the matching tags in the set and then those outside it, each with the tags that
+ * start with it first.
  */
 export function tagSections(tags: readonly string[], counts: ReadonlyMap<string, number>, q: string, t: T): PickSection[] {
   const n = (tag: string) => counts.get(tag) ?? 0;
@@ -237,10 +237,7 @@ export function tagSections(tags: readonly string[], counts: ReadonlyMap<string,
     const inSet = tags.filter((x) => n(x) > 0).sort((a, b) => n(b) - n(a));
     return inSet.length ? [{ label: t("facetPopover.inSet"), note: t("facetPopover.count"), options: inSet.map(opt) }] : [];
   }
-  const rank = (x: string) => {
-    const l = x.toLowerCase();
-    return l === ql ? 0 : l.startsWith(ql) ? 1 : 2;
-  };
+  const rank = (x: string) => (x.toLowerCase().startsWith(ql) ? 0 : 1);
   const hit = tags.filter((x) => x.toLowerCase().includes(ql));
   const inSet = hit.filter((x) => n(x) > 0).sort((a, b) => rank(a) - rank(b) || n(b) - n(a));
   const outSet = hit.filter((x) => n(x) === 0).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));

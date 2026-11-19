@@ -160,10 +160,10 @@ test("the tag filter lists every tag in the set by count, and a search the tags 
   assert.deepEqual(
     shape("RUST"),
     [
-      ["この集合に含まれる", "前方一致 → 部分一致", ["rust", "rustls", "trust"]],
+      ["この集合に含まれる", "前方一致 → 部分一致", ["rustls", "rust", "trust"]],
       ["集合外(選ぶと0件)", "2", ["Rust-Async", "crust"]],
     ],
-    "the tag named so first, then those starting so, then the rest, so Tab then Enter picks the completed tag",
+    "those starting so first, by count, then the rest",
   );
   assert.deepEqual(shape("wal"), [["この集合に含まれる", "前方一致 → 部分一致", ["wal"]]], "a section with no tag is left out");
   assert.deepEqual(shape("none of these"), []);
