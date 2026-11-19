@@ -150,12 +150,13 @@ test("after the first pick replaced the tag chip, a narrower window puts the fil
   await pv.getByRole("option").nth(2).click();
   const chip = list(app).locator(".chip.on", { hasText: "タグ" });
   await expect(chip).toBeVisible();
-  await app.setViewportSize({ width: 1300, height: 880 });
   const under = async () => {
     const c = (await chip.boundingBox())!;
     const p = (await pv.boundingBox())!;
     return { gap: Math.round(p.y - c.y - c.height), dx: Math.round(p.x - c.x) };
   };
+  expect(await under(), "the chip of now is elsewhere, the filter stayed where it opened").not.toEqual({ gap: 4, dx: 0 });
+  await app.setViewportSize({ width: 1300, height: 880 });
   await expect.poll(under).toEqual({ gap: 4, dx: 0 });
 });
 
