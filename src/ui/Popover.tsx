@@ -215,6 +215,19 @@ export function Popover({
   const w = Math.min(width, (pane?.clientWidth ?? window.innerWidth) - 16);
   const [at] = useState(() => anchorPlace(anchor, pane));
   useLayoutEffect(() => at.follow(anchor), [at, anchor]);
+  useLayoutEffect(() => {
+    // Chromium scrolls the content to hold what is at the top of the view in place as a pick rewraps or adds what is
+    // around it (scroll anchoring), and the popover would follow that as the reader's scroll.
+    const box = scroller(at.contextElement);
+    if (!box) {
+      return;
+    }
+    const was = box.style.overflowAnchor;
+    box.style.overflowAnchor = "none";
+    return () => {
+      box.style.overflowAnchor = was;
+    };
+  }, [at]);
   return (
     <PV.Root open onOpenChange={(o) => !o && onClose()}>
       <PV.Anchor virtualRef={{ current: at }} />

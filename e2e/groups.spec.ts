@@ -7,6 +7,11 @@ const [mvcc, rust, empty] = GROUPS;
 const members = (id: number) => ARTICLES.filter((a) => a.groups.includes(id));
 const nav = (app: Page) => app.locator(".nav");
 const picker = (app: Page) => app.getByRole("dialog", { name: "グループ" });
+/** Two frames: a scroll the layout made has reached floating-ui, which places the popover on the next one. */
+const frames = async (app: Page) => {
+  await app.evaluate(() => new Promise(requestAnimationFrame));
+  await app.evaluate(() => new Promise(requestAnimationFrame));
+};
 
 test("a sidebar group is a scope; groups are renamed and deleted there (articles stay)", async ({ app }) => {
   await expect(navItem(app, mvcc.name).locator(".n")).toHaveText(String(members(mvcc.id).length));
@@ -124,6 +129,32 @@ test("the Reader's group picker opens under its chip, and moves with it when the
   await expect.poll(under, "and the picker with it").toEqual(right);
 });
 
+test("picks that rewrap the Reader's chips at the top of the view leave its group picker where it was", async ({ app }) => {
+  await app.setViewportSize({ width: 900, height: 400 });
+  await list(app)
+    .locator(".row", { hasText: members(mvcc.id)[0].title! })
+    .click();
+  const add = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
+  // What is at the top of the view is what Chromium holds in place as the chips above and around it rewrap.
+  await add.evaluate((el) => {
+    const box = el.closest(".doc-scroll")!;
+    box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  });
+  await add.click();
+  await expect(picker(app)).toBeInViewport();
+  const { x, y } = (await picker(app).boundingBox())!;
+  const before = (await add.boundingBox())!.y;
+  for (const g of [rust, empty]) {
+    await picker(app)
+      .getByRole("option", { name: new RegExp(g.name) })
+      .click();
+    await expect(app.locator(".art-chips .chip", { hasText: g.name })).toBeVisible();
+    await frames(app);
+    expect((await picker(app).boundingBox())!, `picking ${g.name} leaves the picker where it was`).toMatchObject({ x, y });
+  }
+  expect((await add.boundingBox())!.y, "the picks moved the ＋ button down a line").toBeGreaterThan(before);
+});
+
 test("the palette's この記事をグループに追加… opens the picker in view far down the article, and closing it puts the article back", async ({ app }) => {
   await app.setViewportSize({ width: 1440, height: 400 });
   const a = members(mvcc.id)[0];
@@ -161,7 +192,7 @@ test("the palette's この記事をグループに追加… opens the picker in 
   expect(await place(), "and its reading place kept").toEqual(kept);
 });
 
-test("a pick that takes the row out of the list, scrolled to its end, leaves the group picker where it was", async ({ app }) => {
+test("picks that take the row out of the list, scrolled to its end, and bring it back leave the group picker where it was", async ({ app }) => {
   await app.setViewportSize({ width: 1440, height: 420 });
   await navItem(app, mvcc.name).click();
   const body = list(app).locator(".list-body");
@@ -179,6 +210,13 @@ test("a pick that takes the row out of the list, scrolled to its end, leaves the
   await expect(list(app).locator(".row", { hasText: title })).toHaveCount(0);
   await expect.poll(() => body.evaluate((e) => e.scrollTop), "the shorter list pulls its scroll back").toBeLessThan(top);
   expect((await picker(app).boundingBox())!, "that is the pick's doing, not the reader's: the picker stays").toMatchObject({ x, y });
+
+  await picker(app)
+    .getByRole("option", { name: new RegExp(mvcc.name) })
+    .click();
+  await expect(list(app).locator(".row", { hasText: title })).toHaveCount(1);
+  await frames(app);
+  expect((await picker(app).boundingBox())!, "and the row coming back leaves it there too").toMatchObject({ x, y });
 });
 
 test("an empty scope shows no filters, sort or Select", async ({ app }) => {
