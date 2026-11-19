@@ -382,7 +382,7 @@ mod tests {
         let ids: Vec<i64> = (0..2000).map(|i| 100 + i).collect();
         let reply = json!({
             "summary": [
-                {"text": " 1,129件のテストが3.9秒で終わる。 ", "sources": [1, 1001, 2000, 1, 0, 9999]},
+                {"text": " 1,129件のテストが3.9秒で終わる。 ", "sources": [1, 1001, 2000, 1, 0, 9999, -2, 2.5, "2", 2.0]},
                 {"text": "2.5倍速い。", "sources": []},
                 {"text": " ", "sources": [1]}
             ],
@@ -395,7 +395,7 @@ mod tests {
                 summary: vec![item("1,129件のテストが3.9秒で終わる。", &[100, 2099], &[]), item("2.5倍速い。", &[], &["2.5"])],
                 key_points: vec![item("2,000件のblock", &[101], &["2,000"])],
             },
-            "a label left out (1001) or out of range (0, 9999) is dropped, a repeated one kept once, a blank item dropped"
+            "a label left out (1001), out of range (0, 9999) or not a positive integer (-2, 2.5, \"2\", 2.0) is dropped, a repeated one kept once, a blank item dropped"
         );
         assert_eq!(req.parse(&json!({"summary": [{"text": " ", "sources": []}], "key_points": [{"text": "x", "sources": []}]}), &ids), None);
         assert_eq!(req.parse(&json!({"summary": "WALを使う。", "key_points": []}), &ids), None, "the old shape is malformed");
