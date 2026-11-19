@@ -359,6 +359,7 @@ test("an agent registration copies its command and changes role, and a new token
   await app.getByLabel("新しい登録").fill("claude code");
   await register.click();
   await expect(app.getByRole("alert")).toHaveText("「claude code」という登録はもうあります");
+  await expect(app.getByLabel("新しい登録"), "the name stays to be changed").toHaveValue("claude code");
 
   await app.getByRole("button", { name: "削除", exact: true }).click();
   const remove = app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" });
