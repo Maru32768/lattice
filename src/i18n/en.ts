@@ -1405,7 +1405,7 @@ export const en = {
   "mcpSettings.copied": "Copied",
   "mcpSettings.regenerate": "Regenerate token",
   "mcpSettings.confirmRegenerate": "Regenerate the token of “{name}”?",
-  "mcpSettings.regenerateDesc": "The current token stops working at once. Register the agent again with the new command.",
+  "mcpSettings.regenerateDesc": "The current token stops working at once. In Claude Code, remove the old registration with {remove}, then run the new command.",
   "mcpSettings.regenerateConfirm": "Regenerate",
   "mcpSettings.confirmDelete": "Delete the registration “{name}”?",
   "mcpSettings.deleteDesc": "Its token stops working at once, and agents connected with it are cut off.",

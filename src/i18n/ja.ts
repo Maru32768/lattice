@@ -1387,7 +1387,7 @@ export const ja = {
   "mcpSettings.copied": "コピーしました",
   "mcpSettings.regenerate": "トークンを作り直す",
   "mcpSettings.confirmRegenerate": "「{name}」のトークンを作り直しますか？",
-  "mcpSettings.regenerateDesc": "今のトークンはすぐに使えなくなります。新しいコマンドで、エージェントに登録し直してください。",
+  "mcpSettings.regenerateDesc": "今のトークンはすぐに使えなくなります。Claude Codeでは、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
   "mcpSettings.regenerateConfirm": "作り直す",
   "mcpSettings.confirmDelete": "登録「{name}」を削除しますか？",
   "mcpSettings.deleteDesc": "このトークンはすぐに使えなくなり、つながっているエージェントも切れます。",
