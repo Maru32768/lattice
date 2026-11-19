@@ -551,6 +551,8 @@ mod tests {
             ("1,500～2,000件", "one thousand five hundred\u{2013}two thousand rows"),
             ("20～100人", "twenty\u{2013}one hundred people"),
             ("2,100人", "twenty-one hundred people"),
+            ("20万～30万人", "between two hundred thousand and three hundred thousand users"),
+            ("100万、200万、300万人", "one million and two million and three million users"),
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
