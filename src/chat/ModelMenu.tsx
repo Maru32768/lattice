@@ -47,7 +47,7 @@ export function ModelMenu({ choice, onChange }: { choice: Choice; onChange: (c: 
     : t("chatPane.llmDefaultShort");
   return (
     <Menu
-      className="llm-btn"
+      className="btn sm ghost llm-btn"
       label={t("chatPane.llmLabel")}
       title={`${t("chatPane.llmLabel")}: ${shown}`}
       align="right"

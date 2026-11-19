@@ -435,10 +435,9 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 .chat-f textarea { display: block; width: 100%; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 8px; background: var(--doc); color: var(--ink); font-size: 13.5px; line-height: 1.6; resize: none; }
 .chat-f-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--ink3); }
 .chat-f-row > span:has(> .llm-btn) { min-width: 0; }
-.chat-f-row .input { flex: 1 1 0; min-width: 6em; height: 26px; font-size: 12px; }
-.llm-btn { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 220px; height: 26px; padding: 0 6px; border: 0; border-radius: 5px; background: none; font-size: 12px; color: var(--ink2); }
-.llm-btn:hover, .llm-btn[data-state="open"] { background: var(--sunken); color: var(--ink); }
-.llm-btn .ico { color: var(--ink3); }
+.chat-f-row .input { flex: 1 1 0; min-width: 6em; height: 24px; font-size: 12px; }
+.llm-btn { min-width: 0; max-width: 220px; }
+.llm-btn[data-state="open"] { background: var(--hover); }
 .vim-mode { font: 10.5px/18px var(--mono); letter-spacing: .04em; }
 .vim-mode:not(.run) { border: 1px solid var(--line2); }
 /* The Vim editor (src/vim/VimEditor.tsx), dressed as the textarea it stands in for. */
