@@ -663,6 +663,7 @@ mod tests {
 
     #[tokio::test]
     async fn each_call_shows_how_it_ended_newest_first_and_only_the_latest_are_kept() {
+        assert_eq!(MAX_CALLS, 20, "the settings screen says the latest 20");
         let f = fixture();
         let (reader, editor) = (f.register("reader", Role::Read), f.register("editor", Role::Edit));
         let id = f.saved("https://example.com/a");
