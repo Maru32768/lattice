@@ -423,6 +423,8 @@ mod tests {
         let refused = |port, url: &str| save_settings(&s, &MobileSettings { mode: ServerMode::Lan, port, public_url: url.into() }).is_err();
         assert!(refused(80, ""));
         assert!(refused(crate::mcp::PORT, ""), "the MCP server's: a tunnel to the phone's port would reach it");
+        let local = MobileSettings { mode: ServerMode::Local, port: crate::mcp::PORT, public_url: String::new() };
+        assert!(save_settings(&s, &local).is_err(), "a tunnel reaches a port on localhost too");
         for url in ["ftp://pc", "pc.example", "https://pc/path", "https://user:pw@pc", "https://pc?x=1", "https://pc#t=1", "javascript:alert(1)"] {
             assert!(refused(8787, url), "{url}");
         }
