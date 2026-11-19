@@ -700,7 +700,7 @@ something those blocks do not say, even when another part of the article says it
 struct CiteVerdict {
     text: String,
     /// Indices into the case's blocks.
-    blocks: Vec<usize>,
+    blocks: Vec<i64>,
     supported: bool,
 }
 
@@ -773,11 +773,7 @@ async fn cites(dir: &Path, label: &str, judge: &impl LlmProvider, limit: usize) 
         }
         let c = judge.complete_json(&system(CITES_RULES), &cites_input(case, &citing), &cites_schema()).await.map_err(|e| e.to_string())?;
         let verdicts = parse_cites(c.value, citing.len())?;
-        let items = citing
-            .iter()
-            .zip(verdicts)
-            .map(|(i, supported)| CiteVerdict { text: i.text.clone(), blocks: i.block_ids.iter().map(|&b| b as usize).collect(), supported })
-            .collect();
+        let items = citing.iter().zip(verdicts).map(|(i, supported)| CiteVerdict { text: i.text.clone(), blocks: i.block_ids.clone(), supported }).collect();
         Ok(CiteCheck { provider: c.provider, model: c.model, items })
     })
     .await
@@ -892,7 +888,7 @@ struct Row {
 
 /// The sums of the pairs present, or `None` when none is.
 fn total<'a>(pairs: impl Iterator<Item = Option<&'a (usize, usize)>>) -> Option<(usize, usize)> {
-    pairs.flatten().fold(None, |acc, (a, b)| Some(acc.map_or((*a, *b), |(x, y): (usize, usize)| (x + a, y + b))))
+    pairs.flatten().copied().reduce(|(x, y), (a, b)| (x + a, y + b))
 }
 
 /// `provider/model`, or the provider alone when it reported no model.
