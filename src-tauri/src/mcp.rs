@@ -77,19 +77,20 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn view(r: mcp::Registration) -> McpRegistration {
+    McpRegistration {
+        command: mcp_http::add_command(&r.token, r.scope),
+        remove: mcp_http::remove_command(r.scope),
+        id: r.id,
+        name: r.name,
+        role: r.role,
+        scope: r.scope,
+    }
+}
+
 async fn status(mcp_server: &McpServer, app: &App, loc: &Location) -> Result<McpStatus, String> {
     let error = mcp_server.running.lock().await.error.clone();
-    let registrations = mcp::registrations(&app.store)?
-        .into_iter()
-        .map(|r| McpRegistration {
-            command: mcp_http::add_command(&r.token, r.scope),
-            remove: mcp_http::remove_command(r.scope),
-            id: r.id,
-            name: r.name,
-            role: r.role,
-            scope: r.scope,
-        })
-        .collect();
+    let registrations = mcp::registrations(&app.store)?.into_iter().map(view).collect();
     Ok(McpStatus { enabled: mcp::enabled(&app.store)?, error, fell_back: loc.warning.is_some(), registrations })
 }
 
@@ -115,4 +116,19 @@ pub async fn mcp_edit(
         apply(&handle).await?;
     }
     status(&mcp_server, &app, &loc).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_registration_is_added_and_removed_in_its_own_scope() {
+        for scope in [Scope::User, Scope::Local] {
+            let shown = view(mcp::Registration { id: "r1".into(), name: "Claude Code".into(), role: Role::Read, scope, token: "t0k".into() });
+            assert_eq!(shown.scope, scope);
+            assert_eq!(shown.command, mcp_http::add_command("t0k", scope));
+            assert_eq!(shown.remove, mcp_http::remove_command(scope), "following the dialog must not remove another registration");
+        }
+    }
 }
