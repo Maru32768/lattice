@@ -77,7 +77,7 @@ pub fn edit(store: &Store, edit: &Edit) -> Result<(), String> {
                 return Err(msg!("mcp.badName", max = MAX_NAME_CHARS.to_string()));
             }
             change(store, |list| {
-                // The approval dialog for a deletion names the registration: two of one name would mislead.
+                // The settings screen tells registrations apart by name alone: each row and its role select are labelled with it.
                 if list.iter().any(|r| r.name.to_lowercase() == name.to_lowercase()) {
                     return Err(msg!("mcp.nameTaken", name = name));
                 }
