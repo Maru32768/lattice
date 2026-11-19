@@ -15,6 +15,7 @@ import {
   matches,
   scopeKey,
   scopeLabel,
+  tagSections,
   toFilter,
   toggle,
   valueLabel,
@@ -142,6 +143,30 @@ test("popover counts: own dimension removed, except tags in all mode", () => {
   );
   const any = countBy(facetBase(all, f({ tags: ["postgres"], tagMode: "any" }), "tags"), "tags");
   assert.equal(any.get("ebpf"), 1);
+});
+
+test("the tag filter lists every tag in the set by count, and a search the tags in the set before those outside it", () => {
+  const counts = new Map([
+    ["rust", 3],
+    ["rustls", 5],
+    ["trust", 9],
+    ["wal", 2],
+    ["Rust-Async", 0],
+    ["crust", 0],
+  ]);
+  const tags = [...counts.keys()];
+  const shape = (q: string) => tagSections(tags, counts, q, ja).map((s) => [s.label, s.note, s.options.map((o) => o.key)]);
+  assert.deepEqual(shape(""), [["この集合に含まれる", "件数", ["trust", "rustls", "rust", "wal"]]], "no tag left out, none outside the set");
+  assert.deepEqual(
+    shape("RUST"),
+    [
+      ["この集合に含まれる", "前方一致 → 部分一致", ["rust", "rustls", "trust"]],
+      ["集合外(選ぶと0件)", "2", ["Rust-Async", "crust"]],
+    ],
+    "the tag named so first, then those starting so, then the rest, so Tab then Enter picks the completed tag",
+  );
+  assert.deepEqual(shape("wal"), [["この集合に含まれる", "前方一致 → 部分一致", ["wal"]]], "a section with no tag is left out");
+  assert.deepEqual(shape("none of these"), []);
 });
 
 test("labels and backend filters", () => {

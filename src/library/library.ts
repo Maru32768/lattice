@@ -3,6 +3,7 @@
 import type { ArticleFilter, ArticleRow, FeedRow, FolderRow, GroupRow } from "../api.ts";
 import { feedName } from "./groups.ts";
 import type { PlainKey, T } from "../i18n/index.ts";
+import type { PickOption, PickSection } from "../ui/pickRows.ts";
 
 /** NAVIGATION layer: exactly one, chosen in the sidebar; replaces the previous one. */
 export type Scope =
@@ -221,6 +222,33 @@ export function universe(dim: Dim, all: ArticleRow[]): DimValue<Dim>[] {
 export function facetBase(scoped: ArticleRow[], f: Facets, dim: Dim): ArticleRow[] {
   const base = dim === "tags" && f.tagMode === "all" ? f : without(f, dim);
   return scoped.filter((a) => matches(a, base));
+}
+
+/**
+ * The tag filter's sections for `q`, with `counts` the set's articles per tag (`facetBase`). With no query, every tag
+ * in the set, by count. With a query, the matching tags in the set and then those outside it, each starting with the
+ * tag named `q` and the tags that start with it.
+ */
+export function tagSections(tags: readonly string[], counts: ReadonlyMap<string, number>, q: string, t: T): PickSection[] {
+  const n = (tag: string) => counts.get(tag) ?? 0;
+  const opt = (tag: string): PickOption => ({ key: tag, label: tag });
+  const ql = q.trim().toLowerCase();
+  if (!ql) {
+    const inSet = tags.filter((x) => n(x) > 0).sort((a, b) => n(b) - n(a));
+    return inSet.length ? [{ label: t("facetPopover.inSet"), note: t("facetPopover.count"), options: inSet.map(opt) }] : [];
+  }
+  const rank = (x: string) => {
+    const l = x.toLowerCase();
+    return l === ql ? 0 : l.startsWith(ql) ? 1 : 2;
+  };
+  const hit = tags.filter((x) => x.toLowerCase().includes(ql));
+  const inSet = hit.filter((x) => n(x) > 0).sort((a, b) => rank(a) - rank(b) || n(b) - n(a));
+  const outSet = hit.filter((x) => n(x) === 0).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const sections: PickSection[] = [
+    { label: t("facetPopover.inSet"), note: t("facetPopover.matchOrder"), options: inSet.map(opt) },
+    { label: t("facetPopover.outSet"), note: String(outSet.length), options: outSet.map(opt) },
+  ];
+  return sections.filter((s) => s.options.length > 0);
 }
 
 export const groupName = (id: number, groups: GroupRow[], t: T) => groups.find((g) => g.id === id)?.name ?? t("common.group");

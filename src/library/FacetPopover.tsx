@@ -1,26 +1,14 @@
 import { useMemo, useState } from "react";
 import type { ArticleRow, GroupRow } from "../api";
-import { DIM_LABELS, countBy, toggle, universe, valueLabel, type Dim, type DimValue, type Facets } from "./library";
+import { DIM_LABELS, countBy, tagSections, toggle, universe, valueLabel, type Dim, type DimValue, type Facets } from "./library";
 import { Popover } from "../ui/Popover";
-import { Marked } from "../ui/PickList";
+import { PickList } from "../ui/PickList";
+import type { PickOption } from "../ui/pickRows";
 import { ActionKey, Icon, Kbd } from "../ui/Icon";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
-import { withStarts } from "../lib/runs";
 
-type Opt = { v: DimValue<Dim>; label: string; count: number };
-
-/** Facet picker for one dimension; tags get search, AND/OR and the in-set / out-of-set split (Filter board). */
-export function FacetPopover({
-  dim,
-  facets,
-  onFacets,
-  base,
-  all,
-  groups,
-  anchor,
-  onClose,
-}: {
+interface Props {
   dim: Dim;
   facets: Facets;
   onFacets: (f: Facets) => void;
@@ -30,192 +18,104 @@ export function FacetPopover({
   groups: GroupRow[];
   anchor: HTMLElement;
   onClose: () => void;
-}) {
+}
+
+/** Facet picker for one dimension; tags get a search over every tag, AND/OR and the in-set / out-of-set split (Filter board). */
+export function FacetPopover(props: Props) {
+  return props.dim === "tags" ? <TagFilter {...props} /> : <DimFilter {...props} />;
+}
+
+function TagFilter({ facets, onFacets, base, all, anchor, onClose }: Props) {
   const t = useT();
   const [q, setQ] = useState("");
-  const [act, setAct] = useState(0);
-  const [more, setMore] = useState(false);
-  const isTags = dim === "tags";
-  const selected = facets[dim] as DimValue<Dim>[];
-  const counts = useMemo(() => countBy(base, dim), [base, dim]);
-  const opts: Opt[] = useMemo(
-    () => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all, groups, t), count: counts.get(v) ?? 0 })),
-    [dim, all, groups, counts, t],
-  );
+  const querying = q.trim() !== "";
+  const selected = facets.tags;
+  const tags = useMemo(() => universe("tags", all) as string[], [all]);
+  const counts = useMemo(() => countBy(base, "tags"), [base]);
+  const pick = (tag: string) => onFacets(toggle(facets, "tags", tag));
 
-  // Tags: popular (no query), or matches split into in-set (prefix first) and out-of-set.
-  const sections = useMemo(() => {
-    if (!isTags) {
-      const sorted = dim === "state" || dim === "difficulty" || dim === "relevance" ? opts : [...opts].sort((a, b) => b.count - a.count);
-      return [{ title: "", note: t("facetPopover.count"), opts: sorted }];
-    }
-    const unselected = opts.filter((o) => !selected.includes(o.v));
-    const ql = q.trim().toLowerCase();
-    if (!ql) {
-      return [
-        {
-          title: t("facetPopover.popular"),
-          note: t("facetPopover.count"),
-          opts: unselected
-            .filter((o) => o.count > 0)
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 8),
-        },
-      ];
-    }
-    const hit = unselected.filter((o) => o.label.toLowerCase().includes(ql));
-    const rank = (o: Opt) => (o.label.toLowerCase().startsWith(ql) ? 0 : 1);
-    const inSet = hit.filter((o) => o.count > 0).sort((a, b) => rank(a) - rank(b) || b.count - a.count);
-    const outSet = hit.filter((o) => o.count === 0).sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
-    return [
-      { title: t("facetPopover.inSet"), note: t("facetPopover.matchOrder"), opts: inSet },
-      {
-        title: t("facetPopover.outSet"),
-        note: String(outSet.length),
-        opts: more ? outSet : outSet.slice(0, 2),
-        hidden: more ? 0 : Math.max(0, outSet.length - 2),
-      },
-    ];
-  }, [isTags, opts, selected, q, more, dim, t]);
-  const flat = sections.flatMap((s) => s.opts);
-  const matchCount = isTags && q.trim() ? sections.reduce((n, s) => n + s.opts.length + (s.hidden ?? 0), 0) : 0;
-  const active = flat[Math.min(act, flat.length - 1)];
-
-  const pick = (v: DimValue<Dim>) => onFacets(toggle(facets, dim, v));
-
-  function keys(e: React.KeyboardEvent) {
-    const k = e.key;
-    const d = listStep(e, (e.target as HTMLElement).tagName === "INPUT");
-    if (d) {
+  function keys(e: React.KeyboardEvent, active: PickOption | null) {
+    if (e.key === " " && active) {
       e.preventDefault();
-      setAct((i) => Math.max(0, Math.min(flat.length - 1, i + d)));
-    } else if (k === " " && active) {
-      e.preventDefault();
-      pick(active.v);
-    } else if (k === "Enter") {
+      pick(active.key);
+    } else if (e.key === "Enter") {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         return onClose();
       }
       if (active) {
-        pick(active.v);
+        pick(active.key);
       }
       setQ("");
-      setAct(0);
-    } else if (k === "Tab" && isTags && q && active) {
+    } else if (e.key === "Tab" && q && active) {
       e.preventDefault();
       setQ(active.label);
-    } else if (k === "Backspace" && !q && selected.length > 0) {
+    } else if (e.key === "Backspace" && !q && selected.length > 0) {
       e.preventDefault();
       pick(selected.at(-1)!);
     }
   }
 
-  const max = Math.max(1, base.length);
-  const option = (o: Opt, i: number) => {
-    const on = selected.includes(o.v);
-    return (
-      <button
-        key={String(o.v)}
-        className={`opt${flat[act] === o ? " act" : ""}${o.count === 0 ? " zero" : ""}${isTags ? " mono" : ""}`}
-        aria-pressed={on}
-        onClick={() => pick(o.v)}
-        onMouseMove={() => setAct(i)}
-        title={dim === "state" && o.v === "issue" ? t("library.issueHint") : undefined}
-      >
-        <span className={`cb${on ? " on" : ""}`} aria-hidden="true">
-          {on && "✓"}
-        </span>
-        <span className="opt-l">
-          <Marked text={o.label} q={q.trim()} />
-        </span>
-        <span className="c">{o.count}</span>
-        <span className="bar" aria-hidden="true">
-          {o.count > 0 && <b style={{ width: `${Math.round((o.count / max) * 100)}%` }} />}
-        </span>
-      </button>
-    );
-  };
-
   return (
-    <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })} width={isTags ? 372 : 300} onClose={onClose}>
-      <div onKeyDown={keys} className="facet-pv" tabIndex={isTags ? undefined : -1} data-autofocus={isTags ? undefined : true}>
-        {isTags && (
-          <div className="pv-head">
-            <label className="pv-search">
-              <Icon name="search" />
-              <span className="vh">{t("facetPopover.searchTags")}</span>
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setAct(0);
-                  setMore(false);
-                }}
-                placeholder={t("facetPopover.searchPlaceholder", { n: opts.length })}
-              />
-              {q.trim() && <span className="pv-count">{t("pickList.matches", { matchCount })}</span>}
-            </label>
-            {!q.trim() && (
-              <div className="pv-mode">
-                <div className="seg sm" role="group" aria-label={t("facetPopover.tagMode")}>
-                  <button
-                    className={facets.tagMode === "all" ? "on" : ""}
-                    aria-pressed={facets.tagMode === "all"}
-                    onClick={() => onFacets({ ...facets, tagMode: "all" })}
-                  >
-                    {t("facetPopover.all")}
-                  </button>
-                  <button
-                    className={facets.tagMode === "any" ? "on" : ""}
-                    aria-pressed={facets.tagMode === "any"}
-                    onClick={() => onFacets({ ...facets, tagMode: "any" })}
-                  >
-                    {t("facetPopover.any")}
-                  </button>
-                </div>
-                <span className="pv-note">{t("facetPopover.countNote")}</span>
+    <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS.tags) })} width={372} onClose={onClose}>
+      <PickList
+        label={t(DIM_LABELS.tags)}
+        search={t("facetPopover.searchTags")}
+        placeholder={t("facetPopover.searchPlaceholder", { n: tags.length })}
+        query={q}
+        onQuery={setQ}
+        arrange={(query) => tagSections(tags, counts, query, t)}
+        selected={selected}
+        counts={{ of: counts, whole: base.length }}
+        onPick={(o) => pick(o.key)}
+        onKey={keys}
+        matches
+        mono
+        head={
+          !querying && (
+            <div className="pv-mode">
+              <div className="seg sm" role="group" aria-label={t("facetPopover.tagMode")}>
+                <button
+                  className={facets.tagMode === "all" ? "on" : ""}
+                  aria-pressed={facets.tagMode === "all"}
+                  onClick={() => onFacets({ ...facets, tagMode: "all" })}
+                >
+                  {t("facetPopover.all")}
+                </button>
+                <button
+                  className={facets.tagMode === "any" ? "on" : ""}
+                  aria-pressed={facets.tagMode === "any"}
+                  onClick={() => onFacets({ ...facets, tagMode: "any" })}
+                >
+                  {t("facetPopover.any")}
+                </button>
               </div>
-            )}
-          </div>
-        )}
-        {isTags && selected.length > 0 && !q.trim() && (
-          <>
-            <div className="ph">
-              {t("facetPopover.selected")}
-              <span>{selected.length}</span>
+              <span className="pv-note">{t("facetPopover.countNote")}</span>
             </div>
-            <div className="pv-chips">
-              {(selected as string[]).map((tag) => (
-                <button key={tag} className="chip on mono" onClick={() => pick(tag)} aria-label={t("facetPopover.unselect", { tag })}>
-                  {tag}
-                  <Icon name="x" size="sm" />
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        <div className="pv-list">
-          {withStarts(sections, (s) => s.opts.length).map(({ item: s, start }) => (
-            <div key={s.title} role="group" aria-label={s.title || t(DIM_LABELS[dim])}>
-              {s.title && (
-                <div className="ph">
-                  {s.title}
-                  <span>{s.note}</span>
-                </div>
-              )}
-              {s.opts.map((o, oi) => option(o, start + oi))}
-              {"hidden" in s && s.hidden! > 0 && (
-                <button className="opt zero more" onClick={() => setMore(true)}>
-                  {t("facetPopover.showMore", { hidden: s.hidden! })}
-                </button>
-              )}
-              {s.opts.length === 0 && <div className="pv-empty">{t("pickList.none")}</div>}
-            </div>
-          ))}
-        </div>
+          )
+        }
+        above={
+          !querying &&
+          selected.length > 0 && (
+            <>
+              <div className="ph">
+                {t("facetPopover.selected")}
+                <span>{selected.length}</span>
+              </div>
+              <div className="pv-chips">
+                {selected.map((tag) => (
+                  <button key={tag} className="chip on mono" onClick={() => pick(tag)} aria-label={t("facetPopover.unselect", { tag })}>
+                    {tag}
+                    <Icon name="x" size="sm" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )
+        }
+      >
         <div className="pv-foot hints">
-          {isTags && q.trim() ? (
+          {querying ? (
             <>
               <span>
                 <Kbd>Enter</Kbd>
@@ -234,12 +134,6 @@ export function FacetPopover({
           ) : (
             <>
               <span>
-                {!isTags && (
-                  <>
-                    <ActionKey id="next" />
-                    <ActionKey id="prev" />{" "}
-                  </>
-                )}
                 <Kbd>↑</Kbd>
                 <Kbd>↓</Kbd>
                 {t("common.hintMove")}
@@ -248,17 +142,106 @@ export function FacetPopover({
                 <Kbd>Space</Kbd>
                 {t("facetPopover.hintToggle")}
               </span>
-              {isTags && (
-                <span>
-                  <Kbd>⌫</Kbd>
-                  {t("facetPopover.hintRemoveLast")}
-                </span>
-              )}
+              <span>
+                <Kbd>⌫</Kbd>
+                {t("facetPopover.hintRemoveLast")}
+              </span>
               <span className="r">
                 <Kbd>Esc</Kbd>
               </span>
             </>
           )}
+        </div>
+      </PickList>
+    </Popover>
+  );
+}
+
+type Opt = { v: DimValue<Dim>; label: string; count: number };
+
+/** A dimension with a few values and no search. */
+function DimFilter({ dim, facets, onFacets, base, all, groups, anchor, onClose }: Props) {
+  const t = useT();
+  const [act, setAct] = useState(0);
+  const selected = facets[dim] as DimValue<Dim>[];
+  const counts = useMemo(() => countBy(base, dim), [base, dim]);
+  const opts: Opt[] = useMemo(() => {
+    const values = universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all, groups, t), count: counts.get(v) ?? 0 }));
+    return dim === "state" || dim === "difficulty" || dim === "relevance" ? values : values.sort((a, b) => b.count - a.count);
+  }, [dim, all, groups, counts, t]);
+  const active = opts[Math.min(act, opts.length - 1)];
+
+  const pick = (v: DimValue<Dim>) => onFacets(toggle(facets, dim, v));
+
+  function keys(e: React.KeyboardEvent) {
+    const k = e.key;
+    const d = listStep(e, false);
+    if (d) {
+      e.preventDefault();
+      setAct((i) => Math.max(0, Math.min(opts.length - 1, i + d)));
+    } else if (k === " " && active) {
+      e.preventDefault();
+      pick(active.v);
+    } else if (k === "Enter") {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        return onClose();
+      }
+      if (active) {
+        pick(active.v);
+      }
+      setAct(0);
+    } else if (k === "Backspace" && selected.length > 0) {
+      e.preventDefault();
+      pick(selected.at(-1)!);
+    }
+  }
+
+  const max = Math.max(1, base.length);
+  return (
+    <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })} width={300} onClose={onClose}>
+      <div onKeyDown={keys} className="facet-pv" tabIndex={-1} data-autofocus>
+        <div className="pv-list">
+          <div role="group" aria-label={t(DIM_LABELS[dim])}>
+            {opts.map((o, i) => {
+              const on = selected.includes(o.v);
+              return (
+                <button
+                  key={String(o.v)}
+                  className={`opt${i === act ? " act" : ""}${o.count === 0 ? " zero" : ""}`}
+                  aria-pressed={on}
+                  onClick={() => pick(o.v)}
+                  onMouseMove={() => setAct(i)}
+                  title={dim === "state" && o.v === "issue" ? t("library.issueHint") : undefined}
+                >
+                  <span className={`cb${on ? " on" : ""}`} aria-hidden="true">
+                    {on && "✓"}
+                  </span>
+                  <span className="opt-l">{o.label}</span>
+                  <span className="c">{o.count}</span>
+                  <span className="bar" aria-hidden="true">
+                    {o.count > 0 && <b style={{ width: `${Math.round((o.count / max) * 100)}%` }} />}
+                  </span>
+                </button>
+              );
+            })}
+            {opts.length === 0 && <div className="pv-empty">{t("pickList.none")}</div>}
+          </div>
+        </div>
+        <div className="pv-foot hints">
+          <span>
+            <ActionKey id="next" />
+            <ActionKey id="prev" /> <Kbd>↑</Kbd>
+            <Kbd>↓</Kbd>
+            {t("common.hintMove")}
+          </span>
+          <span>
+            <Kbd>Space</Kbd>
+            {t("facetPopover.hintToggle")}
+          </span>
+          <span className="r">
+            <Kbd>Esc</Kbd>
+          </span>
         </div>
       </div>
     </Popover>
