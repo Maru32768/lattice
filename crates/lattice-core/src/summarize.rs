@@ -371,6 +371,11 @@ mod tests {
         };
         assert_eq!(format_summary(&items), "WALを使う。fsyncが減る 速い。\n\n・先行書き込み\n・fsyncを減らす");
         assert_eq!(format_summary(&Items { summary: vec![item("WALを使う。", &[], &[])], key_points: vec![] }), "WALを使う。");
+        let ends = Items {
+            summary: vec![item("速い！", &[], &[]), item("本当？", &[], &[]), item("Fast.", &[], &[]), item("Yes", &[], &[])],
+            key_points: vec![],
+        };
+        assert_eq!(format_summary(&ends), "速い！本当？Fast. Yes");
     }
 
     #[test]
