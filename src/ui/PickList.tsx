@@ -118,7 +118,6 @@ export function PickList<O extends PickOption>({
         aria-setsize={size}
         aria-posinset={r.n}
         className={`opt${i === at ? " act" : ""}${r.o.disabled ? " zero" : ""}`}
-        onMouseDown={(e) => e.preventDefault()}
         // Not on enter: a row the list scrolls under a still mouse does not take the keyboard's place.
         onMouseMove={() => activate(i)}
         onClick={() => {
@@ -137,7 +136,16 @@ export function PickList<O extends PickOption>({
     );
 
   return (
-    <div className="facet-pv" onKeyDown={keys}>
+    // A press anywhere but the search would take the focus from it, and the typing and the keys with it.
+    <div
+      className="facet-pv"
+      onKeyDown={keys}
+      onMouseDown={(e) => {
+        if (e.target !== input.current) {
+          e.preventDefault();
+        }
+      }}
+    >
       <div className="pv-head">
         <label className="pv-search">
           <Icon name="search" />
@@ -164,8 +172,6 @@ export function PickList<O extends PickOption>({
           role="listbox"
           aria-label={label}
           tabIndex={-1}
-          // A click on a heading or the scrollbar focuses the list itself, where typing reaches nothing.
-          onFocus={() => input.current?.focus()}
           className="pick-list"
           style={{ height: Math.min(rows.length, MAX_ROWS) * ROW_H }}
           data={rows}

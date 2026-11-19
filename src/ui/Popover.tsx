@@ -164,12 +164,6 @@ export function Popover({
             e.preventDefault();
             (s.ref.current?.querySelector<HTMLElement>("input, [data-autofocus]") ?? s.ref.current)?.focus();
           }}
-          // A press on the popover's own padding or text focuses the popover, where typing reaches nothing.
-          onFocus={(e) => {
-            if (e.target === e.currentTarget) {
-              e.currentTarget.querySelector<HTMLElement>("input, [data-autofocus]")?.focus();
-            }
-          }}
           onCloseAutoFocus={(e) => {
             keepFocus(e);
             if (e.defaultPrevented) {

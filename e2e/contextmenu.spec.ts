@@ -89,7 +89,14 @@ test("タイトルを変更… gives an article a title of its own, and 元に�
   expect(await callsOf(app, "set_article_title")).toEqual([{ id: a.id, title: "第2部" }]);
 
   box = await open("第2部");
-  await expect(box.getByText(`元のタイトル: ${a.title}`)).toBeVisible();
+  const found = box.getByText(`元のタイトル: ${a.title}`);
+  await expect(found).toBeVisible();
+  const b = (await found.boundingBox())!;
+  await app.mouse.move(b.x + 2, b.y + b.height / 2);
+  await app.mouse.down();
+  await app.mouse.move(b.x + b.width - 2, b.y + b.height / 2, { steps: 8 });
+  await app.mouse.up();
+  expect(await app.evaluate(() => window.getSelection()?.toString()), "the found title can be selected, to copy it").toContain(a.title!.slice(2, -2));
   await box.getByRole("button", { name: "元に戻す" }).click();
   await expect(row(app, a.title!)).toBeVisible();
   expect((await callsOf(app, "set_article_title")).at(-1)).toEqual({ id: a.id, title: "" });
