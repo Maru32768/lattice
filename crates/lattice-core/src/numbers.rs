@@ -545,11 +545,17 @@ fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
             }
             let right: Vec<&str> =
                 (r..words.len()).take_while(|&j| number(&words[j].2) && (j == r || joined(cs, words, j))).map(|j| words[j].2.as_str()).collect();
-            let own = left.iter().rev().find_map(|w| scale(w));
-            let scaled = read(&left.iter().copied().chain(right.iter().copied().filter(|w| scale(w) > own)).collect::<Vec<_>>());
-            if let (Some(scaled), Some(end)) = (scaled, read(&right))
-                && scaled.at_most(end)
-            {
+            let Some(end) = read(&right) else {
+                continue;
+            };
+            // The scale words above the left end's own, or failing that the thousand and above alone: ninety-nine to one
+            // hundred thousand is not ninety-nine hundred thousand.
+            let own = left.iter().rev().find_map(|w| scale(w)).map_or(i32::MIN, |p| p + 1);
+            let scaled = [own, 3].into_iter().find_map(|least| {
+                let given: Vec<&str> = right.iter().copied().filter(|w| scale(w).is_some_and(|p| p >= least)).collect();
+                read(&[left.as_slice(), &given].concat()).filter(|s| !given.is_empty() && s.at_most(end))
+            });
+            if let Some(scaled) = scaled {
                 // A hyphen joins the right end to the left one when a ten meets a unit (one hundred twenty-one hundred
                 // fifty thousand), so the right end is read alone here.
                 out.extend([scaled, end]);
@@ -914,6 +920,8 @@ mod tests {
             ("300万～420万人", "three to four million two hundred thousand users"),
             ("300万人", "twenty, three to four million users"),
             ("12万～15万人", "one hundred twenty-one hundred fifty thousand users"),
+            ("9万9000～10万人", "ninety-nine to one hundred thousand users"),
+            ("5000万～6億人", "fifty to six hundred million users"),
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
@@ -930,6 +938,7 @@ mod tests {
             ("1000", "a hundred to two hundred thousand users", "the left end starts with a number word"),
             ("300万", "three to four, million users", "the right end is joined"),
             ("0", "three to four million users and five billion", "the right end is number words"),
+            ("500", "twenty-five hundred users", "the left end gets a scale word"),
         ] {
             assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
         }
