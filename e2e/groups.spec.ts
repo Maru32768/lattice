@@ -140,6 +140,8 @@ test("picks that rewrap the Reader's chips at the top of the view leave its grou
     const box = el.closest(".doc-scroll")!;
     box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top;
   });
+  const edge = await add.evaluate((el) => Math.round(el.getBoundingClientRect().top - el.closest(".doc-scroll")!.getBoundingClientRect().top));
+  expect(edge, "the article scrolls far enough to put ＋ at the top of the view").toBe(0);
   await add.click();
   await expect(picker(app)).toBeInViewport();
   const { x, y } = (await picker(app).boundingBox())!;
