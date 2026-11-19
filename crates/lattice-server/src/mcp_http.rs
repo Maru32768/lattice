@@ -427,6 +427,9 @@ mod tests {
         let wrong = f.call(&r.token, &session, "rename_article", json!({ "id": id, "name": "Typo" })).await;
         assert_eq!(wrong["isError"], true, "an argument the tool does not take");
         assert_eq!(f.applied.lock().unwrap().len(), 1, "nothing ran");
+        let failed = f.call(&r.token, &session, "tag", json!({ "id": id + 1000, "name": "later" })).await;
+        assert_eq!(failed["isError"], true, "no such article");
+        assert_eq!(*f.applied.lock().unwrap(), [Some(id), Some(id + 1000)], "told after a failure too: one can stop halfway");
     }
 
     #[tokio::test]
