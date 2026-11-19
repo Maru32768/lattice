@@ -656,8 +656,11 @@ mod tests {
 
         assert_eq!(f.send("DELETE", Some(&a.token), Some(&second), &[], Value::Null).await.status(), StatusCode::NO_CONTENT);
         assert_eq!(f.activity.of(&a).0.len(), 1, "ended by the agent");
+        f.call(&a.token, &first, "list", json!({})).await;
         mcp::edit(&f.store, &Edit::Regenerate { id: a.id.clone() }).unwrap();
-        assert!(f.activity.of(&f.reread("A")).0.is_empty(), "the old token's sessions answer no more, so they go from the screen");
+        let (sessions, calls) = f.activity.of(&f.reread("A"));
+        assert!(sessions.is_empty(), "the old token's sessions answer no more, so they go from the screen");
+        assert_eq!(calls.len(), 1, "what the agent did stays");
         assert_eq!(f.activity.of(&b).0.len(), 1);
     }
 
