@@ -455,10 +455,12 @@ test("each registration shows its open sessions and latest calls, and the screen
     return { started: new Date(started).toLocaleString("ja-JP"), now: new Date(now).toLocaleTimeString("ja-JP") };
   });
   const used = activity.getByRole("group", { name: "Claude Code" });
-  await expect(used.getByRole("list", { name: "セッション" }).getByRole("listitem"), "a day ago gives the date").toHaveText([
-    `claude-code 2.1.327 開始: ${times.started} · 最後のリクエスト: ${times.now}`,
-    `名前のないクライアント 開始: ${times.now} · 最後のリクエスト: ${times.now}`,
-  ]);
+  await expect(used.getByRole("list", { name: "セッション" }).getByRole("listitem"), "heard of without reopening; a start a day ago gives the date").toHaveText(
+    [
+      `claude-code 2.1.327 開始: ${times.started} · 最後のリクエスト: ${times.now}`,
+      `名前のないクライアント 開始: ${times.now} · 最後のリクエスト: ${times.now}`,
+    ],
+  );
   await expect(used.getByRole("list", { name: "最近の呼び出し" }).getByRole("listitem")).toHaveText([
     `${times.now} delete_article 拒否`,
     `${times.now} tag 失敗`,
@@ -476,7 +478,7 @@ test("each registration shows its open sessions and latest calls, and the screen
   await expect(research.getByRole("list", { name: "最近の呼び出し" })).toContainText("search 成功");
 
   await server.uncheck();
-  await expect(activity, "nothing is recorded while the server is off").toHaveCount(0);
+  await expect(activity, "the section goes while the server is off").toHaveCount(0);
 });
 
 test("a status read that answers after a new token does not bring back the old command", async ({ shell }) => {
