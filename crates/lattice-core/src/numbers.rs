@@ -920,6 +920,7 @@ mod tests {
             ("200万～300万人", "Between 2 and 3 million users"),
             ("300万～400万ドル", "$3-$4 million"),
             ("300万～400万ユーロ", "€3-€4 million"),
+            ("200万～300万ユーロ", "between €2 and €3 million"),
             ("3,000～4,000件", "3-4k rows"),
             ("5,000～10,000件", "5-10k rows"),
             ("100万～150万人", "1-1.5 million users"),
