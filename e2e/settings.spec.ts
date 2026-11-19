@@ -360,7 +360,9 @@ test("an agent registration copies its command and changes role, and a new token
   await expect(app.getByRole("alert")).toHaveText("「claude code」という登録はもうあります");
 
   await app.getByRole("button", { name: "削除", exact: true }).click();
-  await app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" }).getByRole("button", { name: "削除", exact: true }).click();
+  const remove = app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" });
+  await expect(remove, "a new registration's command would meet the old one in Claude Code").toContainText("claude mcp remove lattice -s user");
+  await remove.getByRole("button", { name: "削除", exact: true }).click();
   await expect(app.getByText("登録はまだありません")).toBeVisible();
 });
 

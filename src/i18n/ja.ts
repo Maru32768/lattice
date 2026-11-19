@@ -1392,7 +1392,7 @@ export const ja = {
   "mcpSettings.regenerateDesc": "今のトークンはすぐに使えなくなります。Claude Codeでは、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
   "mcpSettings.regenerateConfirm": "作り直す",
   "mcpSettings.confirmDelete": "登録「{name}」を削除しますか？",
-  "mcpSettings.deleteDesc": "このトークンはすぐに使えなくなり、つながっているエージェントも切れます。",
+  "mcpSettings.deleteDesc": "このトークンはすぐに使えなくなり、つながっているエージェントも切れます。Claude Codeでは、{remove}で登録も消してください。",
   "mobileSettings.mode": "このPCから配信",
   "mobileSettings.modeDesc": "PCの起動中だけ、スマホからライブラリを読めます。",
   "mobileSettings.off": "オフ",

@@ -128,9 +128,9 @@ export function McpSettings() {
           onCancel={() => setConfirming(null)}
         >
           <p>
-            {confirming.kind === "delete"
-              ? t("mcpSettings.deleteDesc")
-              : t.rich("mcpSettings.regenerateDesc", { remove: <code>claude mcp remove lattice -s user</code> })}
+            {t.rich(confirming.kind === "delete" ? "mcpSettings.deleteDesc" : "mcpSettings.regenerateDesc", {
+              remove: <code>claude mcp remove lattice -s user</code>,
+            })}
           </p>
         </ConfirmDialog>
       )}
