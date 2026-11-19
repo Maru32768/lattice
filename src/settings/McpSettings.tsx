@@ -80,6 +80,7 @@ export function McpSettings() {
       <section aria-labelledby="mcp-registrations">
         <h2 id="mcp-registrations">{t("mcpSettings.registrations")}</h2>
         <p className="sec-d">{t("mcpSettings.registrationsDesc")}</p>
+        <p className="sec-d">{t("mcpSettings.rolesDesc")}</p>
         <div className="grp">
           {status.registrations.map((reg) => (
             <SetRow key={reg.id} title={reg.name}>

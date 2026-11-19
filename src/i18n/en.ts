@@ -1393,7 +1393,9 @@ export const en = {
   "mcpSettings.enabledDesc": "Only this PC can connect. Other PCs and phones cannot.",
   "mcpSettings.registrations": "Registrations",
   "mcpSettings.registrationsDesc":
-    "Make a registration for each agent, press Copy command, and run the copied command in a terminal. Read lets an agent read articles and feeds; Edit also lets it change titles, collections, genres and feeds. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
+    "Make a registration for each agent, press Copy command, and run the copied Claude Code command in a terminal. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
+  "mcpSettings.rolesDesc":
+    "Read lets an agent read articles and feeds and ask the AI about them; each question spends your AI provider's usage and stays in Chat as a conversation. Edit also lets it save URLs, tag, mark read and favorite, and change titles, collections, genres and feeds. Neither role can delete articles, collections, feeds or folders.",
   "mcpSettings.none": "No registrations yet",
   "mcpSettings.new": "New registration",
   "mcpSettings.role": "Role",
