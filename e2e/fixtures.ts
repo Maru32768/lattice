@@ -398,7 +398,7 @@ export const SUMMARIES: Record<number, Pick<SummaryView, "text" | "items">> = {
     items: {
       summary: [{ text: "スナップショット分離は、トランザクション開始時点のスナップショットから読む。", block_ids: [102], unverified: [] }],
       key_points: [
-        { text: "PostgreSQL 9.1以降はMVCCで実装する。", block_ids: [103, 199, 102], unverified: ["9.1"] },
+        { text: "PostgreSQL 9.1以降はMVCCで実装する。", block_ids: [103, 199, 102], unverified: [[11, 14]] },
         { text: "write skewは防げない。", block_ids: [106], unverified: [] },
       ],
     },

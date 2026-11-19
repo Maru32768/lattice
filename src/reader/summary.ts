@@ -1,23 +1,20 @@
-import type { Block, SummaryItems } from "../api";
+import type { Block, SummaryItem, SummaryItems } from "../api";
 
-/**
- * `text` in parts, each of `numbers` that stands alone a part of its own to mark: not the 2 inside 2,000 or 12, as
- * the number checked was a whole number in the text.
- */
-export function markNumbers(text: string, numbers: string[]): { text: string; mark: boolean }[] {
-  if (numbers.length === 0) {
-    return [{ text, mark: false }];
+/** `item`'s text in parts, the numbers the article lacks (`unverified`, ranges in order) parts of their own to mark. */
+export function markNumbers(item: SummaryItem): { text: string; mark: boolean }[] {
+  const parts = [];
+  let at = 0;
+  for (const [start, end] of item.unverified) {
+    parts.push({ text: item.text.slice(at, start), mark: false }, { text: item.text.slice(start, end), mark: true });
+    at = end;
   }
-  // Longest first, so 8万 is marked whole rather than its 8.
-  const alternatives = numbers
-    .toSorted((a, b) => b.length - a.length)
-    .map((n) => RegExp.escape(n))
-    .join("|");
-  const re = new RegExp(`(?<![\\d.,])(${alternatives})(?![\\d]|[.,]\\d)`);
-  return text
-    .split(re)
-    .map((part, i) => ({ text: part, mark: i % 2 === 1 }))
-    .filter((p) => p.text !== "");
+  parts.push({ text: item.text.slice(at), mark: false });
+  return parts.filter((p) => p.text !== "");
+}
+
+/** The numbers the article lacks, as the items write them, each once. */
+export function unverifiedNumbers(items: SummaryItems): string[] {
+  return [...new Set([...items.summary, ...items.key_points].flatMap((i) => i.unverified.map(([start, end]) => i.text.slice(start, end))))];
 }
 
 /** Each block the items cite that the article still has, numbered from 1 in the order first cited. */

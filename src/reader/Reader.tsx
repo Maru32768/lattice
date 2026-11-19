@@ -1,7 +1,7 @@
 import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type SummaryItem, type VocabCapture } from "../api";
-import { citeNumbers, markNumbers } from "./summary";
+import { citeNumbers, markNumbers, unverifiedNumbers } from "./summary";
 import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
@@ -654,7 +654,7 @@ function SummaryText({ item, cites, view, onSource }: { item: SummaryItem; cites
   const t = useT();
   return (
     <>
-      {markNumbers(item.text, item.unverified).map((p, i) =>
+      {markNumbers(item).map((p, i) =>
         p.mark ? (
           <mark key={i} className="unverified" title={t("reader.summaryUnverified")}>
             {p.text}
@@ -718,7 +718,7 @@ export function Summary({
       .find(Boolean) ?? "";
   const items = s?.items;
   const cites = items ? citeNumbers(items, view.blocks) : new Map<number, number>();
-  const unverified = [...new Set(items ? [...items.summary, ...items.key_points].flatMap((i) => i.unverified) : [])];
+  const unverified = items ? unverifiedNumbers(items) : [];
   return (
     <section className="summary" aria-label={t("reader.summary")}>
       {s ? (

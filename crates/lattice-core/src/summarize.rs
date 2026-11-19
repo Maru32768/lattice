@@ -152,8 +152,8 @@ pub struct Item {
     pub text: String,
     /// The blocks it cites, for jumping to them.
     pub block_ids: Vec<i64>,
-    /// Its numbers that the article does not have, as written (`numbers::unverified`).
-    pub unverified: Vec<String>,
+    /// Where its text writes a number the article does not have: UTF-16 ranges, in order (`numbers::unverified`).
+    pub unverified: Vec<(usize, usize)>,
 }
 
 impl Request {
@@ -353,8 +353,10 @@ mod tests {
         (lines, markers, labels)
     }
 
+    /// An item whose `unverified` are the first places its text writes each of them.
     fn item(text: &str, block_ids: &[i64], unverified: &[&str]) -> Item {
-        Item { text: text.into(), block_ids: block_ids.to_vec(), unverified: unverified.iter().map(|u| u.to_string()).collect() }
+        let at = |n: &str| text[..text.find(n).unwrap()].encode_utf16().count();
+        Item { text: text.into(), block_ids: block_ids.to_vec(), unverified: unverified.iter().map(|n| (at(n), at(n) + n.encode_utf16().count())).collect() }
     }
 
     #[test]

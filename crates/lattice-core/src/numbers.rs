@@ -105,17 +105,11 @@ impl Article {
     }
 }
 
-/// The numbers `text` writes in digits whose value `article` lacks, as written, each once.
-pub fn unverified(text: &str, article: &Article) -> Vec<String> {
-    let offsets: Vec<usize> = text.char_indices().map(|(i, _)| i).chain([text.len()]).collect();
-    let mut out: Vec<String> = Vec::new();
-    for m in mentions(&folded(text)) {
-        let written = &text[offsets[m.start]..offsets[m.end]];
-        if !article.0.contains(&m.value) && !out.iter().any(|w| w == written) {
-            out.push(written.to_string());
-        }
-    }
-    out
+/// Where `text` writes in digits a number whose value `article` lacks, in order: UTF-16 ranges, as JavaScript slices
+/// strings, so the Reader marks exactly what was checked.
+pub fn unverified(text: &str, article: &Article) -> Vec<(usize, usize)> {
+    let utf16: Vec<usize> = std::iter::once(0).chain(text.chars().scan(0, |at, c| Some(*at + c.len_utf16()).inspect(|&n| *at = n))).collect();
+    mentions(&folded(text)).into_iter().filter(|m| !article.0.contains(&m.value)).map(|m| (utf16[m.start], utf16[m.end])).collect()
 }
 
 /// Chars with full-width digits and odd spaces and hyphens made ASCII, one for one so positions carry over.
@@ -427,15 +421,18 @@ fn kanji(cs: &[char]) -> Vec<Dec> {
 mod tests {
     use super::*;
 
+    /// The numbers `unverified` finds, as written.
     fn check(summary: &str, article: &str) -> Vec<String> {
-        unverified(summary, &Article::new([article]))
+        let units: Vec<u16> = summary.encode_utf16().collect();
+        unverified(summary, &Article::new([article])).into_iter().map(|(start, end)| String::from_utf16_lossy(&units[start..end])).collect()
     }
 
     #[test]
     fn a_number_the_article_has_passes_and_one_it_lacks_is_returned_as_written() {
         assert_eq!(check("6プロジェクトの1,129テストは約3.9秒で完了する。", "All 1129 tests in 6 projects ran in 3.9 s."), Vec::<String>::new());
         assert_eq!(check("Art Nouveauは1880年代末〜1900年代に広がった。", "It spread around 1900, after the 19th century."), ["1880"]);
-        assert_eq!(check("400エラーと400応答を返す。", "It returns an error."), ["400"], "each number once");
+        assert_eq!(check("400エラーと400応答を返す。", "It returns an error."), ["400", "400"], "each place it is written");
+        assert_eq!(unverified("😀は2倍と2万", &Article::new(["20,000"])), [(3, 4)], "UTF-16 offsets, the 2 of 2万 not among them");
         assert_eq!(check("\u{ff11}\u{ff12}\u{ff18}MBを使う。", "uses 128MB"), Vec::<String>::new(), "full-width digits");
         assert_eq!(check("p99は38.9秒", "p99 rose to 38.95 seconds"), ["38.9"], "not a prefix of another number");
     }

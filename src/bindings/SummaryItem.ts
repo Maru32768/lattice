@@ -6,6 +6,6 @@ export type SummaryItem = { text: string,
  */
 block_ids: Array<number>, 
 /**
- * Its numbers that the article does not have, as written (`numbers::unverified`).
+ * Where its text writes a number the article does not have: UTF-16 ranges, in order (`numbers::unverified`).
  */
-unverified: Array<string>, };
+unverified: Array<[number, number]>, };
