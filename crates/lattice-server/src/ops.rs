@@ -2,6 +2,8 @@
 //! (clap) and from MCP tool calls (serde, `{"name": ..., "arguments": {...}}`) alike, and every
 //! operation answers with JSON plus a plain-text rendering of the same result.
 
+use std::sync::Arc;
+
 use clap::Subcommand;
 use lattice_core::chain::LlmChain;
 use lattice_core::chat::{self, Scope};
@@ -9,6 +11,7 @@ use lattice_core::embed::LocalE5;
 use lattice_core::ir::BlockKind;
 use lattice_core::jobs::{self, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::mcp::Role;
+use lattice_core::mobile::Effects;
 use lattice_core::msg;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock};
 use lattice_core::url_norm::normalize;
@@ -194,11 +197,53 @@ impl Op {
             Op::DeleteArticle { .. } | Op::DeleteCollection { .. } | Op::RemoveFeed { .. } | Op::DeleteFolder { .. } | Op::MergeGenre { .. } => Role::Delete,
         }
     }
+
+    /// What a running app has to show or start after this operation ran. Exhaustive like `role`: a new operation does
+    /// not compile until it says.
+    pub fn effects(&self) -> Effects {
+        let article = |id: i64| Effects { article: Some(id), ..Effects::default() };
+        // `article-changed` with no article of that id still reloads every list.
+        let lists = Effects { article: Some(0), ..Effects::default() };
+        let feeds = Effects { feeds: true, ..lists };
+        match self {
+            Op::Search { .. }
+            | Op::Get { .. }
+            | Op::List { .. }
+            | Op::Summary { .. }
+            | Op::Tags {}
+            | Op::Genres {}
+            | Op::Feeds {}
+            | Op::Collections {}
+            | Op::Jobs {}
+            | Op::Ask { .. } => Effects::default(),
+            Op::Tag { id, .. }
+            | Op::Untag { id, .. }
+            | Op::Read { id }
+            | Op::Unread { id }
+            | Op::Favorite { id }
+            | Op::Unfavorite { id }
+            | Op::RenameArticle { id, .. }
+            | Op::SetGenre { id, .. }
+            | Op::DeleteArticle { id }
+            | Op::Collect { article: id, .. }
+            | Op::Uncollect { article: id, .. } => article(*id),
+            Op::AddGenre { .. }
+            | Op::RenameGenre { .. }
+            | Op::DeleteGenre { .. }
+            | Op::MergeGenre { .. }
+            | Op::CreateCollection { .. }
+            | Op::RenameCollection { .. }
+            | Op::DeleteCollection { .. } => lists,
+            Op::Save { .. } => Effects { fetch: true, ..lists },
+            Op::AddFeed { .. } => Effects { fetch: true, ..feeds },
+            Op::RenameFeed { .. } | Op::MoveFeed { .. } | Op::RenameFolder { .. } | Op::RemoveFeed { .. } | Op::DeleteFolder { .. } => feeds,
+        }
+    }
 }
 
 pub struct Ctx {
-    pub store: Store,
-    pub providers: Providers<LlmChain, LocalE5>,
+    pub store: Arc<Store>,
+    pub providers: Arc<Providers<LlmChain, LocalE5>>,
     pub role: Role,
 }
 
@@ -606,15 +651,15 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// An empty in-memory library with no LLM or embedding model behind it.
-    fn ctx() -> Ctx {
+    pub(crate) fn ctx() -> Ctx {
         let store = Store::open_in_memory().unwrap();
         let llm = LlmChain::new(lattice_core::chain::load(&store).unwrap());
         let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));
-        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, role: Role::Edit }
+        Ctx { store: Arc::new(store), providers: Arc::new(Providers { llm, embedder, http: lattice_core::fetch::client() }), role: Role::Edit }
     }
 
     #[test]
@@ -894,7 +939,7 @@ mod tests {
         tokio::spawn(async move { axum::serve(listener, app).await });
         let mut ctx = ctx();
         let local = lattice_core::network::NetworkSettings { allow: vec!["localhost".into()], ..Default::default() };
-        ctx.providers.http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
+        Arc::get_mut(&mut ctx.providers).unwrap().http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
         let s = &ctx.store;
         // Made first so that the feed and folder ids differ: a swap of the two would not show otherwise.
         feed_folders::create(s, "Other").unwrap();
@@ -947,6 +992,47 @@ mod tests {
         let left: Vec<i64> = ctx.store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().iter().map(|a| a.id).collect();
         assert_eq!(left, [other]);
         assert!(run(&ctx, Op::DeleteArticle { id }).await.is_err(), "already gone");
+    }
+
+    #[test]
+    fn only_a_change_has_anything_to_show_the_app() {
+        for op in reads(7) {
+            assert_eq!(op.effects(), Effects::default(), "{op:?}");
+        }
+        // The article itself, every list (an id no article has), and whether fetchers or the feed screen must hear.
+        let (one, lists, feeds) = ((7, false, false), (0, false, false), (0, false, true));
+        let expected = [
+            (0, true, false),
+            one,
+            one,
+            one,
+            one,
+            one,
+            one,
+            one,
+            one,
+            lists,
+            lists,
+            lists,
+            lists,
+            lists,
+            one,
+            one,
+            (0, true, true),
+            feeds,
+            feeds,
+            feeds,
+            one,
+            lists,
+            feeds,
+            feeds,
+            lists,
+        ];
+        let ops: Vec<Op> = edits(7).into_iter().chain(deletions(7)).collect();
+        assert_eq!(ops.len(), expected.len());
+        for (op, (article, fetch, feeds)) in ops.iter().zip(expected) {
+            assert_eq!(op.effects(), Effects { article: Some(article), fetch, feeds, ..Effects::default() }, "{op:?}");
+        }
     }
 
     #[test]

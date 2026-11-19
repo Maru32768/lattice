@@ -141,6 +141,14 @@
 :is(.stg, .organize) .set .input { width: 240px; }
 .stg .set .keys-ctl { flex-wrap: wrap; justify-content: flex-end; max-width: 460px; }
 .stg .set .input.num { width: 80px; }
+.stg .set .input.fit { width: auto; }
+/* An agent row holds up to four controls: in a narrow pane they wrap instead of squeezing the name to nothing. */
+.stg .mcp-regs .set { grid-template-columns: minmax(7em, 1fr) auto; }
+.stg .mcp-regs .set .ctl { flex-wrap: wrap; justify-content: flex-end; }
+.stg .mcp-log-h { margin-bottom: -4px; font-size: 12px; color: var(--ink3); }
+.stg .mcp-log { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; overflow-wrap: anywhere; }
+.stg .mcp-log .failed { color: var(--err); }
+.stg .mcp-log .refused { color: var(--warn); }
 .stg .set.wide { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .stg .set.wide textarea { padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--doc); color: var(--ink); font-size: 13px; line-height: 1.6; resize: vertical; }
 .stg .set.wide .acts { display: flex; gap: 10px; align-items: center; }

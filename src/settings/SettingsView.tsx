@@ -13,6 +13,7 @@ import { ImageSettings } from "./ImageSettings";
 import { QuizSettings } from "./QuizSettings";
 import { BackupSection } from "./BackupSection";
 import { MobileSettings } from "./MobileSettings";
+import { McpSettings } from "./McpSettings";
 import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
 import { StorageSection } from "./StorageSection";
@@ -84,6 +85,8 @@ function Body({ id, onChanged, onOpenUrl, onFeeds }: { id: SettingsSection; onCh
       return <BackupSection />;
     case "mobile":
       return <MobileSettings />;
+    case "mcp":
+      return <McpSettings />;
     case "r2":
       return <R2BackupSection />;
     case "export":

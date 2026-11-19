@@ -13,7 +13,7 @@ use crate::favicons;
 use crate::groups::{self, GroupRow};
 use crate::ingest;
 use crate::msg;
-use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, sha256_hex};
+use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, random_hex, sha256_hex};
 use crate::translate;
 use crate::url_norm::normalize;
 use crate::vocab::{self, Capture};
@@ -151,6 +151,8 @@ pub struct Effects {
     pub article: Option<i64>,
     pub vocab: bool,
     pub fetch: bool,
+    /// Feeds or their folders changed. A new feed may also have queued its entries' LLM filter.
+    pub feeds: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -307,6 +309,11 @@ pub fn save_settings(store: &Store, s: &MobileSettings) -> Result<(), String> {
         // As text: the catalog would write a number as 1,024.
         return Err(msg!("mobile.port", min = MIN_PORT.to_string(), max = u16::MAX.to_string()));
     }
+    // Not only would one of the two servers fail to start: Tailscale Serve, or any tunnel set up for the phone's
+    // port, would carry other devices to the MCP server once that one held the port.
+    if s.port == crate::mcp::PORT {
+        return Err(msg!("mobile.portTaken", port = s.port.to_string()));
+    }
     let public_url = clean_public_url(&s.public_url)?;
     let mode = match s.mode {
         ServerMode::Off => "off",
@@ -333,9 +340,7 @@ pub fn token(store: &Store) -> Result<String, String> {
 
 /// A new token: whoever holds the old one can no longer read or send anything.
 pub fn regenerate_token(store: &Store) -> Result<String, String> {
-    let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(err)?;
-    let token = hex(&bytes);
+    let token = random_hex()?;
     store.set_setting(TOKEN, Some(&token)).map_err(err)?;
     Ok(token)
 }
@@ -417,9 +422,14 @@ mod tests {
         let s = store();
         let refused = |port, url: &str| save_settings(&s, &MobileSettings { mode: ServerMode::Lan, port, public_url: url.into() }).is_err();
         assert!(refused(80, ""));
+        assert!(refused(crate::mcp::PORT, ""), "the MCP server's: a tunnel to the phone's port would reach it");
+        let local = MobileSettings { mode: ServerMode::Local, port: crate::mcp::PORT, public_url: String::new() };
+        assert!(save_settings(&s, &local).is_err(), "a tunnel reaches a port on localhost too");
         for url in ["ftp://pc", "pc.example", "https://pc/path", "https://user:pw@pc", "https://pc?x=1", "https://pc#t=1", "javascript:alert(1)"] {
             assert!(refused(8787, url), "{url}");
         }
+        let kept = settings(&s).unwrap();
+        assert_eq!((kept.mode, kept.port), (ServerMode::Off, DEFAULT_PORT), "a refused save stores none of it");
         assert!(!refused(8787, "http://192.168.0.2:8787"));
     }
 

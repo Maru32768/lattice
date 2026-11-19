@@ -50,6 +50,32 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
   await open(app, md.title!);
   await expect(app.getByRole("group", { name: "表示" }).getByRole("button", { name: /Page/ })).toBeDisabled();
   await expect(app.locator(".art-meta")).toContainText("ローカル");
+  // A summary made before summaries had items shows as its plain text.
+  await app.getByRole("region", { name: "要約" }).getByRole("button").click();
+  await expect(app.locator(".summary-body")).toContainText("要約は平文のまま表示する");
+  await expect(app.locator(".summary-body .cite")).toHaveCount(0);
+});
+
+test("a summary's sentences and points go to the blocks they cite, and a number the article lacks is marked", async ({ app }) => {
+  await open(app, snapshot.title!);
+  const summary = app.getByRole("region", { name: "要約" });
+  await summary.getByRole("button").click();
+  // Numbered as first cited: 102 is 1, 103 is 2, 106 is 3; 199 is gone from the article.
+  await expect(summary.locator(".cite")).toHaveText(["1", "2", "1", "3"]);
+  await expect(summary.locator("mark.unverified")).toHaveText("9.1");
+  await expect(summary.locator(".summary-unverified")).toHaveText("本文に見つからない数値: 9.1");
+  await summary.getByRole("button", { name: "出典3へ" }).click();
+  await expect(app.locator("#b-106")).toHaveClass(/is-cite/);
+  await expect(app.locator("#b-106 .blk-label")).toHaveText("要約の出典");
+
+  // From the Page view's strip, a citation opens the Reader at its block.
+  await app.keyboard.press("g");
+  await app.keyboard.press("v");
+  await app.keyboard.press("g");
+  await app.keyboard.press("y");
+  await app.locator(".page-summary").getByRole("button", { name: "出典2へ" }).click();
+  await expect(app.locator("#b-103")).toHaveClass(/is-cite/);
+  await expect(app.locator("#b-103 .blk-label")).toHaveText("要約の出典");
 });
 
 test("g y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {

@@ -38,6 +38,8 @@ import type {
   Progress,
   Quiz,
   R2Settings,
+  McpEdit,
+  McpStatus,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
@@ -343,6 +345,12 @@ export const r2 = {
   save: (settings: R2Settings) => invoke<void>("r2_save", { settings }),
   clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
+};
+
+/** AI agents reaching the library over MCP (design-review §23). */
+export const mcp = {
+  status: () => invoke<McpStatus>("mcp_status"),
+  edit: (edit: McpEdit) => invoke<McpStatus>("mcp_edit", { edit }),
 };
 
 /** Reading on a phone (G47). */

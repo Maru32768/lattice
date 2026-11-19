@@ -19,6 +19,7 @@ const SECTIONS = [
   "アップデート",
   "バックアップ",
   "スマホで読む",
+  "AIエージェント(MCP)",
   "クラウドバックアップ(R2)",
   "エクスポート",
   "ログ・保存場所",
@@ -313,6 +314,233 @@ test("the palette opens a settings section by name", async ({ app }) => {
   await expect(app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option").first()).toHaveText(/^設定: 翻訳/);
   await app.keyboard.press("Enter");
   await expect(app.locator(".stg main h1")).toHaveText("翻訳");
+});
+
+test("agent registrations copy commands for all of Claude Code or one project, keep their own roles, and a new token or a deletion asks first", async ({
+  app,
+}) => {
+  await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  await app.getByLabel("MCPサーバーを動かす").check();
+  await expect.poll(() => callsOf(app, "mcp_edit")).toEqual([{ edit: { kind: "enable", on: true } }]);
+  await expect(app.getByText("登録はまだありません")).toBeVisible();
+  await expect(app.getByText("「対話」に会話として残ります"), "what each role may do, before one is picked").toBeVisible();
+  await expect(app.getByText("どちらのロールでも、記事、グループ、フィード、フォルダは削除できません。")).toBeVisible();
+
+  const row = (name: string) => app.locator(".set").filter({ has: app.locator(".h").getByText(name, { exact: true }) });
+  const role = (name: string) => app.getByLabel(`「${name}」のロール`);
+  const kinds = async () => (await callsOf(app, "mcp_edit")).map((c) => (c as { edit: { kind: string } }).edit.kind);
+  const clipboard = () => app.evaluate(() => navigator.clipboard.readText());
+  const register = app.getByRole("button", { name: "登録する" });
+  const scope = app.getByLabel("使う範囲");
+  await expect(register, "a name is needed").toBeDisabled();
+  await expect(scope, "the first one is for all of Claude Code").toHaveValue("user");
+  await app.getByLabel("新しい登録").fill("Claude Code");
+  await app.getByLabel("ロール", { exact: true }).selectOption("edit");
+  await register.click();
+  await expect(app.getByLabel("新しい登録")).toHaveValue("");
+  await expect(row("Claude Code")).toContainText("Claude Code全体");
+  await expect(scope, "Claude Code's user config holds one").toHaveValue("local");
+  await expect(scope.locator("option[value=user]")).toBeDisabled();
+  await app.getByLabel("新しい登録").fill("Research");
+  await app.getByLabel("ロール", { exact: true }).selectOption("read");
+  await register.click();
+  await expect(row("Research")).toContainText("1つのプロジェクト");
+  await expect(role("Claude Code")).toHaveValue("edit");
+  await expect(role("Research")).toHaveValue("read");
+
+  await row("Research").getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(clipboard).toMatch(/^claude mcp add --transport http --scope local lattice .* --header "Authorization: Bearer \w+"$/);
+  await row("Claude Code").getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect(row("Claude Code").getByRole("button", { name: "コピーしました" })).toBeVisible();
+  const first = await clipboard();
+  expect(first).toMatch(/^claude mcp add --transport http --scope user lattice .* --header "Authorization: Bearer \w+"$/);
+
+  await role("Research").selectOption("edit");
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "set_role", id: "r2", role: "edit" } });
+  await expect(role("Research"), "the row shows its own registration's saved role").toHaveValue("edit");
+  await role("Claude Code").selectOption("read");
+  await expect(role("Claude Code")).toHaveValue("read");
+  await expect(role("Research"), "the other row keeps its role").toHaveValue("edit");
+
+  await row("Claude Code").getByRole("button", { name: "トークンを作り直す" }).click();
+  const regenerate = app.getByRole("alertdialog", { name: "「Claude Code」のトークンを作り直しますか？" });
+  await regenerate.getByRole("button", { name: "キャンセル" }).click();
+  expect(await kinds(), "nothing before the answer").not.toContain("regenerate");
+  await row("Claude Code").getByRole("button", { name: "トークンを作り直す" }).click();
+  await expect(regenerate, "Claude Code refuses a second add under one name").toContainText(
+    "Claude Codeでは、claude mcp remove lattice -s userで前の登録を消してから、新しいコマンドを実行してください。",
+  );
+  await regenerate.getByRole("button", { name: "作り直す", exact: true }).click();
+  await expect(row("Claude Code").getByRole("button", { name: "コマンドをコピー" }), "the new token makes a new command").toBeVisible();
+  await row("Claude Code").getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(clipboard).not.toBe(first);
+  await row("Research").getByRole("button", { name: "トークンを作り直す" }).click();
+  const regenerateProject = app.getByRole("alertdialog", { name: "「Research」のトークンを作り直しますか？" });
+  await expect(regenerateProject, "a project's own is removed where it was added").toContainText(
+    "そのプロジェクトのフォルダで、claude mcp remove lattice -s localで前の登録を消してから、新しいコマンドを実行してください。",
+  );
+  await regenerateProject.getByRole("button", { name: "キャンセル" }).click();
+
+  await app.getByLabel("新しい登録").fill("claude code");
+  await register.click();
+  await expect(app.getByRole("alert")).toHaveText("「claude code」という登録はもうあります");
+  await expect(app.getByLabel("新しい登録"), "the name stays to be changed").toHaveValue("claude code");
+
+  await row("Research").getByRole("button", { name: "削除", exact: true }).click();
+  const removeProject = app.getByRole("alertdialog", { name: "登録「Research」を削除しますか？" });
+  await removeProject.getByRole("button", { name: "キャンセル" }).click();
+  expect(await kinds(), "nothing before the answer").not.toContain("delete");
+  await row("Research").getByRole("button", { name: "削除", exact: true }).click();
+  await expect(removeProject, "a project's own is removed where it was added").toContainText(
+    "そのプロジェクトのフォルダで、claude mcp remove lattice -s localで登録も消してください。",
+  );
+  await expect(removeProject, "removing it hands the project to the registration for all of Claude Code").toContainText(
+    "消した後は、「Claude Code全体」の登録があれば、そのプロジェクトでもそちらが使われます。",
+  );
+  await removeProject.getByRole("button", { name: "削除", exact: true }).click();
+  await expect(row("Research")).toHaveCount(0);
+  await expect(role("Claude Code"), "the other registration stays").toHaveValue("read");
+
+  await row("Claude Code").getByRole("button", { name: "削除", exact: true }).click();
+  const removeAll = app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" });
+  await expect(removeAll, "a new registration's command would meet the old one in Claude Code").toContainText(
+    "Claude Codeでは、claude mcp remove lattice -s userで登録も消してください。",
+  );
+  await removeAll.getByRole("button", { name: "削除", exact: true }).click();
+  await expect(app.getByText("登録はまだありません")).toBeVisible();
+  await expect(scope, "free for all of Claude Code again").toHaveValue("user");
+  await scope.selectOption("local");
+  await app.getByLabel("新しい登録").fill("Notes");
+  await register.click();
+  await expect(row("Notes"), "the scope picked, not the default").toContainText("1つのプロジェクト");
+  await expect(scope, "the next one starts from the default again").toHaveValue("user");
+
+  await app.getByLabel("MCPサーバーを動かす").uncheck();
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "enable", on: false } });
+  await expect(app.getByLabel("MCPサーバーを動かす")).not.toBeChecked();
+});
+
+test("each registration shows its open sessions and latest calls, and the screen keeps up without reopening", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  const server = app.getByLabel("MCPサーバーを動かす");
+  await server.check();
+  for (const name of ["Claude Code", "Research"]) {
+    await app.getByLabel("新しい登録").fill(name);
+    await app.getByRole("button", { name: "登録する" }).click();
+    await expect(app.getByLabel("新しい登録")).toHaveValue("");
+  }
+  const activity = app.getByRole("region", { name: "利用状況" });
+  await expect(activity).toContainText("セッションも呼び出しもありません");
+
+  const times = await app.evaluate(() => {
+    const now = Date.now();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const started = yesterday.setHours(12, 0, 0, 0);
+    window.__e2e.mcpActivity("r1", {
+      sessions: [
+        { client: "claude-code 2.1.327", started_ms: started, last_ms: now },
+        { client: null, started_ms: now, last_ms: now },
+      ],
+      calls: [
+        { at_ms: now, tool: "delete_article", outcome: "refused" },
+        { at_ms: now, tool: "tag", outcome: "failed" },
+        { at_ms: now, tool: "get", outcome: "succeeded" },
+      ],
+    });
+    void window.__e2e.emit("mcp-activity");
+    return { started: new Date(started).toLocaleString("ja-JP"), now: new Date(now).toLocaleTimeString("ja-JP") };
+  });
+  const used = activity.getByRole("group", { name: "Claude Code" });
+  await expect(used.getByRole("list", { name: "セッション" }).getByRole("listitem"), "heard of without reopening; a start a day ago gives the date").toHaveText(
+    [
+      `claude-code 2.1.327 開始: ${times.started} · 最後のリクエスト: ${times.now}`,
+      `名前のないクライアント 開始: ${times.now} · 最後のリクエスト: ${times.now}`,
+    ],
+  );
+  await expect(used.getByRole("list", { name: "最近の呼び出し" }).getByRole("listitem")).toHaveText([
+    `${times.now} delete_article 拒否`,
+    `${times.now} tag 失敗`,
+    `${times.now} get 成功`,
+  ]);
+  await expect(activity.getByRole("group"), "an unused registration is left out").toHaveCount(1);
+  await expect(activity).not.toContainText("セッションも呼び出しもありません");
+
+  await app.evaluate(() => {
+    window.__e2e.mcpActivity("r2", { sessions: [], calls: [{ at_ms: Date.now(), tool: "search", outcome: "succeeded" }] });
+    void window.__e2e.emit("mcp-activity");
+  });
+  const research = activity.getByRole("group", { name: "Research" });
+  await expect(research.getByRole("list", { name: "セッション" })).toHaveText("セッションはありません");
+  await expect(research.getByRole("list", { name: "最近の呼び出し" })).toContainText("search 成功");
+
+  await server.uncheck();
+  await expect(activity, "the section goes while the server is off").toHaveCount(0);
+});
+
+test("a status read that answers after a new token does not bring back the old command", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eLate = ["mcp_status"];
+  });
+  const app = shell;
+  await app.goto("/");
+  await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  const reads = () => callsOf(app, "mcp_status").then((c) => c.length);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.getByLabel("MCPサーバーを動かす").check();
+  await app.getByLabel("新しい登録").fill("Claude Code");
+  await app.getByRole("button", { name: "登録する" }).click();
+  const row = app.locator(".set").filter({ has: app.locator(".h").getByText("Claude Code", { exact: true }) });
+  await expect(row.getByRole("button", { name: "コマンドをコピー" })).toBeVisible();
+
+  const before = await reads();
+  await app.evaluate(() => window.__e2e.emit("mcp-activity"));
+  await expect.poll(reads, "a read of the first token's status, not yet answered").toBe(before + 1);
+  await row.getByRole("button", { name: "トークンを作り直す" }).click();
+  await app.getByRole("alertdialog").getByRole("button", { name: "作り直す", exact: true }).click();
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.length)).toBe(3);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
+  await row.getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).toContain("Bearer t2");
+});
+
+test("a status read that answers after a newer one does not put older activity back", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eLate = ["mcp_status"];
+  });
+  const app = shell;
+  await app.goto("/");
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  const reads = () => callsOf(app, "mcp_status").then((c) => c.length);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.getByLabel("MCPサーバーを動かす").check();
+  await app.getByLabel("新しい登録").fill("Claude Code");
+  await app.getByRole("button", { name: "登録する" }).click();
+  await expect(app.getByLabel("新しい登録")).toHaveValue("");
+
+  for (const tools of [["get"], ["search", "get"]]) {
+    const before = await reads();
+    await app.evaluate((tools) => {
+      window.__e2e.mcpActivity("r1", { sessions: [], calls: tools.map((tool) => ({ at_ms: Date.now(), tool, outcome: "succeeded" as const })) });
+      void window.__e2e.emit("mcp-activity");
+    }, tools);
+    await expect.poll(reads).toBe(before + 1);
+  }
+  const calls = app.getByRole("region", { name: "利用状況" }).getByRole("list", { name: "最近の呼び出し" }).getByRole("listitem");
+  await app.evaluate(() => window.__e2e.release("mcp_status", -1));
+  await expect(calls).toHaveCount(2);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
+  await expect(calls, "the older read came back last").toHaveCount(2);
 });
 
 test("serving to a phone shows the QR code, warns about the open network, and a new token changes the address", async ({ app }) => {

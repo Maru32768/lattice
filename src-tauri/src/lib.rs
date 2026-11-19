@@ -2,6 +2,7 @@ mod badge;
 mod browser;
 mod location;
 mod logging;
+mod mcp;
 mod mobile;
 mod popout;
 mod renderer;
@@ -1585,13 +1586,16 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log_dir,
         picked_dir: Mutex::new(None),
     });
-    // Not from a fallback folder either: a phone would read and write the old copy.
+    // Not from a fallback folder either: a phone or an agent would read and write the old copy.
     if !fell_back {
         mobile::start_publisher(app.handle());
         let handle = app.handle().clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = mobile::apply(&handle).await {
                 log::warn!("starting the mobile server: {e}");
+            }
+            if let Err(e) = mcp::apply(&handle).await {
+                log::warn!("starting the MCP server: {e}");
             }
         });
     }
@@ -1621,6 +1625,7 @@ pub fn run() {
         .manage(tabdrag::TabDrag::default())
         .manage(popout::Spare::default())
         .manage(mobile::MobileServer::default())
+        .manage(mcp::McpServer::default())
         .register_asynchronous_uri_scheme_protocol(browser::PDF_SCHEME, |ctx, request, responder| {
             let (handle, label) = (ctx.app_handle().clone(), ctx.webview_label().to_string());
             tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
@@ -1783,6 +1788,8 @@ pub fn run() {
             mobile::mobile_publish_now,
             mobile::mobile_tailscale,
             mobile::mobile_tailscale_serve,
+            mcp::mcp_status,
+            mcp::mcp_edit,
             job_overview,
             retry_job,
             retry_failed_jobs,
