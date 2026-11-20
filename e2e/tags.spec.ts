@@ -309,6 +309,35 @@ test("a filter with no search keeps its keys: j moves, Enter picks, Backspace dr
   await expect(chip, "Ctrl+Enter picks nothing").toHaveCount(0);
 });
 
+test("Space and Enter on an option Tab reached toggle that option, not the highlighted one", async ({ app }) => {
+  await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
+  const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
+  const opts = pv.locator(".opt");
+  await expect(opts.nth(0)).toHaveClass(/\bact\b/);
+  await app.keyboard.press("Tab");
+  await app.keyboard.press("Tab");
+  await expect(opts.nth(1)).toBeFocused();
+  await app.keyboard.press("Space");
+  await expect(opts.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(opts.nth(0)).toHaveAttribute("aria-pressed", "false");
+  await app.keyboard.press("Enter");
+  await expect(opts.nth(1)).toHaveAttribute("aria-pressed", "false");
+  await expect(opts.nth(0)).toHaveAttribute("aria-pressed", "false");
+});
+
+test("after a click on an option, j and Space toggle the highlighted option, not the clicked one", async ({ app }) => {
+  await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
+  const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
+  const opts = pv.locator(".opt");
+  await opts.nth(0).click();
+  await expect(opts.nth(0)).toHaveAttribute("aria-pressed", "true");
+  await app.keyboard.press("j");
+  await expect(opts.nth(1)).toHaveClass(/\bact\b/);
+  await app.keyboard.press("Space");
+  await expect(opts.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(opts.nth(0), "the clicked option stays picked").toHaveAttribute("aria-pressed", "true");
+});
+
 test("the tag editor opened from a row moves with the list's scroll", async ({ app }) => {
   const title = (await list(app).locator(".row").nth(1).locator(".t").textContent())!;
   const row = list(app).locator(".row", { hasText: title });
