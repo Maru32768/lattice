@@ -820,7 +820,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_deletion_the_user_denies_or_leaves_unanswered_deletes_nothing() {
-        let f = fixture_with(crate::ops::tests::ctx(), Duration::from_millis(300));
+        let f = fixture_with(crate::ops::tests::ctx(), Duration::from_secs(1));
         let r = f.register("agent", Role::Delete);
         let id = f.saved("https://example.com/a");
         let session = f.initialize(&r.token).await;
