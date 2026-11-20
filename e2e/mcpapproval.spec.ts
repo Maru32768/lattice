@@ -146,8 +146,9 @@ test("an answer does not keep a request on screen that a read on its way says ha
   const reads = () => callsOf(app, "mcp_approvals").then((c) => c.length);
   await expect.poll(reads).toBeGreaterThan(0);
   await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  const mounted = await reads();
   await ask(app, [article(1, null, "https://example.com/a"), article(2, null, "https://example.com/b")]);
-  await expect.poll(reads).toBeGreaterThan(1);
+  await expect.poll(reads).toBeGreaterThan(mounted);
   await app.evaluate(() => window.__e2e.release("mcp_approvals"));
   const dialog = dialogOf(app);
   await expect(dialog).toContainText("https://example.com/a");
@@ -169,8 +170,9 @@ test("a read on its way when the user answers does not bring the answered reques
   const reads = () => callsOf(app, "mcp_approvals").then((c) => c.length);
   await expect.poll(reads).toBeGreaterThan(0);
   await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  const mounted = await reads();
   await ask(app, [article(1, null, "https://example.com/a"), article(2, null, "https://example.com/b")]);
-  await expect.poll(reads).toBeGreaterThan(1);
+  await expect.poll(reads).toBeGreaterThan(mounted);
   await app.evaluate(() => window.__e2e.release("mcp_approvals"));
   const dialog = dialogOf(app);
   await expect(dialog).toContainText("https://example.com/a");
