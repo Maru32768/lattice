@@ -72,6 +72,19 @@ test("a title of any length leaves the URL and both answers on screen", async ({
   await expect(dialog.getByRole("button", { name: "削除を許可" })).toBeInViewport({ ratio: 1 });
 });
 
+test("every name keeps to lines of its own, which scroll, so a long second name leaves the answers on screen too", async ({ app }) => {
+  const long = "A genre an agent named long ".repeat(250);
+  await ask(app, [{ id: 1, registration: "Claude Code", deletion: { kind: "genre", from: long, into: long, articles: 2 }, deadline_ms: NOW + 90_000 }]);
+  const dialog = dialogOf(app);
+  await expect(dialog.locator("bdi")).toHaveCount(2);
+  await expect(dialog.getByRole("button", { name: "拒否" })).toBeInViewport({ ratio: 1 });
+  await expect(dialog.getByRole("button", { name: "削除を許可" })).toBeInViewport({ ratio: 1 });
+  const from = dialog.locator("dd").first();
+  await from.hover();
+  await app.mouse.wheel(0, 300);
+  await expect.poll(() => from.evaluate((e) => e.scrollTop), "the rest of the name is a scroll away").toBeGreaterThan(0);
+});
+
 test("Allow waits a moment each time a request shows", async ({ app }) => {
   const dialog = dialogOf(app);
   const allow = dialog.getByRole("button", { name: "削除を許可" });
