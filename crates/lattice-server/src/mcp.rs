@@ -164,7 +164,7 @@ fn all_tools() -> Vec<(Role, Value)> {
     ]
 }
 
-/// One JSON-RPC message, read once so that no transport picks its fields out by hand.
+/// One JSON-RPC message.
 pub struct Message {
     id: Option<Value>,
     method: Option<String>,

@@ -24,7 +24,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-pub mod mcp;
+mod mcp;
 pub mod mcp_http;
 pub mod ops;
 
