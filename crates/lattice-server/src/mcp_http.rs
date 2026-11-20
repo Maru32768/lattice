@@ -441,7 +441,8 @@ impl Approvals {
     }
 }
 
-/// Takes a deletion off the screen once it stops waiting, however that happens.
+/// Takes a deletion off the screen once its caller stops waiting, as on a timeout or a hang-up: an answer and `close` take
+/// theirs before.
 struct Withdraw<'a>(&'a Approvals, u64);
 
 impl Drop for Withdraw<'_> {
@@ -875,6 +876,8 @@ mod tests {
             assert!(says(&stopped, STOPPED), "{stopped}");
         }
         assert!(f.approvals.waiting().is_empty());
+        assert_eq!(*f.signals.lock().unwrap(), [vec![true; MAX_WAITING], vec![false]].concat(), "the screen hears once that they all went");
+        assert!(!f.locked.load(Ordering::SeqCst), "changed ran with a lock held, so reading the approvals from it would deadlock");
         let after = f.call(&r.token, &session, "delete_article", json!({ "id": a })).await;
         assert!(says(&after, STOPPED), "a stopped server asks no more: {after}");
         assert_eq!(f.titles().len(), 2);
