@@ -668,15 +668,17 @@ pub(crate) mod tests {
         let polite = Target { form: Some(Form::Polite), instructions: "x".into(), ..Target::default() };
         assert!(polite.key().starts_with("ja-x-form-polite-x-instr-"), "{}", polite.key());
         assert_eq!(Target::from_key(&polite.key(), "x"), polite, "read back past the instructions' hash");
-        assert!(translation_prompt(&polite).contains("polite style") && !translation_prompt(&Target::default()).contains("style ("));
+        assert!(!translation_prompt(&Target::default()).contains("style ("));
         let en = polite.for_source(true);
         assert!(!en.key().contains("form") && !translation_prompt(&en).contains("polite style"));
-        for form in [Form::Plain, Form::Polite] {
+        for (form, rule) in
+            [(Form::Plain, "Write the Japanese in the plain style (だ・である調)"), (Form::Polite, "Write the Japanese in the polite style (です・ます調)")]
+        {
             // The local engine's key: terms translated, then the style.
             let local = Target { keep_terms: false, form: Some(form), ..Target::default() };
             assert_eq!(Target::from_key(&local.key(), ""), local, "{}", local.key());
-            let rule = format!("Write the Japanese in the {} style", form.as_str());
-            assert!(translation_prompt(&local).contains(&rule), "{}", form.as_str());
+            let prompt = translation_prompt(&local);
+            assert!(prompt.contains(rule) && prompt.trim_end().ends_with(UNTRUSTED), "{prompt}");
         }
     }
 
