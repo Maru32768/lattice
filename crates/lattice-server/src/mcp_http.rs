@@ -636,7 +636,9 @@ mod tests {
                 .post(token, Some(session), json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": arguments } }))
                 .await;
             assert_eq!(r.status(), StatusCode::OK);
-            body_of(r).await["result"].clone()
+            let result = body_of(r).await["result"].clone();
+            assert!(result["content"][0]["text"].as_str().is_some_and(|t| t.starts_with(crate::mcp::UNTRUSTED)), "{result}");
+            result
         }
 
         /// A tool call that goes on while the test answers for the user.
