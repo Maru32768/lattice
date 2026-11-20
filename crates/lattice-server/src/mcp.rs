@@ -210,6 +210,11 @@ impl Message {
     pub fn tool(&self) -> Option<&str> {
         (self.id.is_some() && self.method.as_deref() == Some("tools/call")).then(|| self.params["name"].as_str().unwrap_or_default())
     }
+
+    /// The id of the request a `notifications/cancelled` gives up on.
+    pub fn cancelled(&self) -> Option<&Value> {
+        (self.id.is_none() && self.method.as_deref() == Some("notifications/cancelled")).then(|| self.params.get("requestId")).flatten()
+    }
 }
 
 /// What a transport does with one message. All but running a tool is decided here, so stdio and HTTP answer alike.
