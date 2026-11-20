@@ -160,6 +160,31 @@ test("an answer does not keep a request on screen that a read on its way says ha
   await expect(dialog, "the second no longer waits either").toBeHidden();
 });
 
+test("a read on its way when the user answers does not bring the answered request back", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eLate = ["mcp_approvals"];
+  });
+  const app = shell;
+  await app.goto("/");
+  const reads = () => callsOf(app, "mcp_approvals").then((c) => c.length);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  await ask(app, [article(1, null, "https://example.com/a"), article(2, null, "https://example.com/b")]);
+  await expect.poll(reads).toBeGreaterThan(1);
+  await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  const dialog = dialogOf(app);
+  await expect(dialog).toContainText("https://example.com/a");
+
+  const before = await reads();
+  await app.evaluate(() => void window.__e2e.emit("mcp-approval"));
+  await expect.poll(reads, "a read that still lists the first, on its way").toBeGreaterThan(before);
+  await dialog.getByRole("button", { name: "拒否" }).click();
+  await expect(dialog).toContainText("https://example.com/b");
+  await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  await app.waitForTimeout(500);
+  await expect(dialog).toContainText("https://example.com/b");
+});
+
 test("a request that stops waiting goes from the screen", async ({ app }) => {
   await ask(app, [article(1, null, "https://example.com/a")]);
   await expect(dialogOf(app).locator("bdi"), "by its URL while it has no title").toHaveText(["https://example.com/a"]);
