@@ -42,7 +42,7 @@ export const listCount = (page: Page) => list(page).locator(".count");
 export const listTitle = (page: Page) => list(page).locator(".list-title h1");
 export const chips = (page: Page) => list(page).locator(".chip.on .chip-body");
 
-/** Opens an article (the first one), then its Page view, and lets the page finish loading. */
+/** Opens an article (the one titled `title`, else the first), then its Page view, and lets the page finish loading. */
 export async function openPage(app: Page, title?: string) {
   await (title ? list(app).locator(".row", { hasText: title }) : list(app).locator(".row").first()).click();
   await app.locator(".docbar").getByRole("button", { name: "Page" }).click();
