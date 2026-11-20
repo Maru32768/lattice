@@ -59,13 +59,9 @@ The [user guide](docs/guide.md) explains every feature. Places you may want firs
 
 ## CLI and MCP
 
-The bundled `lattice-cli.exe` searches and reads your saved articles from a terminal. It can also serve them to AI agents such as Claude Code as an MCP server. Both the installer and the portable zip put it in the same folder as `Lattice.exe`. For the default installation, run this in PowerShell to add it to Claude Code:
+AI agents such as Claude Code can search, read and change your saved articles through the MCP server in Lattice. Turn it on in **Settings › AI agents (MCP)**, make a registration for the agent, and run the Claude Code command the registration copies. The bundled `lattice-cli.exe` does the same from a terminal. Both the installer and the portable zip put it in the same folder as `Lattice.exe`.
 
-```powershell
-claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
-```
-
-Saved articles are web pages written by other people. An agent that reads them can follow instructions planted in the text. Before you connect an agent, read [CLI and MCP](docs/guide.md#cli-and-mcp) in the user guide for the list of commands and for how to keep writes and risky tools away from that agent.
+Saved articles are web pages written by other people. An agent that reads them can follow instructions planted in the text. Before you connect an agent, read [CLI and MCP](docs/guide.md#cli-and-mcp) in the user guide for the list of commands, what each role allows and how to keep risky tools away from that agent.
 
 ## Development
 

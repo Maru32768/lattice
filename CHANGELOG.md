@@ -8,6 +8,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 - **Sources for summaries.** The sentences and key points of a summary end with numbers that point to the passages they come from. Click a number to go to its passage in the Reader.
 - **A check of the numbers in summaries.** Numbers in a summary that are not in the article get a wavy underline and are listed below the summary.
+- **AI agents over MCP, from the app.** AI agents such as Claude Code reach your library through an MCP server in Lattice. Turn it on in **Settings › AI agents (MCP)**, make a registration for each agent with the role **Read**, **Edit** or **Delete**, and run the Claude Code command it copies. Lattice asks you before each deletion an agent requests. The same screen lists each agent's sessions and recent calls, and the changes an agent makes show in the app at once.
+- **More ways to change the library from `lattice-cli`.** With `--allow-write`, it can take back a tag, a read mark or a favorite, rename articles and put them in genres, add, rename and delete genres, create and rename collections and add or remove their articles, subscribe to feeds, rename and move them, and rename folders. With `--allow-delete`, it can also delete articles, collections, feeds and folders, and merge genres. Agents get the same tools by role.
 
 ### Changed
 
@@ -17,6 +19,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **Find a chat scope by typing.** **Scope** in the chat pane opens a list with a search field, so you can type part of a name to narrow it. The list has every scope, even in a library with thousands of tags, and the chat pane no longer slows down to show them.
 - **The Tag filter lists every tag in the current list.** Before, it showed only the eight most common when nothing was typed. A tag you choose is checked; no row moves, and only the counts change. The order changes when you search again or reopen the filter. **Edit tags…** draws only the rows in view, so thousands of tags no longer slow it down.
 - **The chat's AI sits beside Send.** The button left of **Send** shows the AI that answers the chat. Click it to choose the provider, model and effort from a menu. The send-key hint below the question box is gone. **Send key** in **Settings › Summaries & chat** still sets the key.
+
+### Removed
+
+- **`lattice-cli mcp`.** Agents now use the MCP server in Lattice. If you added Lattice to Claude Code with `lattice-cli.exe mcp`, run `claude mcp remove lattice` in the folder where you added it, then make a registration in **Settings › AI agents (MCP)**.
 
 ### Fixed
 
