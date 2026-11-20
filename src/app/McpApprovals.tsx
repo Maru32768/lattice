@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { mcp, type McpApproval, type McpDeletion } from "../api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { useT } from "../i18n";
+import { useT, type T } from "../i18n";
 
 /**
  * A request that takes the place of one just answered or refused appears under the pointer: a second click meant for the
@@ -10,69 +10,31 @@ import { useT } from "../i18n";
  */
 const ARM_MS = 1000;
 
-/** The names come from the library but may be an agent's own words, so each stays apart from the text around it. */
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd>
-        <bdi>{value}</bdi>
-      </dd>
-    </>
-  );
-}
-
-function Target({ deletion: d }: { deletion: McpDeletion }) {
-  const t = useT();
+function target(d: McpDeletion, t: T): { rows: [label: string, value: string][]; desc: string } {
+  const titled = (label: string, title: string | null, url: string): [string, string][] =>
+    title === null
+      ? [[label, url]]
+      : [
+          [label, title],
+          [t("mcpApproval.url"), url],
+        ];
   switch (d.kind) {
     case "article":
-      return (
-        <>
-          <dl className="mcp-target">
-            <Row label={t("mcpApproval.article")} value={d.title ?? d.url} />
-            {d.title !== null && <Row label={t("mcpApproval.url")} value={d.url} />}
-          </dl>
-          <p>{t("app.deleteDesc")}</p>
-        </>
-      );
+      return { rows: titled(t("common.article"), d.title, d.url), desc: t("app.deleteDesc") };
     case "collection":
-      return (
-        <>
-          <dl className="mcp-target">
-            <Row label={t("mcpApproval.collection")} value={d.name} />
-          </dl>
-          <p>{t("mcpApproval.collectionDesc", { count: d.articles })}</p>
-        </>
-      );
+      return { rows: [[t("common.group"), d.name]], desc: t("mcpApproval.collectionDesc", { count: d.articles }) };
     case "feed":
-      return (
-        <>
-          <dl className="mcp-target">
-            <Row label={t("mcpApproval.feed")} value={d.title ?? d.url} />
-            {d.title !== null && <Row label={t("mcpApproval.url")} value={d.url} />}
-          </dl>
-          <p>{t("feedsView.deleteDesc", { article_count: d.articles })}</p>
-        </>
-      );
+      return { rows: titled(t("common.feed"), d.title, d.url), desc: t("feedsView.deleteDesc", { article_count: d.articles }) };
     case "folder":
-      return (
-        <>
-          <dl className="mcp-target">
-            <Row label={t("mcpApproval.folder")} value={d.name} />
-          </dl>
-          <p>{t("mcpApproval.folderDesc", { count: d.feeds })}</p>
-        </>
-      );
+      return { rows: [[t("common.folder"), d.name]], desc: t("mcpApproval.folderDesc", { count: d.feeds }) };
     case "genre":
-      return (
-        <>
-          <dl className="mcp-target">
-            <Row label={t("mcpApproval.genre")} value={d.from} />
-            <Row label={t("mcpApproval.into")} value={d.into} />
-          </dl>
-          <p>{t("mcpApproval.genreDesc", { count: d.articles })}</p>
-        </>
-      );
+      return {
+        rows: [
+          [t("common.genre"), d.from],
+          [t("mcpApproval.into"), d.into],
+        ],
+        desc: t("mcpApproval.genreDesc", { count: d.articles }),
+      };
   }
 }
 
@@ -128,6 +90,7 @@ export function McpApprovals() {
     mcp.answer(ask.id, allow).catch(() => {});
   };
   const left = Math.max(0, Math.ceil((ask.deadline_ms - now) / 1000));
+  const { rows, desc } = target(ask.deletion, t);
   return (
     <ConfirmDialog
       key={ask.id}
@@ -139,7 +102,18 @@ export function McpApprovals() {
       onCancel={() => answer(false)}
     >
       <p>{t("mcpApproval.who", { name: ask.registration })}</p>
-      <Target deletion={ask.deletion} />
+      <dl className="mcp-target">
+        {rows.map(([label, value]) => (
+          <Fragment key={label}>
+            <dt>{label}</dt>
+            <dd>
+              {/* The names come from the library but may be an agent's own words, so each stays apart from the text around it. */}
+              <bdi>{value}</bdi>
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+      <p>{desc}</p>
       <p>
         {t("mcpApproval.left", { seconds: left })}
         {waiting.length > 1 && ` ${t("mcpApproval.more", { count: waiting.length - 1 })}`}
