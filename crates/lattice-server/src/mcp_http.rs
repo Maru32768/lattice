@@ -803,6 +803,7 @@ mod tests {
         let asked = f.asked(1).await;
         let article = Deletion::Article { title: None, url: "https://example.com/a".into() };
         assert_eq!((asked[0].registration.as_str(), &asked[0].deletion), ("Claude Code", &article), "read from the library");
+        assert_eq!(APPROVAL_WAIT, Duration::from_secs(120), "the settings screen and the refusal say two minutes");
         let wait = APPROVAL_WAIT.as_millis() as u64;
         assert!((before + wait..=now_ms() + wait).contains(&asked[0].deadline_ms), "two minutes from when it was asked");
         assert!(f.titles().len() == 1 && f.applied.lock().unwrap().is_empty(), "nothing deleted before the answer");
