@@ -1002,16 +1002,22 @@ pub(crate) mod tests {
         assert!(run(&ctx, Op::DeleteCollection { id: g }).await.is_err(), "already gone");
     }
 
-    #[tokio::test]
-    async fn a_feed_goes_into_a_folder_by_name_and_a_refused_name_adds_nothing() {
+    /// Serves an RSS channel titled "Local" with these items, and a context allowed to load it from its URL.
+    async fn local_feed(items: &'static str) -> (Ctx, String) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://localhost:{}/feed.xml", listener.local_addr().unwrap().port());
-        let feed = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Local</title><link>https://example.com/</link></channel></rss>"#;
+        let feed = format!(r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Local</title><link>https://example.com/</link>{items}</channel></rss>"#);
         let app = axum::Router::new().route("/feed.xml", axum::routing::get(move || async move { ([("content-type", "application/rss+xml")], feed) }));
         tokio::spawn(async move { axum::serve(listener, app).await });
         let mut ctx = ctx();
         let local = lattice_core::network::NetworkSettings { allow: vec!["localhost".into()], ..Default::default() };
         Arc::get_mut(&mut ctx.providers).unwrap().http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
+        (ctx, url)
+    }
+
+    #[tokio::test]
+    async fn a_feed_goes_into_a_folder_by_name_and_a_refused_name_adds_nothing() {
+        let (ctx, url) = local_feed("").await;
         let s = &ctx.store;
         // Made first so that the feed and folder ids differ: a swap of the two would not show otherwise.
         feed_folders::create(s, "Other").unwrap();
@@ -1090,6 +1096,18 @@ pub(crate) mod tests {
         for op in missing {
             assert!(op.deletion(s).is_err(), "{op:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_loaded_feed_is_named_as_the_feed_list_names_it() {
+        let (ctx, url) = local_feed("<item><title>A</title><link>https://example.com/a</link></item>").await;
+        let s = &ctx.store;
+        saved(s, "https://example.com/a", "A");
+        let f = run(&ctx, Op::AddFeed { url: url.clone(), folder: None }).await.unwrap().json["id"].as_i64().unwrap();
+        let feed = |title: &str| Ok(Deletion::Feed { title: Some(title.into()), url: url.clone(), articles: 1 });
+        assert_eq!(Op::RemoveFeed { id: f }.deletion(s), feed("Local"), "its own title, and the article it brought");
+        run(&ctx, Op::RenameFeed { id: f, name: Some("Mine".into()) }).await.unwrap();
+        assert_eq!(Op::RemoveFeed { id: f }.deletion(s), feed("Mine"), "the user's name over its own");
     }
 
     #[test]
