@@ -111,10 +111,8 @@ export function McpApprovals() {
         ))}
       </dl>
       <p>{desc}</p>
-      <p>
-        {t("mcpApproval.left", { seconds: left })}
-        {waiting.length > 1 && ` ${t("mcpApproval.more", { count: waiting.length - 1 })}`}
-      </p>
+      <p>{t("mcpApproval.left", { seconds: left })}</p>
+      {waiting.length > 1 && <p>{t("mcpApproval.more", { count: waiting.length - 1 })}</p>}
     </ConfirmDialog>
   );
 }
