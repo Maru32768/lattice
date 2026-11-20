@@ -671,6 +671,13 @@ pub(crate) mod tests {
         assert!(translation_prompt(&polite).contains("polite style") && !translation_prompt(&Target::default()).contains("style ("));
         let en = polite.for_source(true);
         assert!(!en.key().contains("form") && !translation_prompt(&en).contains("polite style"));
+        for form in [Form::Plain, Form::Polite] {
+            // The local engine's key: terms translated, then the style.
+            let local = Target { keep_terms: false, form: Some(form), ..Target::default() };
+            assert_eq!(Target::from_key(&local.key(), ""), local, "{}", local.key());
+            let rule = format!("Write the Japanese in the {} style", form.as_str());
+            assert!(translation_prompt(&local).contains(&rule), "{}", form.as_str());
+        }
     }
 
     #[test]
