@@ -9,7 +9,7 @@ use lattice_core::msg;
 use lattice_server::Server;
 use lattice_server::mcp_http::{self, ADDR, Activity, Approval, Approvals, CallInfo, SessionInfo};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
 use ts_rs::TS;
 
@@ -84,11 +84,13 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     let tell = handle.clone();
     let approvals = Approvals::new(move |arrived| {
         let _ = tell.emit("mcp-approval", ());
+        // Still hidden while starting up: `restore_main` shows it, with the dialog.
         if arrived
             && let Some(w) = tell.get_webview_window(MAIN)
-            && let Err(e) = w.unminimize().and_then(|()| w.set_focus())
+            && w.is_visible().unwrap_or(false)
+            && let Err(e) = raise(&w)
         {
-            log::warn!("focusing the main window for a deletion to approve: {e}");
+            log::warn!("raising the main window for a deletion to approve: {e}");
         }
     });
     let router = mcp_http::router(app.store.clone(), app.providers.clone(), on_applied, activity.clone(), approvals.clone());
@@ -150,6 +152,36 @@ pub async fn mcp_edit(
         apply(&handle).await?;
     }
     status(&mcp_server, &app, &loc).await
+}
+
+/// Puts the main window in front of the others for a deletion to approve, and flashes it, but leaves the keyboard
+/// where it is: keys meant for the app the user is typing in would answer the dialog, and a word, Tab and a space
+/// would allow the deletion.
+#[allow(unsafe_code, reason = "Win32 window placement through the windows crate")]
+fn raise(w: &WebviewWindow) -> tauri::Result<()> {
+    #[cfg(windows)]
+    {
+        let on_main = w.clone();
+        w.run_on_main_thread(move || {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                HWND_NOTOPMOST, HWND_TOPMOST, IsIconic, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow,
+            };
+            let Ok(hwnd) = on_main.hwnd() else {
+                return;
+            };
+            let keep = SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE;
+            // SAFETY: on the main thread, with the window tao made, which lives as long as `on_main`.
+            unsafe {
+                if IsIconic(hwnd).as_bool() {
+                    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                }
+                // Topmost and back again: in front of the other apps' windows, then ordered as any window.
+                let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, keep);
+                let _ = SetWindowPos(hwnd, Some(HWND_NOTOPMOST), 0, 0, 0, 0, keep);
+            }
+        })?;
+    }
+    w.request_user_attention(Some(tauri::UserAttentionType::Critical))
 }
 
 /// Deletions waiting for the user's answer, oldest first.
