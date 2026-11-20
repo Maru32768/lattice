@@ -5,7 +5,7 @@ import { Popover } from "../ui/Popover";
 import { PickList } from "../ui/PickList";
 import type { PickOption } from "../ui/pickRows";
 import { ActionKey, Icon, Kbd } from "../ui/Icon";
-import { listStep } from "../lib/keys";
+import { listStep, pressesButton } from "../lib/keys";
 import { useT } from "../i18n";
 
 interface Props {
@@ -170,6 +170,9 @@ function DimFilter({ dim, facets, onFacets, base, all, groups, anchor, onClose }
   const pick = (v: DimValue<Dim>) => onFacets(toggle(facets, dim, v));
 
   function keys(e: React.KeyboardEvent) {
+    if (pressesButton(e)) {
+      return;
+    }
     const k = e.key;
     const d = listStep(e, false);
     if (d) {
@@ -196,7 +199,8 @@ function DimFilter({ dim, facets, onFacets, base, all, groups, anchor, onClose }
   const max = Math.max(1, base.length);
   return (
     <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })} width={300} onClose={onClose}>
-      <div onKeyDown={keys} className="facet-pv" tabIndex={-1} data-autofocus>
+      {/* A click leaves the focus where it was: on the clicked option, Space and Enter would press it, not the highlight. */}
+      <div onKeyDown={keys} onMouseDown={(e) => e.preventDefault()} className="facet-pv" tabIndex={-1} data-autofocus>
         <div className="pv-list">
           <div role="group" aria-label={t(DIM_LABELS[dim])}>
             {opts.map((o, i) => {
