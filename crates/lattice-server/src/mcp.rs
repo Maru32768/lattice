@@ -410,4 +410,15 @@ mod tests {
         assert_eq!(s.chars().count(), MAX_RESULT_CHARS, "note and marker included");
         assert_eq!(result_text("short"), format!("{UNTRUSTED}\n\nshort"));
     }
+
+    #[test]
+    fn a_tool_result_is_the_note_then_the_json_whether_it_succeeded_or_not() {
+        let reply = |outcome| {
+            let r = tool_reply(json!(1), outcome);
+            (r["result"]["content"][0]["text"].as_str().unwrap().to_owned(), r["result"]["isError"].clone())
+        };
+        let ok = Out { json: json!({ "hits": [7] }), text: "7".into() };
+        assert_eq!(reply(Ok(ok)), (format!("{UNTRUSTED}\n\n{{\"hits\":[7]}}"), json!(false)));
+        assert_eq!(reply(Err("no article 7".into())), (format!("{UNTRUSTED}\n\nno article 7"), json!(true)));
+    }
 }
