@@ -429,7 +429,9 @@ mod tests {
         let ok = Out { json: json!({ "hits": [7] }), text: "7".into() };
         assert_eq!(reply(Ok(ok)), (format!("{UNTRUSTED}\n\n{{\"hits\":[7]}}"), json!(false)));
         assert_eq!(reply(Err("no article 7".into())), (format!("{UNTRUSTED}\n\nno article 7"), json!(true)));
-        let big = Out { json: json!("あ".repeat(MAX_RESULT_CHARS)), text: String::new() };
-        assert_eq!(reply(Ok(big)).0.chars().count(), MAX_RESULT_CHARS, "a success is cut too");
+        let long = "あ".repeat(MAX_RESULT_CHARS);
+        let big = Out { json: json!(long), text: String::new() };
+        assert_eq!(reply(Ok(big)).0, result_text(&json!(long).to_string()), "a long success is cut, marker and all");
+        assert_eq!(reply(Err(long.clone())).0, result_text(&long), "and so is a long error");
     }
 }
