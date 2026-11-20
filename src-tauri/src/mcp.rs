@@ -84,10 +84,8 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     let tell = handle.clone();
     let approvals = Approvals::new(move |arrived| {
         let _ = tell.emit("mcp-approval", ());
-        // Still hidden while starting up: `restore_main` shows it, with the dialog.
         if arrived
             && let Some(w) = tell.get_webview_window(MAIN)
-            && w.is_visible().unwrap_or(false)
             && let Err(e) = raise(&w)
         {
             log::warn!("raising the main window for a deletion to approve: {e}");
@@ -159,12 +157,13 @@ pub async fn mcp_edit(
 /// would allow the deletion.
 #[allow(unsafe_code, reason = "Win32 window placement through the windows crate")]
 fn raise(w: &WebviewWindow) -> tauri::Result<()> {
-    #[cfg(windows)]
-    {
-        let on_main = w.clone();
-        w.run_on_main_thread(move || {
+    let on_main = w.clone();
+    // All on the main thread: asked from here, whether the window shows yet would hold up the agent's request.
+    w.run_on_main_thread(move || {
+        #[cfg(windows)]
+        {
             use windows::Win32::UI::WindowsAndMessaging::{
-                HWND_NOTOPMOST, HWND_TOPMOST, IsIconic, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow,
+                HWND_NOTOPMOST, HWND_TOPMOST, IsIconic, IsWindowVisible, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow,
             };
             let Ok(hwnd) = on_main.hwnd() else {
                 return;
@@ -172,6 +171,10 @@ fn raise(w: &WebviewWindow) -> tauri::Result<()> {
             let keep = SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE;
             // SAFETY: on the main thread, with the window tao made, which lives as long as `on_main`.
             unsafe {
+                // Still hidden while starting up: `restore_main` shows it, with the dialog.
+                if !IsWindowVisible(hwnd).as_bool() {
+                    return;
+                }
                 if IsIconic(hwnd).as_bool() {
                     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
                 }
@@ -179,9 +182,11 @@ fn raise(w: &WebviewWindow) -> tauri::Result<()> {
                 let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, keep);
                 let _ = SetWindowPos(hwnd, Some(HWND_NOTOPMOST), 0, 0, 0, 0, keep);
             }
-        })?;
-    }
-    w.request_user_attention(Some(tauri::UserAttentionType::Critical))
+        }
+        if let Err(e) = on_main.request_user_attention(Some(tauri::UserAttentionType::Critical)) {
+            log::warn!("flashing the main window for a deletion to approve: {e}");
+        }
+    })
 }
 
 /// Deletions waiting for the user's answer, oldest first.
