@@ -847,7 +847,8 @@ mod tests {
         let session = f.initialize(&r.token).await;
         assert_eq!(f.call(&r.token, &session, "delete_article", json!({ "id": 999 })).await["isError"], true);
         assert!(f.signals.lock().unwrap().is_empty(), "the user was not asked");
-        assert!(f.activity.of(&r).1.iter().all(|c| c.outcome == Outcome::Failed));
+        let outcomes: Vec<Outcome> = f.activity.of(&r).1.into_iter().map(|c| c.outcome).collect();
+        assert_eq!(outcomes, [Outcome::Failed]);
     }
 
     #[tokio::test]
