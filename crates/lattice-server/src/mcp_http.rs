@@ -5,6 +5,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -47,6 +48,9 @@ const APPROVAL_WAIT: Duration = Duration::from_secs(120);
 /// Deletions waiting at once: an agent asking again and again is refused at once past it, rather than queueing a dialog
 /// for each.
 const MAX_WAITING: usize = 10;
+/// The next deletion's id, across servers: an answer meant for a stopped server's request must not reach a new server's
+/// under the same id, nor the screen take a new request for one it has already shown.
+static NEXT_APPROVAL: AtomicU64 = AtomicU64::new(1);
 const READ_ONLY: &str = "This tool changes the library, and this connection may only read it. The user can change that in Lattice: Settings › AI agents (MCP).";
 const MAY_NOT_DELETE: &str =
     "This tool deletes from the library, and this connection may not delete. The user can change that in Lattice: Settings › AI agents (MCP).";
@@ -163,7 +167,6 @@ pub struct Approvals {
 #[derive(Default)]
 struct Waiting {
     asks: Vec<(Approval, oneshot::Sender<bool>)>,
-    next: u64,
     /// The server is stopping: what waits is refused, and nothing more is asked.
     closed: bool,
 }
@@ -413,8 +416,7 @@ impl Approvals {
             if waiting.asks.len() >= MAX_WAITING {
                 return Err(TOO_MANY);
             }
-            waiting.next += 1;
-            let (id, deadline_ms) = (waiting.next, now_ms() + self.wait.as_millis() as u64);
+            let (id, deadline_ms) = (NEXT_APPROVAL.fetch_add(1, Ordering::Relaxed), now_ms() + self.wait.as_millis() as u64);
             waiting.asks.push((Approval { id, registration: registration.to_string(), deletion, deadline_ms }, reply));
             id
         };
@@ -907,6 +909,22 @@ mod tests {
         assert!(hung_up.await.unwrap_err().is_cancelled());
         assert!(f.approvals.waiting().is_empty(), "an agent that stops reading takes its request off the screen");
         assert_eq!(f.titles().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_new_server_never_asks_under_an_id_an_earlier_one_used() {
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            let f = fixture();
+            let r = f.register("agent", Role::Delete);
+            let id = f.saved("https://example.com/a");
+            let session = f.initialize(&r.token).await;
+            let call = f.call_later(&r.token, &session, "delete_article", json!({ "id": id }));
+            ids.push(f.asked(1).await[0].id);
+            f.approvals.close();
+            assert!(says(&call.await.unwrap(), STOPPED));
+        }
+        assert_ne!(ids[0], ids[1], "the answer to the first would allow the second");
     }
 
     #[tokio::test]

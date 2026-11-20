@@ -52,6 +52,19 @@ test("an agent's deletion waits for the user, oldest first, and a double-click a
   await expect(dialog).toBeHidden();
 });
 
+test("Allow waits a moment each time a request shows, under an id seen before too", async ({ app }) => {
+  const dialog = dialogOf(app);
+  const allow = dialog.getByRole("button", { name: "削除を許可" });
+  await ask(app, [article(1, null, "https://example.com/first")]);
+  await expect(allow).toBeEnabled();
+  await allow.click();
+  await expect(dialog).toBeHidden();
+  await ask(app, [article(1, null, "https://example.com/second")]);
+  await expect(dialog).toContainText("https://example.com/second");
+  expect(await allow.isDisabled(), "not armed yet").toBe(true);
+  await expect(allow).toBeEnabled();
+});
+
 test("each kind of deletion says what goes and what stays, and the time left counts down", async ({ app }) => {
   const by = (id: number, deletion: McpApproval["deletion"]): McpApproval => ({ id, registration: "Research", deletion, deadline_ms: NOW + 90_000 });
   await ask(app, [

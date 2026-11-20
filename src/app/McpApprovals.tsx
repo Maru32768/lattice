@@ -43,7 +43,6 @@ export function McpApprovals() {
   const t = useT();
   const [waiting, setWaiting] = useState<McpApproval[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const [armed, setArmed] = useState<number | null>(null);
   /** Reads can answer out of order, and one sent before an answer would put the answered request back. */
   const sent = useRef(0);
   const shown = useRef(0);
@@ -73,12 +72,8 @@ export function McpApprovals() {
     if (id === undefined) {
       return;
     }
-    const arm = setTimeout(() => setArmed(id), ARM_MS);
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      clearTimeout(arm);
-      clearInterval(tick);
-    };
+    return () => clearInterval(tick);
   }, [id]);
 
   if (!ask) {
@@ -97,7 +92,7 @@ export function McpApprovals() {
       title={t("mcpApproval.title")}
       confirm={t("mcpApproval.allow")}
       cancel={t("mcpApproval.deny")}
-      confirmDisabled={armed !== ask.id}
+      armMs={ARM_MS}
       onConfirm={() => answer(true)}
       onCancel={() => answer(false)}
     >

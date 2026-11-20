@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog as AD } from "radix-ui";
 import { coverStyle, useCover } from "./Popover";
@@ -12,7 +12,7 @@ export function ConfirmDialog({
   title,
   confirm,
   cancel,
-  confirmDisabled,
+  armMs,
   onConfirm,
   onCancel,
   children,
@@ -22,7 +22,8 @@ export function ConfirmDialog({
   confirm: string;
   /** Label of the button that cancels, キャンセル by default. */
   cancel?: string;
-  confirmDisabled?: boolean;
+  /** Keeps the danger button off for this long once the dialog shows: a click meant for what was there before must not press it. */
+  armMs?: number;
   onConfirm: () => void;
   onCancel: () => void;
   children: React.ReactNode;
@@ -30,6 +31,15 @@ export function ConfirmDialog({
   const t = useT();
   const scrim = useRef<HTMLDivElement>(null);
   const clear = useCover(scrim, true);
+  const [armed, setArmed] = useState(!armMs);
+  // Counted from when it shows: over a page webview it waits, invisible, for the page's still.
+  useEffect(() => {
+    if (armed || !clear) {
+      return;
+    }
+    const timer = setTimeout(() => setArmed(true), armMs);
+    return () => clearTimeout(timer);
+  }, [armed, clear, armMs]);
   // Not AD.Portal: it mounts a render late, after useCover has measured.
   return createPortal(
     <AD.Root
@@ -60,7 +70,7 @@ export function ConfirmDialog({
           <div className="dlg-acts">
             <AD.Cancel className="btn">{cancel ?? t("common.cancel")}</AD.Cancel>
             {/* Not AD.Action: it would also close, calling onCancel after onConfirm. */}
-            <button className="btn danger" onClick={onConfirm} disabled={confirmDisabled}>
+            <button className="btn danger" onClick={onConfirm} disabled={!armed}>
               {confirm}
             </button>
           </div>
