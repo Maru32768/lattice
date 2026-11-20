@@ -211,8 +211,9 @@ fn a_missing_database_is_an_error_and_is_not_created() {
 #[test]
 fn mcp_is_not_a_subcommand() {
     let out = cli(&data_dir("no-mcp"), &["mcp"]);
-    assert_eq!(out.status.code(), Some(2), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("unrecognized subcommand 'mcp'"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("unrecognized subcommand 'mcp'"), "{stderr}");
 }
 
 #[test]
