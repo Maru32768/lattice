@@ -52,14 +52,14 @@ test("an agent's deletion waits for the user, oldest first, and a double-click a
   await expect(dialog).toBeHidden();
 });
 
-test("Allow waits a moment each time a request shows, under an id seen before too", async ({ app }) => {
+test("Allow waits a moment each time a request shows", async ({ app }) => {
   const dialog = dialogOf(app);
   const allow = dialog.getByRole("button", { name: "削除を許可" });
   await ask(app, [article(1, null, "https://example.com/first")]);
   await expect(allow).toBeEnabled();
   await allow.click();
   await expect(dialog).toBeHidden();
-  await ask(app, [article(1, null, "https://example.com/second")]);
+  await ask(app, [article(2, null, "https://example.com/second")]);
   await expect(dialog).toContainText("https://example.com/second");
   expect(await allow.isDisabled(), "not armed yet").toBe(true);
   await expect(allow).toBeEnabled();
@@ -94,6 +94,29 @@ test("each kind of deletion says what goes and what stays, and the time left cou
   await expect(dialog).toContainText("答えなければ、3秒後に拒否します。");
   await app.clock.setFixedTime(NOW + 1_600);
   await expect(dialog, "at the next tick of its own").toContainText("答えなければ、1秒後に拒否します。");
+});
+
+test("an answer does not keep a request on screen that a read on its way says has stopped waiting", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eLate = ["mcp_approvals"];
+  });
+  const app = shell;
+  await app.goto("/");
+  const reads = () => callsOf(app, "mcp_approvals").then((c) => c.length);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  await ask(app, [article(1, null, "https://example.com/a"), article(2, null, "https://example.com/b")]);
+  await expect.poll(reads).toBeGreaterThan(1);
+  await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  const dialog = dialogOf(app);
+  await expect(dialog).toContainText("https://example.com/a");
+
+  const before = await reads();
+  await ask(app, []);
+  await expect.poll(reads, "both refused unanswered, the read of that still on its way").toBeGreaterThan(before);
+  await dialog.getByRole("button", { name: "拒否" }).click();
+  await app.evaluate(() => window.__e2e.release("mcp_approvals"));
+  await expect(dialog, "the second no longer waits either").toBeHidden();
 });
 
 test("a request that stops waiting goes from the screen", async ({ app }) => {

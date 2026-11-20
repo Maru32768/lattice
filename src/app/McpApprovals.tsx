@@ -43,9 +43,11 @@ export function McpApprovals() {
   const t = useT();
   const [waiting, setWaiting] = useState<McpApproval[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  /** Reads can answer out of order, and one sent before an answer would put the answered request back. */
+  /** Reads can answer out of order. */
   const sent = useRef(0);
   const shown = useRef(0);
+  /** Requests answered here: a read sent before the answer still lists them. */
+  const answered = useRef(new Set<number>());
 
   useEffect(() => {
     const reload = () => {
@@ -55,7 +57,7 @@ export function McpApprovals() {
         .then((list) => {
           if (n > shown.current) {
             shown.current = n;
-            setWaiting(list);
+            setWaiting(list.filter((a) => !answered.current.has(a.id)));
             setNow(Date.now());
           }
         })
@@ -80,7 +82,7 @@ export function McpApprovals() {
     return null;
   }
   const answer = (allow: boolean) => {
-    shown.current = ++sent.current;
+    answered.current.add(ask.id);
     setWaiting((list) => list.filter((a) => a.id !== ask.id));
     mcp.answer(ask.id, allow).catch(() => {});
   };
