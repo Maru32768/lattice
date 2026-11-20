@@ -380,6 +380,7 @@ mod tests {
         let r = init("2025-06-18");
         assert_eq!((r["result"]["serverInfo"]["name"].as_str(), r["result"]["protocolVersion"].as_str()), (Some("lattice"), Some("2025-06-18")));
         assert_eq!(r["result"]["instructions"], UNTRUSTED);
+        assert!(r["result"]["capabilities"]["tools"].is_object(), "a client asks for tools only when the server declares them");
         assert_eq!(init("1999-01-01")["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
         assert!(Message::parse(br#"{"jsonrpc":"2.0","id":0,"method":"initialize"}"#).unwrap().is_initialize());
         assert!(!Message::parse(br#"{"jsonrpc":"2.0","method":"initialize"}"#).unwrap().is_initialize(), "a notification opens nothing");
