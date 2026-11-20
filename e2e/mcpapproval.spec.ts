@@ -21,13 +21,18 @@ const article = (id: number, title: string | null, url: string, inMs = 90_000): 
 const dialogOf = (app: Page) => app.getByRole("alertdialog", { name: "AIエージェントに削除を許可しますか？" });
 
 test("an agent's deletion waits for the user, oldest first, and a double-click allows only the first", async ({ app }) => {
-  await ask(app, [article(1, "Rust ‮gnp.exe", "https://example.com/a"), article(2, "Second", "https://example.com/b")]);
+  // Three, so the line saying how many more wait stays and the next request's Allow comes up where the first one was.
+  await ask(app, [
+    article(1, "Rust ‮gnp.exe", "https://example.com/a"),
+    article(2, "Second", "https://example.com/b"),
+    article(3, "Third", "https://example.com/c"),
+  ]);
   const dialog = dialogOf(app);
   await expect(dialog).toContainText("登録「Claude Code」のエージェントが、MCPで次を削除しようとしています。");
   await expect(dialog.locator("bdi"), "each name apart from the text around it").toHaveText(["Rust ‮gnp.exe", "https://example.com/a"]);
   await expect(dialog).toContainText("元に戻せません");
   await expect(dialog).toContainText("答えなければ、90秒後に拒否します。");
-  await expect(dialog).toContainText("ほかに1件が待っています。");
+  await expect(dialog).toContainText("ほかに2件が待っています。");
   await expect(dialog.getByRole("button", { name: "拒否" }), "a stray Enter denies").toBeFocused();
 
   const allow = dialog.getByRole("button", { name: "削除を許可" });
@@ -37,10 +42,15 @@ test("an agent's deletion waits for the user, oldest first, and a double-click a
   const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
   await app.mouse.click(x, y);
   await expect(dialog.locator("bdi")).toHaveText(["Second", "https://example.com/b"]);
+  const next = (await allow.boundingBox())!;
+  expect(x > next.x && x < next.x + next.width && y > next.y && y < next.y + next.height, "the second click lands on the next request's Allow").toBe(true);
   await app.waitForTimeout(200);
   await app.mouse.click(x, y);
   await expect(allow, "armed a moment after it shows").toBeEnabled();
   expect(await callsOf(app, "mcp_answer"), "the second click fell on the next request before it could be allowed").toEqual([{ id: 1, allow: true }]);
+  await expect(dialog).toContainText("ほかに1件が待っています。");
+  await app.keyboard.press("Escape");
+  await expect(dialog.locator("bdi")).toHaveText(["Third", "https://example.com/c"]);
   await expect(dialog).not.toContainText("ほかに");
   await app.keyboard.press("Escape");
   await expect
@@ -48,6 +58,7 @@ test("an agent's deletion waits for the user, oldest first, and a double-click a
     .toEqual([
       { id: 1, allow: true },
       { id: 2, allow: false },
+      { id: 3, allow: false },
     ]);
   await expect(dialog).toBeHidden();
 });
