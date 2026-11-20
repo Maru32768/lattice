@@ -2,9 +2,10 @@
 //! registration read again at every request, so a new token, a new role and a deletion hold from the next one. The
 //! JSON-RPC itself is `mcp::step`, shared with `lattice-cli mcp`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::body::Bytes;
@@ -19,6 +20,8 @@ use lattice_core::jobs::Providers;
 use lattice_core::mcp::{self, Registration, Role, Scope};
 use lattice_core::mobile::{Effects, blocking};
 use lattice_core::store::{Store, random_hex, sha256_hex};
+use serde::Serialize;
+use ts_rs::TS;
 
 use crate::mcp::{Message, PROTOCOL_VERSIONS, Step, step, tool_reply};
 use crate::ops::{self, Ctx, Op, Out};
@@ -31,6 +34,10 @@ const SESSION: &str = "mcp-session-id";
 const VERSION: &str = "mcp-protocol-version";
 /// More than one PC's agents keep open. Past it the session idle longest goes, and its client initializes again.
 const MAX_SESSIONS: usize = 64;
+/// Per registration: enough to see what an agent has been doing, few enough to keep in memory.
+const MAX_CALLS: usize = 20;
+/// What an agent names (its client, a tool it asked for) is cut to this before the settings screen shows it.
+const MAX_NAME_CHARS: usize = 64;
 const READ_ONLY: &str = "This tool changes the library, and this connection may only read it. The user can change that in Lattice: Settings › AI agents (MCP).";
 const NO_DELETING: &str = "Deleting over MCP needs the user's approval in Lattice, which this version cannot ask for. Nothing was deleted.";
 
@@ -51,7 +58,46 @@ struct McpState {
     store: Arc<Store>,
     providers: Arc<Providers<LlmChain, LocalE5>>,
     on_applied: OnApplied,
-    sessions: Arc<Mutex<Sessions>>,
+    activity: Arc<Activity>,
+}
+
+/// What the settings screen shows of the server's use. Memory only: the app makes a new one each time it starts the
+/// server, so switching it off and on, or quitting, forgets it.
+pub struct Activity {
+    sessions: Mutex<Sessions>,
+    /// By registration id, oldest first.
+    calls: Mutex<HashMap<String, VecDeque<CallInfo>>>,
+    changed: Box<dyn Fn() + Send + Sync>,
+}
+
+/// An open session as the settings screen shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, rename = "McpSession")]
+pub struct SessionInfo {
+    /// The name and version the agent gave in `initialize`: its own words, shown as text only.
+    pub client: Option<String>,
+    pub started_ms: u64,
+    /// When its last request came.
+    pub last_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, rename = "McpOutcome")]
+pub enum Outcome {
+    Succeeded,
+    /// The tool ran and failed, or the call named no tool this server has or gave it bad arguments.
+    Failed,
+    /// Above the registration's role, or a deletion.
+    Refused,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, rename = "McpCall")]
+pub struct CallInfo {
+    pub at_ms: u64,
+    pub tool: String,
+    pub outcome: Outcome,
 }
 
 #[derive(Default)]
@@ -66,16 +112,20 @@ struct Session {
     /// token leaves it unreachable without anything having to end it.
     key: String,
     used: u64,
+    /// The clock when it opened: sessions opened in the same millisecond still keep their order on the screen.
+    opened: u64,
+    info: SessionInfo,
 }
 
-/// `/mcp` for the registrations in `store`. Writes report what they changed through `on_applied`, as the phone's do.
-pub fn router(store: Arc<Store>, providers: Arc<Providers<LlmChain, LocalE5>>, on_applied: OnApplied) -> Router {
+/// `/mcp` for the registrations in `store`. Writes report what they changed through `on_applied`, as the phone's do;
+/// sessions and calls go to `activity`.
+pub fn router(store: Arc<Store>, providers: Arc<Providers<LlmChain, LocalE5>>, on_applied: OnApplied, activity: Arc<Activity>) -> Router {
     // GET (a stream from the server) and every other method get 405 from the method router.
     Router::new().route(ENDPOINT, post(post_message).delete(end_session)).layer(middleware::from_fn(refuse_browsers)).with_state(McpState {
         store,
         providers,
         on_applied,
-        sessions: Arc::default(),
+        activity,
     })
 }
 
@@ -128,26 +178,33 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
         Err(reply) => return json(StatusCode::BAD_REQUEST, &reply),
     };
     let opened = if message.is_initialize() {
-        match st.sessions().open(&key) {
+        match st.activity.open(&key, message.client().as_deref().map(clip)) {
             Ok(id) => Some(id),
             Err(e) => return internal_error(&e),
         }
     } else {
         match session_id(&headers) {
             None => return error(StatusCode::BAD_REQUEST, "no Mcp-Session-Id: initialize first"),
-            Some(id) if !st.sessions().holds(id, &key) => return error(StatusCode::NOT_FOUND, "no such session: initialize again"),
+            Some(id) if !st.activity.holds(id, &key) => return error(StatusCode::NOT_FOUND, "no such session: initialize again"),
             Some(_) => None,
         }
     };
+    let tool = message.tool().map(clip);
     let reply = match step(&message, registration.role) {
         Step::Silent => return StatusCode::ACCEPTED.into_response(),
-        Step::Reply(reply) => reply,
+        Step::Reply(reply) => {
+            // A tools/call answered without running: a tool this server lacks, or arguments that do not fit it.
+            if let Some(tool) = &tool {
+                st.activity.record(&registration.id, tool, Outcome::Failed);
+            }
+            reply
+        }
         Step::Call { id, op } => {
             // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway, leaving a job it
             // claimed claimed until the app quits, and the app never told what was written.
             let st = st.clone();
-            let role = registration.role;
-            tool_reply(id, tokio::spawn(async move { st.call(role, op).await }).await.unwrap_or_else(|e| Err(e.to_string())))
+            let (role, who, tool) = (registration.role, registration.id, tool.unwrap_or_default());
+            tool_reply(id, tokio::spawn(async move { st.call(role, op, &who, &tool).await }).await.unwrap_or_else(|e| Err(e.to_string())))
         }
     };
     let mut response = json(StatusCode::OK, &reply);
@@ -164,7 +221,7 @@ async fn end_session(State(st): State<McpState>, headers: HeaderMap) -> Response
     };
     match session_id(&headers) {
         None => error(StatusCode::BAD_REQUEST, "no Mcp-Session-Id"),
-        Some(id) if st.sessions().close(id, &key) => StatusCode::NO_CONTENT.into_response(),
+        Some(id) if st.activity.close(id, &key) => StatusCode::NO_CONTENT.into_response(),
         Some(_) => error(StatusCode::NOT_FOUND, "no such session"),
     }
 }
@@ -180,8 +237,75 @@ fn permit(role: Role, op: &Op) -> Result<Role, String> {
     }
 }
 
+fn clip(name: &str) -> String {
+    name.chars().take(MAX_NAME_CHARS).collect()
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+impl Activity {
+    /// `changed` runs after each change, with no lock held, so it may read the activity again.
+    pub fn new(changed: impl Fn() + Send + Sync + 'static) -> Arc<Self> {
+        Arc::new(Self { sessions: Mutex::default(), calls: Mutex::default(), changed: Box::new(changed) })
+    }
+
+    /// The sessions `registration`'s current token holds, oldest first, and its latest calls, newest first. A session
+    /// opened with a token since regenerated is gone from here, as it is to the server.
+    pub fn of(&self, registration: &Registration) -> (Vec<SessionInfo>, Vec<CallInfo>) {
+        let key = sha256_hex(&registration.token);
+        let sessions = {
+            let table = lock(&self.sessions);
+            let mut held: Vec<&Session> = table.by_id.values().filter(|s| s.key == key).collect();
+            held.sort_by_key(|s| s.opened);
+            held.into_iter().map(|s| s.info.clone()).collect()
+        };
+        let calls = lock(&self.calls).get(&registration.id).map(|log| log.iter().rev().cloned().collect()).unwrap_or_default();
+        (sessions, calls)
+    }
+
+    fn open(&self, key: &str, client: Option<String>) -> Result<String, String> {
+        let id = lock(&self.sessions).open(key, client)?;
+        (self.changed)();
+        Ok(id)
+    }
+
+    fn holds(&self, id: &str, key: &str) -> bool {
+        let held = lock(&self.sessions).holds(id, key);
+        if held {
+            (self.changed)();
+        }
+        held
+    }
+
+    fn close(&self, id: &str, key: &str) -> bool {
+        let closed = lock(&self.sessions).close(id, key);
+        if closed {
+            (self.changed)();
+        }
+        closed
+    }
+
+    fn record(&self, registration: &str, tool: &str, outcome: Outcome) {
+        {
+            let mut calls = lock(&self.calls);
+            let log = calls.entry(registration.to_string()).or_default();
+            if log.len() == MAX_CALLS {
+                log.pop_front();
+            }
+            log.push_back(CallInfo { at_ms: now_ms(), tool: tool.to_string(), outcome });
+        }
+        (self.changed)();
+    }
+}
+
 impl Sessions {
-    fn open(&mut self, key: &str) -> Result<String, String> {
+    fn open(&mut self, key: &str, client: Option<String>) -> Result<String, String> {
         let id = random_hex()?;
         if self.by_id.len() >= MAX_SESSIONS
             && let Some(idle) = self.by_id.iter().min_by_key(|(_, session)| session.used).map(|(id, _)| id.clone())
@@ -189,7 +313,9 @@ impl Sessions {
             self.by_id.remove(&idle);
         }
         self.clock += 1;
-        self.by_id.insert(id.clone(), Session { key: key.to_string(), used: self.clock });
+        let now = now_ms();
+        let session = Session { key: key.to_string(), used: self.clock, opened: self.clock, info: SessionInfo { client, started_ms: now, last_ms: now } };
+        self.by_id.insert(id.clone(), session);
         Ok(id)
     }
 
@@ -199,6 +325,7 @@ impl Sessions {
         match self.by_id.get_mut(id) {
             Some(session) if session.key == key => {
                 session.used = self.clock;
+                session.info.last_ms = now_ms();
                 true
             }
             _ => false,
@@ -211,19 +338,16 @@ impl Sessions {
 }
 
 impl McpState {
-    fn sessions(&self) -> MutexGuard<'_, Sessions> {
-        self.sessions.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
     /// Runs a tool call, then tells the app what may have changed: after a failure too, since one can stop halfway,
     /// and a reload that finds nothing new costs little.
-    async fn call(&self, role: Role, op: Op) -> Result<Out, String> {
-        let role = permit(role, &op)?;
+    async fn call(&self, role: Role, op: Op, registration: &str, tool: &str) -> Result<Out, String> {
+        let role = permit(role, &op).inspect_err(|_| self.activity.record(registration, tool, Outcome::Refused))?;
         let effects = op.effects();
         let outcome = ops::run(&Ctx { store: self.store.clone(), providers: self.providers.clone(), role }, op).await;
         if effects != Effects::default() {
             (self.on_applied)(&effects);
         }
+        self.activity.record(registration, tool, outcome.as_ref().map_or(Outcome::Failed, |_| Outcome::Succeeded));
         outcome
     }
 }
@@ -236,12 +360,18 @@ mod tests {
     use lattice_core::mcp::Edit;
     use lattice_core::store::{ArticleFilter, ArticleSort};
     use serde_json::{Value, json};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{OnceLock, Weak};
     use tower::ServiceExt;
 
     struct Fixture {
         app: Router,
         store: Arc<Store>,
         applied: Arc<Mutex<Vec<Option<i64>>>>,
+        activity: Arc<Activity>,
+        changes: Arc<AtomicUsize>,
+        /// Set when `changed` ran with a lock of the activity held.
+        locked: Arc<AtomicBool>,
     }
 
     fn fixture() -> Fixture {
@@ -251,8 +381,21 @@ mod tests {
     fn fixture_with(Ctx { store, providers, .. }: Ctx) -> Fixture {
         let applied = Arc::new(Mutex::new(Vec::new()));
         let log = applied.clone();
-        let app = router(store.clone(), providers, Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)));
-        Fixture { app, store, applied }
+        let changes = Arc::new(AtomicUsize::new(0));
+        let locked = Arc::new(AtomicBool::new(false));
+        let me: Arc<OnceLock<Weak<Activity>>> = Arc::default();
+        let (counted, seen, this) = (changes.clone(), locked.clone(), me.clone());
+        let activity = Activity::new(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            if let Some(a) = this.get().and_then(Weak::upgrade)
+                && (a.sessions.try_lock().is_err() || a.calls.try_lock().is_err())
+            {
+                seen.store(true, Ordering::SeqCst);
+            }
+        });
+        me.set(Arc::downgrade(&activity)).ok();
+        let app = router(store.clone(), providers, Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)), activity.clone());
+        Fixture { app, store, applied, activity, changes, locked }
     }
 
     impl Fixture {
@@ -485,13 +628,124 @@ mod tests {
         assert_eq!(articles[0].fetch_status, "ok", "the fetch ran to the end rather than staying claimed until the app quits");
     }
 
+    #[tokio::test]
+    async fn each_registration_shows_its_own_sessions_until_its_token_changes() {
+        let f = fixture();
+        let (a, b) = (f.register("A", Role::Read), f.register("B", Role::Read));
+        let hello =
+            |info: Value| json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": { "protocolVersion": "2025-11-25", "clientInfo": info } });
+        let r = f.post(&a.token, None, hello(json!({ "name": "claude-code", "version": "2.1.327" }))).await;
+        let first = r.headers()[SESSION].to_str().unwrap().to_string();
+        let r = f.post(&a.token, None, hello(json!({ "name": "x".repeat(200), "version": "" }))).await;
+        let second = r.headers()[SESSION].to_str().unwrap().to_string();
+        f.initialize(&b.token).await;
+
+        let (sessions, calls) = f.activity.of(&a);
+        let clients: Vec<Option<String>> = sessions.iter().map(|s| s.client.clone()).collect();
+        assert_eq!(clients, [Some("claude-code 2.1.327".to_string()), Some("x".repeat(MAX_NAME_CHARS))], "oldest first, cut short");
+        assert!(calls.is_empty());
+        let clients: Vec<Option<String>> = f.activity.of(&b).0.into_iter().map(|s| s.client).collect();
+        assert_eq!(clients, [None], "an agent that gave no clientInfo");
+
+        let opened = sessions[0].clone();
+        assert!(opened.started_ms > 0 && opened.last_ms == opened.started_ms);
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        assert_eq!(f.post(&a.token, Some(&first), json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" })).await.status(), StatusCode::OK);
+        let used = f.activity.of(&a).0[0].clone();
+        assert!(used.started_ms == opened.started_ms && used.last_ms > opened.last_ms, "its last request: {used:?}");
+
+        assert_eq!(f.send("DELETE", Some(&a.token), Some(&second), &[], Value::Null).await.status(), StatusCode::NO_CONTENT);
+        assert_eq!(f.activity.of(&a).0.len(), 1, "ended by the agent");
+        f.call(&a.token, &first, "list", json!({})).await;
+        mcp::edit(&f.store, &Edit::Regenerate { id: a.id.clone() }).unwrap();
+        let (sessions, calls) = f.activity.of(&f.reread("A"));
+        assert!(sessions.is_empty(), "the old token's sessions answer no more, so they go from the screen");
+        assert_eq!(calls.len(), 1, "what the agent did stays");
+        assert_eq!(f.activity.of(&b).0.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn each_call_shows_how_it_ended_newest_first_and_only_the_latest_are_kept() {
+        assert_eq!(MAX_CALLS, 20, "the settings screen says the latest 20");
+        let f = fixture();
+        let (reader, editor) = (f.register("reader", Role::Read), f.register("editor", Role::Edit));
+        let id = f.saved("https://example.com/a");
+        let (rs, es) = (f.initialize(&reader.token).await, f.initialize(&editor.token).await);
+        f.call(&editor.token, &es, "get", json!({ "id": id })).await;
+        f.call(&editor.token, &es, "tag", json!({ "id": id + 1000, "name": "later" })).await;
+        f.call(&editor.token, &es, "rename_article", json!({ "id": id, "name": "Typo" })).await;
+        let unknown = format!("drop_{}", "x".repeat(100));
+        let r = f.post(&editor.token, Some(&es), json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": unknown } })).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        f.call(&editor.token, &es, "delete_article", json!({ "id": id })).await;
+        f.call(&reader.token, &rs, "tag", json!({ "id": id, "name": "later" })).await;
+        let notification = json!({ "jsonrpc": "2.0", "method": "tools/call", "params": { "name": "get", "arguments": { "id": id } } });
+        assert_eq!(f.post(&editor.token, Some(&es), notification).await.status(), StatusCode::ACCEPTED);
+
+        let seen = |r: &Registration| -> Vec<(String, Outcome)> { f.activity.of(r).1.into_iter().map(|c| (c.tool, c.outcome)).collect() };
+        let cut: String = unknown.chars().take(MAX_NAME_CHARS).collect();
+        let expected = [
+            ("delete_article", Outcome::Refused),
+            (cut.as_str(), Outcome::Failed),
+            ("rename_article", Outcome::Failed),
+            ("tag", Outcome::Failed),
+            ("get", Outcome::Succeeded),
+        ];
+        assert_eq!(seen(&editor), expected.map(|(tool, outcome)| (tool.to_string(), outcome)), "a deletion, an unknown tool, bad arguments, a tool error");
+        assert_eq!(seen(&reader), [("tag".to_string(), Outcome::Refused)], "above the role");
+
+        for _ in 0..MAX_CALLS - 2 {
+            f.call(&editor.token, &es, "get", json!({ "id": id })).await;
+        }
+        let calls = f.activity.of(&editor).1;
+        assert_eq!(calls.len(), MAX_CALLS);
+        let oldest: Vec<&str> = calls[MAX_CALLS - 2..].iter().map(|c| c.tool.as_str()).collect();
+        assert_eq!(oldest, ["delete_article", cut.as_str()], "the three oldest made room");
+        assert!(calls.windows(2).all(|w| w[0].at_ms >= w[1].at_ms));
+    }
+
+    #[tokio::test]
+    async fn the_screen_hears_of_each_change_and_nothing_else() {
+        let f = fixture();
+        let r = f.register("A", Role::Read);
+        let id = f.saved("https://example.com/a");
+        let changes = || f.changes.load(Ordering::SeqCst);
+        let ping = json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" });
+        let mut last = changes();
+        let mut changed = |why: &str| {
+            let now = changes();
+            assert!(now > last, "{why}");
+            last = now;
+        };
+
+        let session = f.initialize(&r.token).await;
+        changed("a session opened");
+        f.post(&r.token, Some(&session), ping.clone()).await;
+        changed("its last request");
+        let before_call = changes();
+        f.call(&r.token, &session, "get", json!({ "id": id })).await;
+        assert_eq!(changes(), before_call + 2, "its request, then how it ended: a slow call's outcome does not wait for the next request");
+        changed("a call");
+        f.send("DELETE", Some(&r.token), Some(&session), &[], Value::Null).await;
+        changed("the session ended");
+
+        let before = changes();
+        let init = json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize" });
+        assert_eq!(f.post("wrong", None, init.clone()).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(f.send("POST", Some(&r.token), None, &[("origin", "http://127.0.0.1:8788")], init).await.status(), StatusCode::FORBIDDEN);
+        assert_eq!(f.post(&r.token, Some(&session), ping).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(f.send("DELETE", Some(&r.token), Some(&session), &[], Value::Null).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(changes(), before, "refused before reaching a session");
+        assert!(!f.locked.load(Ordering::SeqCst), "changed ran with a lock held, so reading the activity from it would deadlock");
+    }
+
     #[test]
     fn the_session_idle_longest_makes_room() {
         let mut s = Sessions::default();
-        let first = s.open("k").unwrap();
-        let rest: Vec<String> = (1..MAX_SESSIONS).map(|_| s.open("k").unwrap()).collect();
+        let first = s.open("k", None).unwrap();
+        let rest: Vec<String> = (1..MAX_SESSIONS).map(|_| s.open("k", None).unwrap()).collect();
         assert!(s.holds(&first, "k"), "used again, so no longer the idlest");
-        let newest = s.open("k").unwrap();
+        let newest = s.open("k", None).unwrap();
         assert_eq!(s.by_id.len(), MAX_SESSIONS);
         assert!(s.holds(&first, "k") && s.holds(&newest, "k"));
         assert!(!s.holds(&rest[0], "k"), "the one idle longest went");

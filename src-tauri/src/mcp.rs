@@ -1,14 +1,14 @@
 //! Starts and stops the MCP server (`lattice_server::mcp_http`) as Settings › MCP turns it on and off, and gives that
-//! screen the registrations with what each one copies.
+//! screen the registrations with what each one copies and what each agent has been doing.
 
 use std::sync::Arc;
 
 use lattice_core::mcp::{self, Edit, Role, Scope};
 use lattice_core::msg;
 use lattice_server::Server;
-use lattice_server::mcp_http::{self, ADDR};
+use lattice_server::mcp_http::{self, ADDR, Activity, CallInfo, SessionInfo};
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 use ts_rs::TS;
 
@@ -22,7 +22,7 @@ pub struct McpServer {
 
 #[derive(Default)]
 struct Running {
-    server: Option<Server>,
+    server: Option<(Server, Arc<Activity>)>,
     /// Why the server is not running although it is on.
     error: Option<String>,
 }
@@ -48,6 +48,9 @@ pub struct McpRegistration {
     command: String,
     /// `claude mcp remove ...`, which the confirmations ask for before a new command or after a deletion.
     remove: String,
+    sessions: Vec<SessionInfo>,
+    /// Newest first.
+    calls: Vec<CallInfo>,
 }
 
 /// Ends the running server, if any, and starts it again when it is on.
@@ -55,7 +58,7 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     let app = handle.state::<App>();
     let mcp_server = handle.state::<McpServer>();
     let mut running = mcp_server.running.lock().await;
-    if let Some(server) = running.server.take() {
+    if let Some((server, _)) = running.server.take() {
         server.stop().await;
     }
     running.error = None;
@@ -64,10 +67,14 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     }
     let tell = handle.clone();
     let on_applied: lattice_server::OnApplied = Arc::new(move |effects| crate::mobile::on_applied(&tell, effects));
-    match lattice_server::start(ADDR, mcp_http::router(app.store.clone(), app.providers.clone(), on_applied)).await {
+    let tell = handle.clone();
+    let activity = Activity::new(move || {
+        let _ = tell.emit("mcp-activity", ());
+    });
+    match lattice_server::start(ADDR, mcp_http::router(app.store.clone(), app.providers.clone(), on_applied, activity.clone())).await {
         Ok(server) => {
             log::info!("MCP server listening on {}", server.addr);
-            running.server = Some(server);
+            running.server = Some((server, activity));
         }
         Err(e) => {
             log::warn!("MCP server on {ADDR}: {e}");
@@ -77,7 +84,8 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn view(r: mcp::Registration) -> McpRegistration {
+fn view(r: mcp::Registration, activity: Option<&Activity>) -> McpRegistration {
+    let (sessions, calls) = activity.map(|a| a.of(&r)).unwrap_or_default();
     McpRegistration {
         command: mcp_http::add_command(&r.token, r.scope),
         remove: mcp_http::remove_command(r.scope),
@@ -85,12 +93,17 @@ fn view(r: mcp::Registration) -> McpRegistration {
         name: r.name,
         role: r.role,
         scope: r.scope,
+        sessions,
+        calls,
     }
 }
 
 async fn status(mcp_server: &McpServer, app: &App, loc: &Location) -> Result<McpStatus, String> {
-    let error = mcp_server.running.lock().await.error.clone();
-    let registrations = mcp::registrations(&app.store)?.into_iter().map(view).collect();
+    let (error, activity) = {
+        let running = mcp_server.running.lock().await;
+        (running.error.clone(), running.server.as_ref().map(|(_, activity)| activity.clone()))
+    };
+    let registrations = mcp::registrations(&app.store)?.into_iter().map(|r| view(r, activity.as_deref())).collect();
     Ok(McpStatus { enabled: mcp::enabled(&app.store)?, error, fell_back: loc.warning.is_some(), registrations })
 }
 
@@ -125,7 +138,7 @@ mod tests {
     #[test]
     fn a_registration_is_added_and_removed_in_its_own_scope() {
         for scope in [Scope::User, Scope::Local] {
-            let shown = view(mcp::Registration { id: "r1".into(), name: "Claude Code".into(), role: Role::Read, scope, token: "t0k".into() });
+            let shown = view(mcp::Registration { id: "r1".into(), name: "Claude Code".into(), role: Role::Read, scope, token: "t0k".into() }, None);
             assert_eq!(shown.scope, scope);
             assert_eq!(shown.command, mcp_http::add_command("t0k", scope));
             assert_eq!(shown.remove, mcp_http::remove_command(scope), "following the dialog must not remove another registration");

@@ -67,8 +67,8 @@ test("facets restrict candidates before the search page limit and rerun an activ
   await expect(pane.locator(".sgrp .at").filter({ hasText: selected.title! })).toHaveCount(0);
 
   await pane.getByRole("button", { name: "タグ", exact: true }).click();
-  await app.getByRole("dialog", { name: "タグで絞り込む" }).getByRole("textbox", { name: "タグを検索" }).fill("crdt");
-  await app.getByRole("dialog", { name: "タグで絞り込む" }).getByRole("button", { name: /^crdt/ }).click();
+  await app.getByRole("dialog", { name: "タグで絞り込む" }).getByRole("combobox", { name: "タグを検索" }).fill("crdt");
+  await app.getByRole("dialog", { name: "タグで絞り込む" }).getByRole("option", { name: /^crdt/ }).click();
   await app.keyboard.press("Escape");
   await expect.poll(async () => (await callsOf(app, "search_blocks")).at(-1)).toEqual({ query: "a", articles: [selected.id] });
   await expect(pane.locator(".sgrp .at")).toHaveText([selected.title!]);

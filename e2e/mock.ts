@@ -27,6 +27,7 @@ import type {
   ProviderHealth,
   Quiz,
   McpEdit,
+  McpRegistration,
   McpStatus,
   MobileSettings,
   MobileStatus,
@@ -1072,6 +1073,8 @@ export const handlers = {
           scope: edit.scope,
           command: made,
           remove: `claude mcp remove lattice -s ${edit.scope}`,
+          sessions: [],
+          calls: [],
         };
         store.mcp = { ...store.mcp, registrations: [...regs, reg] };
         break;
@@ -1119,6 +1122,11 @@ export const pluginHandlers: Record<string, () => unknown> = {
   "plugin:window|inner_position": () => ({ x: 0, y: 0 }),
   "plugin:webview|set_webview_focus": none,
 };
+
+/** What an agent's requests leave on the MCP server for registration `id`, as the app would then report it. */
+export function mcpActivity(id: string, activity: Pick<McpRegistration, "sessions" | "calls">) {
+  store.mcp = { ...store.mcp, registrations: store.mcp.registrations.map((r) => (r.id === id ? { ...r, ...activity } : r)) };
+}
 
 export function handle(cmd: string, args: unknown): unknown {
   const h = (handlers as Record<string, (a: unknown) => unknown>)[cmd] ?? pluginHandlers[cmd];

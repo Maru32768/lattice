@@ -2839,6 +2839,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower",
+ "ts-rs",
 ]
 
 [[package]]

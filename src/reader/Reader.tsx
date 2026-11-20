@@ -887,6 +887,7 @@ export function Reader({
   }, [focusBlock, focus?.seq, blocks.length]);
   // After the effect above: a kept place wins over a request the reader has moved on from.
   const scrollEl = useReadingPlace(tabId, a.id, focus?.seq, blocks);
+  const pin = useRef<HTMLDivElement>(null);
 
   const shows = (id: number, i: number) => selected.has(`${id}:${i}`) !== flipped.has(`${id}:${i}`);
   /** Whether any sentence of the block shows its translation (its marker, and what flipping the block does). */
@@ -1043,6 +1044,7 @@ export function Reader({
         )}
         <ArticleTools view={view} act={act} panel={panel} onPanel={togglePanel} />
       </div>
+      <div ref={pin} />
 
       <div className="doc-body">
         <div className="doc-scroll" ref={scrollEl} tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
@@ -1079,7 +1081,7 @@ export function Reader({
                 </span>
               ))}
               <TagAdder onAdd={(tag) => onTag(tag, true)} />
-              <GroupChips groups={groups} ids={a.groups} onToggle={onGroup} onCreate={onCreateGroup} request={groupRequest} />
+              <GroupChips groups={groups} ids={a.groups} onToggle={onGroup} onCreate={onCreateGroup} request={groupRequest} pin={pin} />
               {!failed && (
                 <label className="chip sel-chip" title={t("reader.difficultyHint")}>
                   <Dif d={a.difficulty} />

@@ -195,7 +195,9 @@ export function FacetBar({
           </button>
         ))}
       {open && (
+        // Each dimension's own popover: one opens where its chip is (`Popover` takes its place on opening).
         <FacetPopover
+          key={open.dim}
           dim={open.dim}
           facets={facets}
           onFacets={onFacets}

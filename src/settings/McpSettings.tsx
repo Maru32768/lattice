@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { mcp, type McpEdit, type McpRegistration, type McpRole, type McpScope, type McpStatus } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { mcp, type McpEdit, type McpOutcome, type McpRegistration, type McpRole, type McpScope, type McpStatus } from "../api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { SetRow, Switch } from "../ui/SetRow";
-import { useT, type Key, type PlainKey } from "../i18n";
+import { locale, useT, type Key, type Lang, type PlainKey } from "../i18n";
 
 // shortcut: no delete role here until the app can ask the user before each deletion an agent makes.
 const ROLES = { read: "mcpSettings.roleRead", edit: "mcpSettings.roleEdit" } as const satisfies Partial<Record<McpRole, PlainKey>>;
@@ -12,6 +13,19 @@ const CONFIRM_DESCS = {
   regenerate: { user: "mcpSettings.regenerateDescUser", local: "mcpSettings.regenerateDescLocal" },
   delete: { user: "mcpSettings.deleteDescUser", local: "mcpSettings.deleteDescLocal" },
 } as const satisfies Record<"regenerate" | "delete", Record<McpScope, Key>>;
+const OUTCOMES = {
+  succeeded: "mcpSettings.succeeded",
+  failed: "mcpSettings.failed",
+  refused: "mcpSettings.refused",
+} as const satisfies Record<McpOutcome, PlainKey>;
+/** The server tells of every request: reading again at most this often keeps up with a busy agent without a read per request. */
+const RELOAD_MS = 300;
+
+/** A time today needs no date. */
+function when(ms: number, lang: Lang) {
+  const at = new Date(ms);
+  return at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString(locale(lang)) : at.toLocaleString(locale(lang));
+}
 
 /** Settings section for AI agents reaching the library over MCP (design-review §23). */
 export function McpSettings() {
@@ -25,12 +39,41 @@ export function McpSettings() {
   /** The command last copied: a regenerated token makes a new one, so the button offers to copy again. */
   const [copied, setCopied] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "regenerate" | "delete"; reg: McpRegistration } | null>(null);
+  /**
+   * Reads can overlap each other and an edit, and one that answers late would put an older status back: after a new
+   * token, its dead command. A read shows only if sent after the one on screen, and an edit's answer outranks every
+   * read still out.
+   */
+  const sent = useRef(0);
+  const shown = useRef(0);
 
   useEffect(() => {
-    mcp
-      .status()
-      .then(setStatus)
-      .catch((e: unknown) => setError(String(e)));
+    let timer = 0;
+    const reload = () => {
+      const n = ++sent.current;
+      return mcp
+        .status()
+        .then((s) => {
+          if (n > shown.current) {
+            shown.current = n;
+            setStatus(s);
+          }
+        })
+        .catch((e: unknown) => setError(String(e)));
+    };
+    void reload();
+    const sub = listen("mcp-activity", () => {
+      if (!timer) {
+        timer = window.setTimeout(() => {
+          timer = 0;
+          void reload();
+        }, RELOAD_MS);
+      }
+    });
+    return () => {
+      clearTimeout(timer);
+      void sub.then((f) => f());
+    };
   }, []);
 
   async function edit(change: McpEdit) {
@@ -40,6 +83,7 @@ export function McpSettings() {
       return null;
     });
     if (s) {
+      shown.current = ++sent.current;
       setStatus(s);
     }
     return s !== null;
@@ -75,6 +119,7 @@ export function McpSettings() {
       {t(ROLES[r])}
     </option>
   ));
+  const used = status.registrations.filter((r) => r.sessions.length > 0 || r.calls.length > 0);
   return (
     <>
       <section aria-labelledby="mcp-server">
@@ -145,6 +190,47 @@ export function McpSettings() {
           </SetRow>
         </div>
       </section>
+      {status.enabled && !off && !status.error && status.registrations.length > 0 && (
+        <section aria-labelledby="mcp-activity">
+          <h2 id="mcp-activity">{t("mcpSettings.activity")}</h2>
+          <p className="sec-d">{t("mcpSettings.activityDesc")}</p>
+          <div className="grp">
+            {used.map((reg) => (
+              <div key={reg.id} className="set wide" role="group" aria-label={reg.name}>
+                <div className="h">{reg.name}</div>
+                <div className="mcp-log-h" id={`mcp-sessions-${reg.id}`}>
+                  {t("mcpSettings.sessions")}
+                </div>
+                <ul className="mcp-log" aria-labelledby={`mcp-sessions-${reg.id}`}>
+                  {reg.sessions.map((s, i) => (
+                    <li key={i}>
+                      <bdi>{s.client ?? t("mcpSettings.unknownClient")}</bdi>{" "}
+                      <span className="muted">{t("mcpSettings.sessionTimes", { started: when(s.started_ms, t.lang), last: when(s.last_ms, t.lang) })}</span>
+                    </li>
+                  ))}
+                  {reg.sessions.length === 0 && <li className="muted">{t("mcpSettings.noSessions")}</li>}
+                </ul>
+                <div className="mcp-log-h" id={`mcp-calls-${reg.id}`}>
+                  {t("mcpSettings.calls")}
+                </div>
+                <ul className="mcp-log" aria-labelledby={`mcp-calls-${reg.id}`}>
+                  {reg.calls.map((c, i) => (
+                    <li key={i}>
+                      <span className="muted">{when(c.at_ms, t.lang)}</span>{" "}
+                      <code>
+                        <bdi>{c.tool}</bdi>
+                      </code>{" "}
+                      <span className={c.outcome}>{t(OUTCOMES[c.outcome])}</span>
+                    </li>
+                  ))}
+                  {reg.calls.length === 0 && <li className="muted">{t("mcpSettings.noCalls")}</li>}
+                </ul>
+              </div>
+            ))}
+            {used.length === 0 && <SetRow title={t("mcpSettings.noActivity")} />}
+          </div>
+        </section>
+      )}
       {failure}
       {confirming && (
         <ConfirmDialog

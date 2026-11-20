@@ -70,6 +70,11 @@ test("right-click on a row sets the importance, difficulty and genre from submen
   await picker.getByPlaceholder("タグを検索・追加").fill("from-menu");
   await app.keyboard.press("Enter");
   await expect.poll(async () => (await callsOf(app, "add_tag")).at(-1)).toEqual({ id: a.id, name: "from-menu" });
+  await expect(picker.getByRole("combobox")).toHaveValue("");
+  await expect(picker.getByRole("option", { name: "from-menu" }), "the tag just added is listed, checked, once the search clears").toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("タイトルを変更… gives an article a title of its own, and 元に戻す brings back the one Lattice gave it", async ({ app }) => {
@@ -136,6 +141,17 @@ test("the menu key and Shift+F10 open the cursor row's menu; Esc returns to the 
   await expect(cur).toBeFocused();
   await app.keyboard.press("ContextMenu");
   await expect(menu(app)).toBeVisible();
+});
+
+test("Esc on the group picker opened from a row's menu gives the focus back to the row", async ({ app }) => {
+  const r = row(app, shown[0].title!);
+  await r.click({ button: "right" });
+  await menu(app).getByRole("menuitem", { name: "グループに追加…" }).click();
+  const picker = app.getByRole("dialog", { name: "グループ" });
+  await expect(picker).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(r).toBeFocused();
 });
 
 test("with rows picked, the menu applies the bulk actions to all of them", async ({ app }) => {

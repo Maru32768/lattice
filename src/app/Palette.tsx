@@ -153,7 +153,8 @@ export function Palette({
     // After an initial ">": typing goes on from it.
     const end = input.current?.value.length ?? 0;
     input.current?.setSelectionRange(end, end);
-    return () => prev?.focus?.();
+    // Not to scroll the article back to a control in it that the reader has scrolled away from.
+    return () => prev?.focus?.({ preventScroll: true });
   }, []);
 
   const raw = q.trim();

@@ -137,7 +137,7 @@ test("a press outside in the app DOM closes the group picker and a menu (H23)", 
   const chip = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
   const picker = app.getByRole("dialog", { name: "グループ" });
   await chip.click();
-  await expect(picker.getByRole("textbox")).toBeFocused();
+  await expect(picker.getByRole("combobox")).toBeFocused();
   await app.locator(".art-title").click();
   await expect(picker).toHaveCount(0);
 
