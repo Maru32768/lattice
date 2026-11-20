@@ -137,6 +137,20 @@ test("Allow waits a moment again each time the window comes into focus, so the c
   await expect(allow).toBeEnabled();
 });
 
+test("the click that brings the window forward, outside the dialog, denies nothing either", async ({ app }) => {
+  await ask(app, [article(1, null, "https://example.com/a")]);
+  const dialog = dialogOf(app);
+  await expect(dialog.getByRole("button", { name: "削除を許可" })).toBeEnabled();
+  await setFocused(app, false);
+  await setFocused(app, true);
+  await app.mouse.click(5, 5);
+  expect(await callsOf(app, "mcp_answer"), "a click on the title bar, under the scrim").toEqual([]);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "削除を許可" })).toBeEnabled();
+  await app.mouse.click(5, 5);
+  await expect.poll(() => callsOf(app, "mcp_answer")).toEqual([{ id: 1, allow: false }]);
+});
+
 test("each kind of deletion says what goes and what stays, and the time left counts down", async ({ app }) => {
   const by = (id: number, deletion: McpApproval["deletion"]): McpApproval => ({ id, registration: "Research", deletion, deadline_ms: NOW + 90_000 });
   await ask(app, [

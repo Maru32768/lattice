@@ -75,7 +75,8 @@ export function ConfirmDialog({
         className="pal-scrim"
         style={coverStyle(clear)}
         onPointerDown={(e) => {
-          if (e.target === e.currentTarget) {
+          // Not while the danger button waits: the click that brings the window forward would answer what it never read.
+          if (e.target === e.currentTarget && armed) {
             onCancel();
           }
         }}
