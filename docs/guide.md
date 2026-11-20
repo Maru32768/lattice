@@ -1024,8 +1024,6 @@ Each registration has its own token, and its role decides what the agent can do:
 - Changes an agent makes show in the app at once.
 - Registrations are left out of backups. After you restore a backup, make them again.
 
-Earlier versions served MCP with `lattice-cli.exe mcp`, which is gone. If you added Lattice to Claude Code that way, run `claude mcp remove lattice` in the folder where you added it, then run the copied command.
-
 ### Approve deletions
 
 When an agent with the **Delete** role asks to delete something, Lattice brings its main window to the front and flashes it on the taskbar. It leaves the keyboard with the app you are typing in, so your keys cannot answer for you.
