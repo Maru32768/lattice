@@ -919,7 +919,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 
 ## CLI and MCP
 
-`lattice-cli.exe` searches, reads and changes your saved articles from a terminal. AI agents such as Claude Code use the same library through the MCP server in Lattice ([Use Lattice from Claude Code](#use-lattice-from-claude-code)).
+`lattice-cli.exe` lets you search, read and change your saved articles from a terminal. AI agents such as Claude Code use the same library through the MCP server built into Lattice ([Use Lattice from Claude Code](#use-lattice-from-claude-code)).
 
 - Both the installer and the portable zip put it in the same folder as `Lattice.exe`. The installer's default location is `%LOCALAPPDATA%\Lattice`. It is not added to PATH, so run it by its full path.
 - It uses the same data as the app, including a portable copy's `data` folder or a folder chosen in **Settings › Logs & storage**. It works while the app is running.
@@ -999,15 +999,15 @@ Options for every command:
 - Questions asked with `ask` also appear in the app's chat history.
 - `save` only adds a fetch job; a running app does the fetch within 30 seconds. With `--run`, the CLI itself fetches the page and its images, and makes the search vectors if the model is present. In both cases, classification, importance, automatic translation and rendering are left to the app.
 - Changes made with the CLI show in the app the next time it reloads the list.
-- With `--allow-delete`, the CLI deletes without asking, because you are the one running it. An agent deletes through the MCP server, where Lattice asks you each time.
+- With `--allow-delete`, the CLI deletes without asking you, because you run it yourself. An agent deletes through the MCP server, and Lattice asks you before each deletion.
 
 ### Use Lattice from Claude Code
 
-Agents connect to the MCP server in Lattice at `http://127.0.0.1:8788/mcp`. It is off at first, runs only while Lattice is running, and accepts connections only from this PC.
+Agents connect to the MCP server built into Lattice, at `http://127.0.0.1:8788/mcp`. It is off by default, runs only while Lattice is running, and accepts connections only from this PC.
 
 1. In **Settings › AI agents (MCP)**, turn on **Run the MCP server**.
 2. In **New registration**, enter a name, choose a role and where to use it, and press **Register**.
-3. Press **Copy command** on the registration and run the copied command in a terminal. For a registration for **One project**, run it in that project's folder.
+3. Press **Copy command** on the registration and run the copied command in a terminal. If the registration is for **One project**, run the command in that project's folder.
 
 Each registration has its own token, and its role decides what the agent can do:
 
@@ -1017,20 +1017,20 @@ Each registration has its own token, and its role decides what the agent can do:
 | **Edit** | Also use the commands that need write permission. |
 | **Delete** | Also use the commands that need delete permission. Lattice asks you before each deletion ([Approve deletions](#approve-deletions)). |
 
-- Only one registration can be for **All of Claude Code**, and every project uses it. A registration for **One project** is used there instead: across the whole repository in a Git repository, and in that folder only elsewhere.
-- A role change holds from the agent's next call. The tools the agent sees change only when it reconnects.
-- **Regenerate token** and **Delete** stop the old token from the next call, for agents already connected too. The confirmation shows the `claude mcp remove` command that takes the old registration out of Claude Code.
-- **Activity** lists the sessions agents have started and each registration's latest 20 calls. Turning the server off or quitting Lattice clears it.
+- Only one registration can be for **All of Claude Code**, and every project uses it. A registration for **One project** is used in its project instead. In a Git repository, it applies to the whole repository. Elsewhere, it applies only to the project's folder.
+- A role change takes effect from the agent's next call, but the tools the agent sees change only when it reconnects.
+- After **Regenerate token** or **Delete**, the old token stops working from the next call, even for agents that are already connected. The confirmation dialog shows the `claude mcp remove` command that takes the old registration out of Claude Code.
+- **Activity** lists the sessions that agents have started and each registration's latest 20 calls. Turning the server off or quitting Lattice clears both.
 - Changes an agent makes show in the app at once.
 - Registrations are left out of backups. After you restore a backup, make them again.
 
 ### Approve deletions
 
-When an agent with the **Delete** role asks to delete something, Lattice brings its main window to the front and flashes it on the taskbar. It leaves the keyboard with the app you are typing in, so your keys cannot answer for you.
+When an agent with the **Delete** role asks to delete something, Lattice brings its main window to the front and flashes it on the taskbar. Keyboard focus stays in the app you are typing in, so what you type cannot answer the request.
 
-- **Allow an AI agent to delete?** names the registration and shows what would be deleted.
-- **Allow deletion** works once the window has been in focus with the dialog for a second. Press it, or **Deny**.
-- Without an answer within 2 minutes, nothing is deleted. Up to 10 deletions can wait at once, and the agent's further requests are refused.
+- The **Allow an AI agent to delete?** dialog names the registration and shows what would be deleted.
+- **Allow deletion** becomes available after the window with the dialog has been in focus for 1 second. Press it, or press **Deny**.
+- If you don't answer within 2 minutes, nothing is deleted. All agents together can have up to 10 deletions waiting at once, and Lattice refuses requests beyond that.
 - If what would be deleted changes while you decide, nothing is deleted.
 
 ### Watch out for prompt injection
@@ -1039,8 +1039,8 @@ Saved articles are web pages written by other people. An agent that reads them c
 
 Lattice starts every tool result with a notice that the content is untrusted outside text and that instructions in it must not be followed. It also cuts each result at 25,000 characters. The risk remains, so:
 
-- Give a registration the **Read** role unless the agent needs more, and don't run the CLI with `--allow-write` for an agent.
-- Don't give an agent session that reads your articles risky tools at the same time, such as running shell commands, writing files or sending email. With shell commands, it could also run `lattice-cli` with `--allow-delete`, which deletes without asking you.
+- Give a registration the **Read** role unless the agent needs more. Don't run the CLI with `--allow-write` for an agent.
+- If an agent session reads your articles, don't also give it risky tools, such as ones that run shell commands, write files or send email. An agent that can run shell commands could also run `lattice-cli` with `--allow-delete`, which deletes without asking you.
 
 ## Data and backups
 
@@ -1108,7 +1108,7 @@ A local backup is a SQLite file named `backups/lattice-<Unix seconds>.db`, a dat
 
 1. In **Settings › Logs & storage**, note the full path of the database. Use the path shown there even if you moved the data folder or use a portable copy.
 2. Copy the backup you want to restore to a separate folder. Leave the original backup untouched. If its name ends in `.db.gz`, extract it first. To download a backup from R2, see [R2 restore steps](../infra/r2/README.md#3-復元).
-3. Close every Lattice window and CLI command that uses this database.
+3. Close every Lattice window and stop every CLI command that uses this database.
 4. Move the current `lattice.db` to a recovery folder. If `lattice.db-wal` and `lattice.db-shm` exist, move them with it. Don't leave an old WAL or SHM file in the original folder.
 5. Copy the backup database into the original folder and name it `lattice.db`.
 6. Start Lattice and check that the articles, images, translations, words and review history are there.
@@ -1161,7 +1161,7 @@ Semantic search, reading aloud and text extraction run only on your computer. Th
 
 ### API keys
 
-API keys and the R2 Secret Access Key are stored in the local database. They are never shown after you save them, and are left out of backups, R2 uploads and exports. When you move the data folder with **Change…** in **Settings › Logs & storage**, they are copied to the new folder with the database. The tokens of MCP registrations are kept the same way.
+API keys and the R2 Secret Access Key are stored in the local database. They are never shown after you save them, and are left out of backups, R2 uploads and exports. When you move the data folder with **Change…** in **Settings › Logs & storage**, they are copied to the new folder with the database. The tokens of MCP registrations are also left out of backups, R2 uploads and exports.
 
 ### Article content is untrusted
 
