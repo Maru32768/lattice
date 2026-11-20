@@ -63,6 +63,15 @@ test("an agent's deletion waits for the user, oldest first, and a double-click a
   await expect(dialog).toBeHidden();
 });
 
+test("a title of any length leaves the URL and both answers on screen", async ({ app }) => {
+  await ask(app, [article(1, "A title an agent made long ".repeat(250), "https://example.com/long")]);
+  const dialog = dialogOf(app);
+  await expect(dialog.locator("bdi").last()).toHaveText("https://example.com/long");
+  await expect(dialog.locator("bdi").last(), "what the title stands for").toBeInViewport({ ratio: 1 });
+  await expect(dialog.getByRole("button", { name: "拒否" })).toBeInViewport({ ratio: 1 });
+  await expect(dialog.getByRole("button", { name: "削除を許可" })).toBeInViewport({ ratio: 1 });
+});
+
 test("Allow waits a moment each time a request shows", async ({ app }) => {
   const dialog = dialogOf(app);
   const allow = dialog.getByRole("button", { name: "削除を許可" });

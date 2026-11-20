@@ -238,7 +238,7 @@
 .dlg-body p { margin: 0 0 6px; }
 .mcp-target { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 8px; }
 .mcp-target dt { color: var(--ink3); }
-.mcp-target dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.mcp-target dd { max-height: 3lh; margin: 0; overflow-y: auto; color: var(--ink); overflow-wrap: anywhere; }
 .dlg-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .pal-q { display: flex; align-items: center; gap: 10px; height: 52px; flex: none; padding: 0 18px; border-bottom: 1px solid var(--line); color: var(--ink3); }
 .pal-q input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; font: 15px var(--mono); color: var(--ink); }
