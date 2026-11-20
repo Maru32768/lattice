@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_result_is_the_note_then_the_json_whether_it_succeeded_or_not() {
+    fn every_tool_result_goes_through_the_note_and_the_cap() {
         let reply = |outcome| {
             let r = tool_reply(json!(1), outcome);
             (r["result"]["content"][0]["text"].as_str().unwrap().to_owned(), r["result"]["isError"].clone())
@@ -426,5 +426,7 @@ mod tests {
         let ok = Out { json: json!({ "hits": [7] }), text: "7".into() };
         assert_eq!(reply(Ok(ok)), (format!("{UNTRUSTED}\n\n{{\"hits\":[7]}}"), json!(false)));
         assert_eq!(reply(Err("no article 7".into())), (format!("{UNTRUSTED}\n\nno article 7"), json!(true)));
+        let big = Out { json: json!("あ".repeat(MAX_RESULT_CHARS)), text: String::new() };
+        assert_eq!(reply(Ok(big)).0.chars().count(), MAX_RESULT_CHARS, "a success is cut too");
     }
 }
