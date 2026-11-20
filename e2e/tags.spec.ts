@@ -110,6 +110,51 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await expect(listCount(app)).toHaveText(`${tagged(second).length} / ${all}`);
 });
 
+test("Space and Enter on a mode button Tab reached switch the mode and leave the tags as they were", async ({ app }) => {
+  await openFilter(app);
+  const pv = filter(app);
+  const opts = pv.getByRole("listbox", { name: "タグ" }).getByRole("option");
+  const allOf = pv.getByRole("button", { name: "すべて含む" });
+  const anyOf = pv.getByRole("button", { name: "いずれか" });
+  await app.keyboard.press("Space");
+  await expect(opts.nth(0)).toHaveAttribute("aria-selected", "true");
+  await expect(allOf).toHaveAttribute("aria-pressed", "true");
+
+  await app.keyboard.press("Tab");
+  await app.keyboard.press("Tab");
+  await expect(anyOf).toBeFocused();
+  await app.keyboard.press("Space");
+  await expect(anyOf).toHaveAttribute("aria-pressed", "true");
+  await expect(opts.nth(0), "Space leaves the highlighted tag picked").toHaveAttribute("aria-selected", "true");
+  await app.keyboard.press("Shift+Tab");
+  await expect(allOf).toBeFocused();
+  await app.keyboard.press("Enter");
+  await expect(allOf).toHaveAttribute("aria-pressed", "true");
+  await expect(opts.nth(0), "and so does Enter").toHaveAttribute("aria-selected", "true");
+  await expect(pv.locator(".pv-chips button")).toHaveCount(1);
+});
+
+test("Enter on a chosen tag's chip drops that tag, not the highlighted one", async ({ app }) => {
+  await openFilter(app);
+  const pv = filter(app);
+  const opts = pv.getByRole("listbox", { name: "タグ" }).getByRole("option");
+  const first = (await opts.nth(0).locator(".opt-l").textContent())!;
+  await app.keyboard.press("Space");
+  await app.keyboard.press("ArrowDown");
+  await app.keyboard.press("Space");
+  await expect(opts.nth(1)).toHaveAttribute("aria-selected", "true");
+
+  const chip = pv.getByRole("button", { name: `${first}を解除` });
+  await app.keyboard.press("Tab");
+  await app.keyboard.press("Tab");
+  await app.keyboard.press("Tab");
+  await expect(chip).toBeFocused();
+  await app.keyboard.press("Enter");
+  await expect(chip).toHaveCount(0);
+  await expect(opts.nth(0)).toHaveAttribute("aria-selected", "false");
+  await expect(opts.nth(1), "the highlighted tag stays picked").toHaveAttribute("aria-selected", "true");
+});
+
 test("a click on a tag leaves every row and the popover where they were, down the list and as the chosen tags wrap", async ({ shell: app }) => {
   // In the widest list the tag chip moves ahead of the others on the first pick, and its label grows with each.
   await app.addInitScript(() => localStorage.setItem("lattice.paneWidths", JSON.stringify({ list: 640 })));

@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Virtuoso, type ListRange, type VirtuosoHandle } from "react-virtuoso";
-import { listStep } from "../lib/keys";
+import { listStep, pressesButton } from "../lib/keys";
 import { useT } from "../i18n";
 import { Icon, type IconName } from "./Icon";
 import { defaultRow, enabled, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
@@ -77,7 +77,10 @@ export function PickList<O extends PickOption>({
   counts?: { of: ReadonlyMap<string, number>; whole?: number };
   /** A click on an option, or Enter on the highlighted one. The list stays open: closing is the caller's. */
   onPick: (o: O) => void;
-  /** Sees each key first, but not while an IME composes, with the highlighted option; `preventDefault()` keeps the key from the list. */
+  /**
+   * Sees each key first, with the highlighted option; `preventDefault()` keeps the key from the list. Not while an IME
+   * composes, nor the Space or Enter that presses a focused button in `head` or `children`.
+   */
   onKey?: (e: React.KeyboardEvent, active: O | null) => void;
   /** While searching, the field says how many options match. */
   matches?: boolean;
@@ -127,7 +130,7 @@ export function PickList<O extends PickOption>({
   const top = Math.max(0, Math.min(start - MAX_ROWS / 2, rows.length - MAX_ROWS));
 
   function keys(e: React.KeyboardEvent) {
-    if (e.nativeEvent.isComposing) {
+    if (e.nativeEvent.isComposing || pressesButton(e)) {
       return;
     }
     onKey?.(e, enabled(current) ? current.o : null);
