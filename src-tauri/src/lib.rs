@@ -505,6 +505,16 @@ fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String>
 }
 
 #[tauri::command(async)]
+fn get_translate_form(app: State<'_, App>) -> Result<Option<segments::Form>, String> {
+    translate::form(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_form(app: State<'_, App>, form: Option<segments::Form>) -> Result<(), String> {
+    translate::set_form(&app.store, form)
+}
+
+#[tauri::command(async)]
 fn get_translate_engine(app: State<'_, App>) -> Result<translate::EngineSettings, String> {
     translate::engine_settings(&app.store)
 }
@@ -541,10 +551,11 @@ fn set_custom_instructions(app: State<'_, App>, settings: instructions::Settings
     instructions::save(&app.store, &settings)
 }
 
-/// The built-in prompt the instructions extend: the AI engine's, in the current term mode, English to Japanese.
+/// The built-in prompt the instructions extend: the AI engine's, in the current term mode and style, English to Japanese.
 #[tauri::command(async)]
 fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
-    Ok(segments::translation_prompt(&segments::Target { keep_terms: translate::keep_terms(&app.store)?, ..Default::default() }))
+    let target = segments::Target { keep_terms: translate::keep_terms(&app.store)?, form: translate::form(&app.store)?, ..Default::default() };
+    Ok(segments::translation_prompt(&target))
 }
 
 #[tauri::command(async)]
@@ -1687,6 +1698,8 @@ pub fn run() {
             check_translate_local,
             get_translate_keep_terms,
             set_translate_keep_terms,
+            get_translate_form,
+            set_translate_form,
             get_auto_translate,
             set_auto_translate,
             get_translate_parallel,

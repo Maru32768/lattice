@@ -7,7 +7,7 @@ use crate::llm::LlmProvider;
 use crate::local;
 use crate::msg;
 use crate::pdf;
-use crate::segments::{self, PROMPT_VERSION, Target, Translated, Unit, snippet_from_inlines};
+use crate::segments::{self, Form, PROMPT_VERSION, Target, Translated, Unit, snippet_from_inlines};
 use crate::store::{ArticleView, PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
 use rusqlite::{OptionalExtension, params};
@@ -21,6 +21,8 @@ pub const TARGET_LANGUAGE: &str = "ja";
 pub const KEEP_TERMS_SETTING: &str = "translate_keep_terms";
 /// The user's extra instructions for the translation prompt; absent means none.
 pub const INSTRUCTIONS_SETTING: &str = "translate_instructions";
+/// The style of translations into Japanese, `Form::as_str`; absent leaves it to the engine.
+pub const FORM_SETTING: &str = "translate_form";
 pub const MAX_INSTRUCTION_CHARS: usize = 2000;
 /// "on" translates each saved article once it is extracted; absent means off, since it spends LLM usage.
 pub const AUTO_SETTING: &str = "auto_translate";
@@ -100,6 +102,14 @@ pub fn keep_terms(store: &Store) -> Result<bool, String> {
 
 pub fn set_keep_terms(store: &Store, on: bool) -> Result<(), String> {
     store.set_setting(KEEP_TERMS_SETTING, (!on).then_some("off")).map_err(|e| e.to_string())
+}
+
+pub fn form(store: &Store) -> Result<Option<Form>, String> {
+    Ok(store.setting(FORM_SETTING).map_err(|e| e.to_string())?.as_deref().and_then(Form::parse))
+}
+
+pub fn set_form(store: &Store, form: Option<Form>) -> Result<(), String> {
+    store.set_setting(FORM_SETTING, form.map(Form::as_str)).map_err(|e| e.to_string())
 }
 
 pub fn instructions(store: &Store) -> Result<String, String> {
@@ -275,7 +285,7 @@ pub fn set_manual(store: &Store, article_id: i64, on: bool) -> Result<(), String
 /// The current settings' target for non-Japanese sources (`Target::for_source` adapts it), as far as
 /// the engine can deliver it: what every reader of translations looks them up by.
 pub fn target(store: &Store) -> Result<Target, String> {
-    let wanted = Target { language: TARGET_LANGUAGE, keep_terms: keep_terms(store)?, instructions: instructions(store)? };
+    let wanted = Target { language: TARGET_LANGUAGE, keep_terms: keep_terms(store)?, form: form(store)?, instructions: instructions(store)? };
     Ok(engine_settings(store)?.engine.normalize(wanted))
 }
 
@@ -317,7 +327,7 @@ impl<P: LlmProvider> Translator<'_, P> {
     pub async fn translate(&self, snippets: &[String]) -> Translated {
         match &self.via {
             Via::Llm(provider) => segments::translate_snippets(*provider, snippets, &self.target).await,
-            Via::Local(server) => server.translate(snippets, self.target.language).await,
+            Via::Local(server) => server.translate(snippets, &self.target).await,
         }
     }
 }
@@ -852,6 +862,29 @@ mod tests {
         assert!(tr.translate(&["スナップショット分離です。".to_string()]).await.results[0].is_some());
         assert_eq!(seen.lock().unwrap()[1].1["messages"][0]["content"], "[plamo-translate]\ntarget_lang=en");
         assert!(fake.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_style_reaches_both_engines_and_the_key_of_translations_into_japanese_only() {
+        let s = Store::open_in_memory().unwrap();
+        set_form(&s, Some(Form::Polite)).unwrap();
+        assert_eq!(form(&s).unwrap(), Some(Form::Polite));
+        let fake = Fake::new();
+        let ai = translator(&s, &fake, target(&s).unwrap()).unwrap();
+        assert_eq!(ai.key(), "ja-x-form-polite");
+        assert_eq!(Target::from_key(&ai.key(), ""), target(&s).unwrap(), "a queued job's key gives the style back");
+        assert!(segments::translation_prompt(&target(&s).unwrap()).contains("polite style (です・ます調)"));
+        assert_eq!(translator(&s, &fake, target(&s).unwrap().for_source(true)).unwrap().key(), "en", "English has no style");
+
+        let (url, seen) = crate::local::tests::serve(crate::local::tests::plamo).await;
+        set_engine(&s, EngineKind::Local, &url).unwrap();
+        let local = translator(&s, &fake, target(&s).unwrap()).unwrap();
+        assert_eq!(local.key(), "ja-x-translated-terms-x-form-polite");
+        assert!(local.translate(&["The bank was muddy.".to_string()]).await.results[0].is_some());
+        assert_eq!(seen.lock().unwrap()[1].1["messages"][0]["content"], "[plamo-translate]\ntarget_lang=ja\nform=polite");
+
+        set_form(&s, None).unwrap();
+        assert_eq!((s.setting(FORM_SETTING).unwrap(), target(&s).unwrap().key()), (None, "ja-x-translated-terms".to_string()), "none is stored as absent");
     }
 
     #[tokio::test]

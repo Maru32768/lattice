@@ -217,9 +217,15 @@ export const en = {
     "How many translation requests to the AI provider run at the same time (default 3), across the batches of a long article or several articles at once. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once. The local translation server gets at most 3 requests at a time, whatever this number.",
   "translationSettings.keepTermsDesc":
     "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, turning this on uses the established English terms and turning it off uses plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
+  "translationSettings.form": "Japanese style",
+  "translationSettings.formDesc":
+    "The style of translations into Japanese. With Not set, the translation engine decides. Both engines use it; translations into English do not. Translations are stored per style, so articles need translating again after a change.",
+  "translationSettings.formAny": "Not set",
+  "translationSettings.formPlain": "Plain (da, de aru)",
+  "translationSettings.formPolite": "Polite (desu, masu)",
   "translationSettings.instructions": "Extra instructions",
   "translationSettings.instructionsDesc":
-    "Appended to the translation prompt (e.g. “use a polite register”, “follow the Kubernetes docs' official terms”). Applies both to article translation and to translated pages. Translations are stored per set of instructions, so articles need translating again after a change.",
+    "Appended to the translation prompt (e.g. “follow the Kubernetes docs' official terms”). Applies both to article translation and to translated pages. Translations are stored per set of instructions, so articles need translating again after a change.",
   "translationSettings.skipSites": "Sites not to translate",
   "translationSettings.skipSitesDesc":
     "Pages listed here stay in the original even when the Page view is set to Mixed or Translated. One per line; {code} matches any text. A host name alone includes its subdomains (e.g. {code2}); with a / it is matched against the whole URL (e.g. {code3}). A line starting with ! translates the pages it matches, and when several lines match, the last one wins (e.g. {code4}). By default, the major search engines.",

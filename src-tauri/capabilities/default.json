@@ -90,6 +90,8 @@
     "allow-check-translate-local",
     "allow-get-translate-keep-terms",
     "allow-set-translate-keep-terms",
+    "allow-get-translate-form",
+    "allow-set-translate-form",
     "allow-set-translate-manual",
     "allow-get-auto-translate",
     "allow-set-auto-translate",

@@ -196,7 +196,7 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 |---|---|---|---|
 | M1 | ローカルの翻訳エンジン | 済 | design-review §36。設定 › 翻訳 の「翻訳エンジン」で、AIプロバイダのfallback chainか、利用者が起動するOpenAI互換のサーバー(llama-serverなど)で動くPLaMo 3 Translateを選ぶ(`translate_engine`・`translate_local_url`)。翻訳だけの設定で、chainと`LlmProvider`は変えない(処理ごとのproviderはJ7)。PLaMoは訳文だけを返すので、Latticeが断片を文に分け、blockごとに1行1文で送って行の対応で単位を作り、行の数が合わないblockは段落を文脈に付けて1文ずつ訳し直す(実測で、行の対応が崩れたのは700 blockに1つ)。PLaMoの訳は「専門用語も訳す・追加の指示なし」のキーにだけ保存する(`Translator`がエンジンとキーを束ねる)。接続できないときはAIに回さず、jobを失敗させてbackoffする。 |
 | M2 | 用語集(訳さない語・訳語の指定) | 後 | PLaMoの`glossary`(`原文 => 訳`)に渡す。訳さない語は`WAL => WAL`。design-reviewで見送った「訳さない語」をLLMなしで扱える。入力欄、キーへのhash、AIのエンジンでの扱い(promptに入れるか)を決める。M1を使ってから。 |
-| M3 | 文体の指定 | 後 | PLaMoの`form`(常体・敬体)。訳先が日本語のときだけ効く。キーに入れる。 |
+| M3 | 文体の指定 | 済 | 設定 › 翻訳 の「文体」(`translate_form`。指定しない、常体、敬体)。訳先が日本語のときだけ効き、キーに`-x-form-plain` / `-x-form-polite`を足す。PLaMoにはsystemの`form=`で、AIプロバイダにはpromptの規則で渡す(design-review §36)。 |
 | M4 | PLaMoの下訳をLLMが直す | 検討 | 「専門用語を英語のまま残す」と追加の指示の分だけLLMが直す。直した訳文は出力するので費用はあまり減らず、chainの障害と利用上限の影響も戻る。M2とM3で届かない分があれば、直る文の割合を測ってから決める。 |
 | M5 | Latticeから翻訳サーバーを起動する | 後 | llama-serverの場所とモデルを設定に持ち、必要なときに子プロセスで起動する。プロセスの監視、ポートの衝突、使わないときに止めてVRAMを返す扱いが要る。起動の手間が気になったら。 |
 

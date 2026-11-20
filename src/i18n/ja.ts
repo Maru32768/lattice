@@ -209,9 +209,15 @@ export const ja = {
     "翻訳で、AIプロバイダへの呼び出しを同時にいくつまで実行するか(既定3)。長い記事は段落のまとまりを並列に、短い記事は複数の記事を並列に訳します。表示中の記事はこの数とは別の枠ですぐに訳します。増やすと早く訳し終わりますが、使用量の上限やAPIのrate limitに早く当たり、Claude CLI・Codex CLIでは同時に動くプロセスが増えます。ローカルの翻訳サーバーには、この数にかかわらず同時に3つまで送ります。",
   "translationSettings.keepTermsDesc":
     "MVCC、WAL、snapshot isolation、write skewなど。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります(元の設定に戻せば以前の訳文が表示されます)。",
+  "translationSettings.form": "文体",
+  "translationSettings.formDesc":
+    "日本語に訳すときの文体です。「指定しない」は翻訳エンジンに任せます。どちらの翻訳エンジンでも使い、英語に訳すときは使いません。訳文は文体ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
+  "translationSettings.formAny": "指定しない",
+  "translationSettings.formPlain": "常体(だ、である)",
+  "translationSettings.formPolite": "敬体(です、ます)",
   "translationSettings.instructions": "追加の指示",
   "translationSettings.instructionsDesc":
-    "翻訳のpromptの末尾に付け加えます(例:「です・ます調で訳す」「Kubernetesの用語は公式ドキュメントの訳語に合わせる」)。記事の翻訳とページ表示の翻訳の両方に適用されます。訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
+    "翻訳のpromptの末尾に付け加えます(例:「Kubernetesの用語は公式ドキュメントの訳語に合わせる」)。記事の翻訳とページ表示の翻訳の両方に適用されます。訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
   "translationSettings.skipSites": "翻訳しないサイト",
   "translationSettings.skipSitesDesc":
     "Page表示を混在・訳文にしていても、ここに書いたページは原文のまま表示します。1行に1つ書き、{code}は任意の文字列に一致します。ホスト名だけならサブドメインも含みます(例: {code2})。/ を含めるとURL全体と比べます(例: {code3})。! で始まる行は一致したページを翻訳し、複数の行に一致したときは最後の行に従います(例: {code4})。既定は主な検索エンジンです。",

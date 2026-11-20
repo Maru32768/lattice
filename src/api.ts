@@ -17,6 +17,7 @@ import type {
   ChatThread,
   CustomInstructions,
   EngineKind,
+  Form,
   EngineSettings,
   FeedCandidate,
   FeedFilter,
@@ -215,6 +216,8 @@ export const api = {
   checkTranslateLocal: (url: string) => invoke<string>("check_translate_local", { url }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
+  translateForm: () => invoke<Form | null>("get_translate_form"),
+  setTranslateForm: (form: Form | null) => invoke<void>("set_translate_form", { form }),
   /** 保存した記事を自動で翻訳 (off by default). */
   autoTranslate: () => invoke<boolean>("get_auto_translate"),
   setAutoTranslate: (on: boolean) => invoke<void>("set_auto_translate", { on }),
