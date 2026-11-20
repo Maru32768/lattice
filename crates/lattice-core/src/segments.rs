@@ -99,7 +99,7 @@ impl Target {
         } else {
             "ja"
         };
-        let form = key.split(FORM).nth(1).and_then(|rest| Form::parse(rest.split("-x-").next().unwrap_or_default()));
+        let form = key.split("-x-").find_map(|p| p.strip_prefix("form-")).and_then(Form::parse);
         Self { language, keep_terms: !key.contains(TRANSLATED_TERMS), form, instructions: instructions.to_string() }
     }
 
