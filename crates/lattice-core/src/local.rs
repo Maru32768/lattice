@@ -618,9 +618,11 @@ pub(crate) mod tests {
         let long_context = "Context. ".repeat(1500);
         let dropped = request("m", &JA, Some(&long_context), "The bank was muddy.").unwrap();
         assert_eq!(system(&dropped), "[plamo-translate]\ntarget_lang=ja", "the context goes before the text does");
+        for (form, line) in [(Form::Plain, "form=plain"), (Form::Polite, "form=polite")] {
+            let styled = request("m", &Target { form: Some(form), ..JA.clone() }, Some("The river."), "The bank was muddy.").unwrap();
+            assert_eq!(system(&styled), format!("[plamo-translate]\ntarget_lang=ja\n{line}\n---\nThe river."));
+        }
         let polite = Target { form: Some(Form::Polite), ..JA.clone() };
-        let styled = request("m", &polite, Some("The river."), "The bank was muddy.").unwrap();
-        assert_eq!(system(&styled), "[plamo-translate]\ntarget_lang=ja\nform=polite\n---\nThe river.");
         assert_eq!(
             system(&request("m", &Target { language: "en", ..polite }, None, "x").unwrap()),
             "[plamo-translate]\ntarget_lang=en",
