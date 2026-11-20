@@ -42,6 +42,15 @@ export const listCount = (page: Page) => list(page).locator(".count");
 export const listTitle = (page: Page) => list(page).locator(".list-title h1");
 export const chips = (page: Page) => list(page).locator(".chip.on .chip-body");
 
+/** Opens an article (the first one), then its Page view, and lets the page finish loading. */
+export async function openPage(app: Page, title?: string) {
+  await (title ? list(app).locator(".row", { hasText: title }) : list(app).locator(".row").first()).click();
+  await app.locator(".docbar").getByRole("button", { name: "Page" }).click();
+  await expect.poll(async () => (await callsOf(app, "browser_open")).length).toBeGreaterThan(0);
+  const { tab, url } = (await callsOf(app, "browser_open")).at(-1) as { tab: string; url: string };
+  await app.evaluate((p) => window.__e2e.emit("browser-page", p), { tab, url, loading: false, can_go_back: false, can_go_forward: false });
+}
+
 /** The chat's 範囲: the button that shows the scope, and the dialog it opens. */
 export const chatScope = (page: Page) => page.getByRole("combobox", { name: "質問の範囲", exact: true });
 export const scopeDialog = (page: Page) => page.getByRole("dialog", { name: "質問の範囲" });

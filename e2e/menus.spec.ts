@@ -1,18 +1,9 @@
 // Menus and popovers on Radix (H22–H24): the webview gate, outside presses, Escape and placement.
-import { test, expect, list, listCount, navItem, callsOf } from "./harness.ts";
+import { test, expect, list, listCount, navItem, callsOf, openPage } from "./harness.ts";
 import { ARTICLES, GROUPS } from "./fixtures.ts";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 const opacity = (l: Locator) => l.evaluate((e) => getComputedStyle(e).opacity);
-
-/** Opens the first article's Page view and lets the page finish loading. */
-async function openPage(app: Page) {
-  await list(app).locator(".row").first().click();
-  await app.locator(".docbar").getByRole("button", { name: "Page" }).click();
-  await expect.poll(async () => (await callsOf(app, "browser_open")).length).toBeGreaterThan(0);
-  const { tab, url } = (await callsOf(app, "browser_open")).at(-1) as { tab: string; url: string };
-  await app.evaluate((p) => window.__e2e.emit("browser-page", p), { tab, url, loading: false, can_go_back: false, can_go_forward: false });
-}
 
 test("a menu over the page webview stays invisible until the webview is hidden, then shows whole (H22)", async ({ app }) => {
   await openPage(app);
