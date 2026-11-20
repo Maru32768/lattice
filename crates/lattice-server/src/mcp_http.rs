@@ -538,6 +538,7 @@ mod tests {
     use std::sync::{OnceLock, Weak};
     use tower::ServiceExt;
 
+    #[derive(Clone)]
     struct Fixture {
         app: Router,
         store: Arc<Store>,
@@ -637,17 +638,8 @@ mod tests {
 
         /// A tool call that goes on while the test answers for the user.
         fn call_later(&self, token: &str, session: &str, name: &str, arguments: Value) -> tokio::task::JoinHandle<Value> {
-            let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": arguments } });
-            let request = HttpRequest::builder()
-                .method("POST")
-                .uri(ENDPOINT)
-                .header(header::CONTENT_TYPE, "application/json")
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .header(SESSION, session)
-                .body(Body::from(body.to_string()))
-                .unwrap();
-            let app = self.app.clone();
-            tokio::spawn(async move { body_of(app.oneshot(request).await.unwrap()).await["result"].clone() })
+            let (f, token, session, name) = (self.clone(), token.to_string(), session.to_string(), name.to_string());
+            tokio::spawn(async move { f.call(&token, &session, &name, arguments).await })
         }
 
         /// Once `n` deletions wait for the user.
