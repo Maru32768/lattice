@@ -3,6 +3,7 @@
 //! JSON-RPC itself is `mcp::step`, shared with `lattice-cli mcp`.
 
 use std::collections::{HashMap, VecDeque};
+use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12,8 +13,10 @@ use axum::body::Bytes;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
+use futures_util::stream;
 use lattice_core::chain::LlmChain;
 use lattice_core::embed::LocalE5;
 use lattice_core::jobs::Providers;
@@ -41,6 +44,8 @@ const MAX_CALLS: usize = 20;
 const MAX_NAME_CHARS: usize = 64;
 /// How long a deletion waits for the user's answer before it is refused.
 const APPROVAL_WAIT: Duration = Duration::from_secs(120);
+/// How often a reply streamed as events says it is still coming.
+const KEEP_ALIVE: Duration = Duration::from_secs(15);
 /// Deletions waiting at once: an agent asking again and again is refused at once past it, rather than queueing a dialog
 /// for each.
 const MAX_WAITING: usize = 10;
@@ -218,6 +223,11 @@ fn session_id(headers: &HeaderMap) -> Option<&str> {
     headers.get(SESSION).and_then(|v| v.to_str().ok())
 }
 
+/// Whether the client takes a reply as a stream of events, as the spec has every client say.
+fn takes_events(headers: &HeaderMap) -> bool {
+    headers.get_all(header::ACCEPT).iter().any(|v| v.to_str().is_ok_and(|v| v.contains("text/event-stream")))
+}
+
 async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Bytes) -> Response {
     let (registration, key) = match caller(&st, &headers).await {
         Ok(c) => c,
@@ -255,16 +265,25 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
         }
         Step::Call { id, op } => {
             let tool = tool.unwrap_or_default();
-            let outcome = match st.permit(&registration, &op, &tool).await {
-                Ok(permit) => {
-                    // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway, leaving a
-                    // job it claimed claimed until the app quits, and the app never told what was written.
-                    let (st, who) = (st.clone(), registration.id);
-                    tokio::spawn(async move { st.call(permit, op, &who, &tool).await }).await.unwrap_or_else(|e| Err(e.to_string()))
-                }
-                Err(e) => Err(e),
+            let reply = async move {
+                let outcome = match st.permit(&registration, &op, &tool).await {
+                    Ok(permit) => {
+                        // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway,
+                        // leaving a job it claimed claimed until the app quits, and the app never told what was written.
+                        let (st, who) = (st.clone(), registration.id);
+                        tokio::spawn(async move { st.call(permit, op, &who, &tool).await }).await.unwrap_or_else(|e| Err(e.to_string()))
+                    }
+                    Err(e) => Err(e),
+                };
+                tool_reply(id, outcome)
             };
-            tool_reply(id, outcome)
+            if takes_events(&headers) {
+                // Claude Code gives up on a reply whose headers take 60 s, and a deletion waits up to two minutes for
+                // the user, an `ask` for the LLM: the headers go at once, and the reply follows as an event.
+                let event = stream::once(async move { Ok::<_, Infallible>(Event::default().event("message").data(reply.await.to_string())) });
+                return Sse::new(event).keep_alive(KeepAlive::new().interval(KEEP_ALIVE)).into_response();
+            }
+            reply.await
         }
     };
     let mut response = json(StatusCode::OK, &reply);
@@ -878,6 +897,37 @@ mod tests {
         let after = f.call(&r.token, &session, "delete_article", json!({ "id": a })).await;
         assert!(says(&after, STOPPED), "a stopped server asks no more: {after}");
         assert_eq!(f.titles().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_client_that_takes_events_gets_the_headers_at_once_and_the_reply_once_it_is_ready() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let (a, b) = (f.saved("https://example.com/a"), f.saved("https://example.com/b"));
+        let session = f.initialize(&r.token).await;
+        let events = [(header::ACCEPT.as_str(), "application/json, text/event-stream")];
+        let delete = |id: i64| json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "delete_article", "arguments": { "id": id } } });
+        // As a server does: the body is read from the moment the headers are sent.
+        let read =
+            |r: Response| tokio::spawn(async move { String::from_utf8(axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap() });
+
+        let started = f.send("POST", Some(&r.token), Some(&session), &events, delete(a)).await;
+        assert_eq!(started.status(), StatusCode::OK);
+        assert_eq!(started.headers()[header::CONTENT_TYPE], "text/event-stream", "before the user has answered");
+        let body = read(started);
+        f.approvals.answer(f.asked(1).await[0].id, true);
+        let body = body.await.unwrap();
+        let reply: Value = serde_json::from_str(body.lines().find_map(|line| line.strip_prefix("data: ")).unwrap()).unwrap();
+        assert!(body.starts_with("event: message\n"), "{body}");
+        assert_eq!((reply["id"].as_i64(), reply["result"]["isError"].as_bool()), (Some(7), Some(false)), "{reply}");
+        assert_eq!(f.titles().len(), 1);
+
+        let hung_up = read(f.send("POST", Some(&r.token), Some(&session), &events, delete(b)).await);
+        f.asked(1).await;
+        hung_up.abort();
+        assert!(hung_up.await.unwrap_err().is_cancelled());
+        assert!(f.approvals.waiting().is_empty(), "an agent that stops reading takes its request off the screen");
+        assert_eq!(f.titles().len(), 1);
     }
 
     #[tokio::test]

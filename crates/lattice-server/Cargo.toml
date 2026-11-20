@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 clap = { version = "4.6.1", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+futures-util = { version = "0.3.34", default-features = false }
 lattice-core = { path = "../lattice-core" }
 log = "0.4.34"
 serde = { version = "1.0.229", features = ["derive"] }
