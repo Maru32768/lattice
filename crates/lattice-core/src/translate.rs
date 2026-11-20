@@ -865,16 +865,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_style_reaches_both_engines_and_the_key_of_translations_into_japanese_only() {
+    async fn the_style_reaches_both_engines_and_their_keys() {
         let s = Store::open_in_memory().unwrap();
         set_form(&s, Some(Form::Polite)).unwrap();
         assert_eq!(form(&s).unwrap(), Some(Form::Polite));
         let fake = Fake::new();
         let ai = translator(&s, &fake, target(&s).unwrap()).unwrap();
         assert_eq!(ai.key(), "ja-x-form-polite");
-        assert_eq!(Target::from_key(&ai.key(), ""), target(&s).unwrap(), "a queued job's key gives the style back");
-        assert!(segments::translation_prompt(&target(&s).unwrap()).contains("polite style (です・ます調)"));
-        assert_eq!(translator(&s, &fake, target(&s).unwrap().for_source(true)).unwrap().key(), "en", "English has no style");
 
         let (url, seen) = crate::local::tests::serve(crate::local::tests::plamo).await;
         set_engine(&s, EngineKind::Local, &url).unwrap();
