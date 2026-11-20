@@ -11,8 +11,6 @@ use lattice_core::ingest::store_fetched;
 use lattice_core::store::Store;
 use serde_json::{Value, json};
 
-const UNTRUSTED_START: &str = "Lattice returns text from web pages";
-
 /// A temporary data folder, removed when dropped.
 struct Dir(PathBuf);
 
@@ -208,90 +206,6 @@ fn a_missing_database_is_an_error_and_is_not_created() {
     let dir = data_dir("missing");
     assert!(refused(&dir, &["list"])["error"].as_str().unwrap().contains("no Lattice database"));
     assert!(!dir.join("lattice.db").exists());
-}
-
-fn mcp(dir: &Path, flags: &[&str], requests: &[Value]) -> Vec<Value> {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_lattice-cli"));
-    cmd.arg("--data-dir").arg(dir).args(flags).env_remove("LATTICE_ALLOW_WRITE");
-    let mut child = cmd.arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    for r in requests {
-        writeln!(stdin, "{r}").unwrap();
-    }
-    drop(stdin);
-    let out = child.wait_with_output().unwrap();
-    assert!(out.status.success());
-    String::from_utf8(out.stdout).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
-}
-
-fn call(id: i64, name: &str, arguments: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": arguments } })
-}
-
-#[test]
-fn serves_mcp_over_stdio() {
-    let (dir, id) = library("mcp");
-    let replies = mcp(
-        &dir,
-        &[],
-        &[
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } }),
-            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
-            call(3, "search", json!({ "query": "EPOLLET" })),
-            call(4, "get", json!({ "id": id })),
-            call(5, "tag", json!({ "id": id, "name": "x" })),
-            json!({ "jsonrpc": "2.0", "id": 6, "method": "resources/list" }),
-            call(7, "get", json!({})),
-        ],
-    );
-    assert_eq!(replies.len(), 7, "the notification gets no reply: {replies:?}");
-    let init = &replies[0]["result"];
-    assert_eq!((init["protocolVersion"].as_str(), init["serverInfo"]["name"].as_str()), (Some("2025-06-18"), Some("lattice")));
-    assert!(init["capabilities"]["tools"].is_object());
-
-    let tools: Vec<&str> = replies[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(tools, ["search", "get", "list", "summary", "tags", "genres", "feeds", "collections", "jobs", "ask"]);
-    assert_eq!(replies[1]["result"]["tools"][0]["inputSchema"]["required"], json!(["query"]));
-
-    let text = |r: &Value| r["result"]["content"][0]["text"].as_str().unwrap().to_string();
-    for r in &replies[2..4] {
-        assert_eq!(r["result"]["isError"], false);
-        assert!(text(r).starts_with(UNTRUSTED_START), "marked as untrusted: {}", text(r));
-    }
-    let found: Value = serde_json::from_str(text(&replies[2]).split_once("\n\n").unwrap().1).unwrap();
-    assert_eq!(found["hits"][0]["article_id"], id);
-    assert!(text(&replies[3]).contains("draining the socket"));
-
-    assert_eq!(replies[4]["result"]["isError"], true, "write tools are refused without the opt-in");
-    assert!(text(&replies[4]).contains("--allow-write"));
-    assert!(text(&replies[4]).starts_with(UNTRUSTED_START), "errors are marked too: {}", text(&replies[4]));
-    assert_eq!(replies[5]["error"]["code"], -32601);
-    assert_eq!(replies[6]["result"]["isError"], true, "a missing argument is a tool error the model can correct: {}", replies[6]);
-    assert!(ok(&dir, &["tags"]).to_string().contains("\"db\"") && !ok(&dir, &["tags"]).to_string().contains("\"x\""));
-}
-
-#[test]
-fn mcp_write_tools_need_the_opt_in() {
-    let (dir, id) = library("mcp-write");
-    let replies =
-        mcp(&dir, &["--allow-write"], &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), call(2, "tag", json!({ "id": id, "name": "later" }))]);
-    assert_eq!(replies[0]["result"]["tools"].as_array().unwrap().len(), 30);
-    assert_eq!(replies[1]["result"]["isError"], false);
-    assert_eq!(ok(&dir, &["get", &id.to_string()])["article"]["tags"], json!(["db", "later"]));
-}
-
-/// Over stdio nothing can ask the user before a deletion, so even --allow-delete offers none.
-#[test]
-fn mcp_over_stdio_never_deletes() {
-    let (dir, id) = library("mcp-delete");
-    let replies =
-        mcp(&dir, &["--allow-delete"], &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), call(2, "delete_article", json!({ "id": id }))]);
-    let tools: Vec<&str> = replies[0]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(tools.len(), 30);
-    assert!(!tools.contains(&"delete_article"), "{tools:?}");
-    assert_eq!(replies[1]["result"]["isError"], true);
-    assert_eq!(ok(&dir, &["get", &id.to_string()])["article"]["id"], id, "still there");
 }
 
 #[test]

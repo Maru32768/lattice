@@ -1,4 +1,4 @@
-//! The MCP protocol, shared by `lattice-cli mcp` (stdio) and the app's server (`mcp_http`): the tools, each with the
+//! The MCP protocol of the app's server (`mcp_http`): the tools, each with the
 //! least role that may call it, and the JSON-RPC methods a tools-only server needs (`initialize`, `ping`, `tools/list`,
 //! `tools/call`). An SDK would bring more dependencies than this whole file. Article content is untrusted text from
 //! the web: every result says so, and none of it is ever executed.
@@ -212,7 +212,7 @@ impl Message {
     }
 }
 
-/// What a transport does with one message. All but running a tool is decided here, so stdio and HTTP answer alike.
+/// What `mcp_http` does with one message. All but running a tool is decided here.
 pub enum Step {
     Reply(Value),
     /// A notification, or a client's answer to a request: nothing goes back.

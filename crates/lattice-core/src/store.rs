@@ -635,7 +635,7 @@ impl Store {
 
     fn init(mut conn: Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        // The app, the CLI and the MCP server share the file. A deferred transaction that reads first fails
+        // The app and the CLI share the file. A deferred transaction that reads first fails
         // at once, whatever the busy timeout, if another process commits before its first write.
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let user_version = |c: &Connection| c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0));
@@ -1347,8 +1347,8 @@ impl Store {
     }
 
     /// Puts back in the queue the jobs left `running` by a process that is gone, or by a finish that
-    /// could not be written: not this Store's, and with no heartbeat for `ABANDONED_AFTER`. The app,
-    /// the CLI and the MCP server share the queue, so a job another live process runs stays its own.
+    /// could not be written: not this Store's, and with no heartbeat for `ABANDONED_AFTER`. The app
+    /// and the CLI share the queue, so a job another live process runs stays its own.
     /// Each counts as a failed try: one that takes its process down must not run again at once, at
     /// every start, with `finish_job` and so the attempt limit never reached.
     pub fn recover_abandoned_jobs(&self) -> Result<usize> {

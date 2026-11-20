@@ -123,7 +123,7 @@ async fn a_job_whose_finish_cannot_be_written_does_not_stay_running() {
     let (released_tx, released) = std::sync::mpsc::channel();
     let (release, hold) = std::sync::mpsc::channel::<()>();
     let hold = std::sync::Mutex::new(Some(hold));
-    // A CLI/MCP write transaction that starts while the model answers and outlasts the summary's
+    // A CLI write transaction that starts while the model answers and outlasts the summary's
     // write (5 s busy timeout) and the three `finish_job` tries (3 x 5 s + 2 x 250 ms).
     let llm = Summarizer(move || {
         let (db, released_tx, hold) = (lock_db.clone(), released_tx.clone(), hold.lock().unwrap().take().unwrap());

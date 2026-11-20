@@ -1,8 +1,8 @@
 //! The PC's server for the phone (G47, design-review §32): the page and the library's documents.
 //! It speaks plain HTTP. On the local network that is what there is; beyond it a tunnel in front
 //! (Tailscale Serve, cloudflared) provides TLS, so this crate never handles a certificate.
-//! `ops` holds the operations `lattice-cli` and the MCP servers run, `mcp` the MCP protocol, and `mcp_http` the app's MCP
-//! server (design-review §23).
+//! `ops` holds the operations `lattice-cli` and the app's MCP server run, `mcp` the MCP protocol, and `mcp_http` that
+//! server over HTTP (design-review §23).
 
 use std::net::SocketAddr;
 use std::sync::Arc;

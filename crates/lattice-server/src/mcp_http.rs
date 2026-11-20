@@ -1,6 +1,6 @@
 //! MCP over Streamable HTTP for the app: one endpoint on this PC's loopback, a bearer token per registration, and the
 //! registration read again at every request, so a new token, a new role and a deletion hold from the next one. The
-//! JSON-RPC itself is `mcp::step`, shared with `lattice-cli mcp`.
+//! JSON-RPC itself is `mcp::step`.
 
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
