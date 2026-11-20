@@ -135,6 +135,16 @@ pub fn merge_genre(store: &Store, from: &str, into: &str) -> Result<(), String> 
     tx.commit().map_err(err)
 }
 
+/// The genres `merge_genre` would find, by their stored names, and how many articles it would move.
+pub fn merge_preview(store: &Store, from: &str, into: &str) -> Result<(String, String, i64), String> {
+    let c = store.conn();
+    let from_id = existing_genre(&c, from)?;
+    let into_id = existing_genre(&c, &clean(into))?;
+    let name = |id: i64| c.query_row("SELECT name FROM genres WHERE id = ?1", [id], |r| r.get::<_, String>(0)).map_err(err);
+    let moved = c.query_row("SELECT count(*) FROM articles WHERE genre_id = ?1", [from_id], |r| r.get(0)).map_err(err)?;
+    Ok((name(from_id)?, name(into_id)?, moved))
+}
+
 fn genre_id(c: &rusqlite::Connection, name: &str) -> Result<Option<i64>, String> {
     c.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get(0)).optional().map_err(err)
 }

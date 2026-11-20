@@ -16,8 +16,9 @@ use lattice_core::msg;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock};
 use lattice_core::url_norm::normalize;
 use lattice_core::{classify, feed_folders, feeds, groups, ingest, job_status, relevance, search, summarize, translate};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use ts_rs::TS;
 
 const SEARCH_LIMIT: usize = 20;
 const LIST_LIMIT: usize = 50;
@@ -198,6 +199,33 @@ impl Op {
         }
     }
 
+    /// What this deletion would remove, as the library has it now.
+    pub fn deletion(&self, store: &Store) -> Result<Deletion, String> {
+        Ok(match self {
+            Op::DeleteArticle { id } => {
+                let a = article(store, *id)?;
+                Deletion::Article { title: a.title, url: a.original_url }
+            }
+            Op::DeleteCollection { id } => {
+                let g = collection(store, *id)?;
+                Deletion::Collection { name: g.name, articles: g.count }
+            }
+            Op::RemoveFeed { id } => {
+                let f = feed(store, *id)?;
+                Deletion::Feed { title: f.custom_title.or(f.title), url: f.url, articles: f.article_count }
+            }
+            Op::DeleteFolder { id } => {
+                let f = folder(store, *id)?;
+                Deletion::Folder { name: f.name, feeds: f.feeds }
+            }
+            Op::MergeGenre { from, into } => {
+                let (from, into, articles) = classify::merge_preview(store, from, into)?;
+                Deletion::Genre { from, into, articles }
+            }
+            other => return Err(format!("{other:?} deletes nothing")),
+        })
+    }
+
     /// What a running app has to show or start after this operation ran. Exhaustive like `role`: a new operation does
     /// not compile until it says.
     pub fn effects(&self) -> Effects {
@@ -237,6 +265,50 @@ impl Op {
             Op::Save { .. } => Effects { fetch: true, ..lists },
             Op::AddFeed { .. } => Effects { fetch: true, ..feeds },
             Op::RenameFeed { .. } | Op::MoveFeed { .. } | Op::RenameFolder { .. } | Op::RemoveFeed { .. } | Op::DeleteFolder { .. } => feeds,
+        }
+    }
+}
+
+/// What a deletion removes, for the user to approve: read from the library, never the names an agent sent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export, rename = "McpDeletion")]
+pub enum Deletion {
+    Article {
+        title: Option<String>,
+        url: String,
+    },
+    Collection {
+        name: String,
+        articles: i64,
+    },
+    Feed {
+        title: Option<String>,
+        url: String,
+        articles: i64,
+    },
+    Folder {
+        name: String,
+        feeds: i64,
+    },
+    /// `from` goes; its articles move to `into`.
+    Genre {
+        from: String,
+        into: String,
+        articles: i64,
+    },
+}
+
+impl Deletion {
+    /// Whether both name the same thing. A title, a feed's name or a count can change while the user decides; an id
+    /// can come back on something saved since, so the URL or the name tells.
+    pub fn same_target(&self, other: &Deletion) -> bool {
+        match (self, other) {
+            (Deletion::Article { url: a, .. }, Deletion::Article { url: b, .. }) | (Deletion::Feed { url: a, .. }, Deletion::Feed { url: b, .. }) => a == b,
+            (Deletion::Collection { name: a, .. }, Deletion::Collection { name: b, .. })
+            | (Deletion::Folder { name: a, .. }, Deletion::Folder { name: b, .. }) => a == b,
+            (Deletion::Genre { from: a, into: x, .. }, Deletion::Genre { from: b, into: y, .. }) => a == b && x == y,
+            _ => false,
         }
     }
 }
@@ -981,6 +1053,66 @@ pub(crate) mod tests {
         assert!(feeds::list(s).unwrap().is_empty());
         assert!(run(&ctx, Op::RemoveFeed { id: f }).await.is_err(), "already gone");
         assert!(run(&ctx, Op::DeleteFolder { id: folder }).await.is_err(), "already gone");
+    }
+
+    #[tokio::test]
+    async fn a_deletion_names_what_the_library_holds() {
+        let ctx = Ctx { role: Role::Delete, ..ctx() };
+        let s = &ctx.store;
+        let id = saved(s, "https://example.com/a", "Found title");
+        let g = run(&ctx, Op::CreateCollection { name: "Reading".into() }).await.unwrap().json["id"].as_i64().unwrap();
+        run(&ctx, Op::Collect { collection: g, article: id }).await.unwrap();
+        let (f, _) = feeds::add(s, "https://example.com/feed.xml", None).unwrap();
+        run(&ctx, Op::MoveFeed { id: f, folder: Some("Tech".into()) }).await.unwrap();
+        let folder = feed_folders::list(s).unwrap().remove(0).id;
+        run(&ctx, Op::SetGenre { id, name: "Databases".into() }).await.unwrap();
+        run(&ctx, Op::AddGenre { name: "Storage Engines".into() }).await.unwrap();
+
+        assert_eq!(Op::DeleteArticle { id }.deletion(s), Ok(Deletion::Article { title: Some("Found title".into()), url: "https://example.com/a".into() }));
+        assert_eq!(Op::DeleteCollection { id: g }.deletion(s), Ok(Deletion::Collection { name: "Reading".into(), articles: 1 }));
+        let feed = |title: Option<&str>| Deletion::Feed { title: title.map(Into::into), url: "https://example.com/feed.xml".into(), articles: 0 };
+        assert_eq!(Op::RemoveFeed { id: f }.deletion(s), Ok(feed(None)), "not loaded yet");
+        run(&ctx, Op::RenameFeed { id: f, name: Some("Mine".into()) }).await.unwrap();
+        assert_eq!(Op::RemoveFeed { id: f }.deletion(s), Ok(feed(Some("Mine"))), "the user's name for it");
+        assert_eq!(Op::DeleteFolder { id: folder }.deletion(s), Ok(Deletion::Folder { name: "Tech".into(), feeds: 1 }));
+        let merge = Op::MergeGenre { from: "databases".into(), into: " storage   engines ".into() };
+        let merged = Deletion::Genre { from: "Databases".into(), into: "Storage Engines".into(), articles: 1 };
+        assert_eq!(merge.deletion(s), Ok(merged), "the stored names, found as merge_genre finds them");
+
+        let missing = [
+            Op::DeleteArticle { id: id + 100 },
+            Op::DeleteCollection { id: g + 100 },
+            Op::RemoveFeed { id: f + 100 },
+            Op::DeleteFolder { id: folder + 100 },
+            Op::MergeGenre { from: "Nope".into(), into: "Databases".into() },
+            Op::MergeGenre { from: "Databases".into(), into: "Nope".into() },
+        ];
+        for op in missing {
+            assert!(op.deletion(s).is_err(), "{op:?}");
+        }
+        for op in reads(id).into_iter().chain(edits(id)) {
+            assert!(op.deletion(s).is_err(), "{op:?} deletes nothing");
+        }
+    }
+
+    #[test]
+    fn a_target_stays_the_same_while_its_title_or_counts_change() {
+        let article = |title: Option<&str>, url: &str| Deletion::Article { title: title.map(Into::into), url: url.into() };
+        assert!(article(None, "https://a").same_target(&article(Some("Fetched since"), "https://a")));
+        assert!(!article(Some("A"), "https://a").same_target(&article(Some("A"), "https://b")), "an id that came back on another article");
+        let feed = |title: &str, url: &str, articles| Deletion::Feed { title: Some(title.into()), url: url.into(), articles };
+        assert!(feed("A", "https://a/feed", 1).same_target(&feed("Renamed", "https://a/feed", 9)));
+        assert!(!feed("A", "https://a/feed", 1).same_target(&feed("A", "https://b/feed", 1)));
+        let collection = |name: &str, articles| Deletion::Collection { name: name.into(), articles };
+        assert!(collection("Reading", 1).same_target(&collection("Reading", 2)));
+        assert!(!collection("Reading", 1).same_target(&collection("Later", 1)));
+        let folder = |name: &str, feeds| Deletion::Folder { name: name.into(), feeds };
+        assert!(folder("Tech", 1).same_target(&folder("Tech", 0)));
+        assert!(!folder("Tech", 1).same_target(&folder("News", 1)));
+        let genre = |from: &str, into: &str| Deletion::Genre { from: from.into(), into: into.into(), articles: 1 };
+        assert!(genre("A", "B").same_target(&genre("A", "B")));
+        assert!(!genre("A", "B").same_target(&genre("A", "C")) && !genre("A", "B").same_target(&genre("C", "B")));
+        assert!(!collection("Tech", 1).same_target(&folder("Tech", 1)), "another kind");
     }
 
     #[tokio::test]
