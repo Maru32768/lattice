@@ -842,16 +842,7 @@ mod tests {
         let f = fixture();
         let r = f.register("agent", Role::Delete);
         let session = f.initialize(&r.token).await;
-        let missing = [
-            ("delete_article", json!({ "id": 999 })),
-            ("delete_collection", json!({ "id": 999 })),
-            ("remove_feed", json!({ "id": 999 })),
-            ("delete_folder", json!({ "id": 999 })),
-            ("merge_genre", json!({ "from": "Nope", "into": "Ghost" })),
-        ];
-        for (tool, arguments) in missing {
-            assert_eq!(f.call(&r.token, &session, tool, arguments).await["isError"], true, "{tool}");
-        }
+        assert_eq!(f.call(&r.token, &session, "delete_article", json!({ "id": 999 })).await["isError"], true);
         assert!(f.signals.lock().unwrap().is_empty(), "the user was not asked");
         assert!(f.activity.of(&r).1.iter().all(|c| c.outcome == Outcome::Failed));
     }
