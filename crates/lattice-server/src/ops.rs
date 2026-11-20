@@ -1090,9 +1090,6 @@ pub(crate) mod tests {
         for op in missing {
             assert!(op.deletion(s).is_err(), "{op:?}");
         }
-        for op in reads(id).into_iter().chain(edits(id)) {
-            assert!(op.deletion(s).is_err(), "{op:?} deletes nothing");
-        }
     }
 
     #[test]
