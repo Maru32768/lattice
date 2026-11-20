@@ -1,8 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog as AD } from "radix-ui";
 import { coverStyle, useCover } from "./Popover";
 import { useT } from "../i18n";
+
+/** When this window last came into focus, or 0 while it is out of it. */
+let focusedSince = 0;
+const watchers = new Set<() => void>();
+const watch = (f: () => void) => {
+  watchers.add(f);
+  return () => void watchers.delete(f);
+};
+const refocus = () => {
+  focusedSince = document.hasFocus() ? performance.now() : 0;
+  watchers.forEach((f) => f());
+};
+addEventListener("focus", refocus);
+addEventListener("blur", refocus);
+refocus();
 
 /**
  * A modal confirmation for a destructive action, on body so no toolbar's overflow clips it. Focus
@@ -22,7 +37,10 @@ export function ConfirmDialog({
   confirm: string;
   /** Label of the button that cancels, キャンセル by default. */
   cancel?: string;
-  /** Keeps the danger button off for this long once the dialog shows: a click meant for what was there before must not press it. */
+  /**
+   * Keeps the danger button off for this long once the dialog shows with this window in focus: a click meant for what was
+   * there before, or one that only brings the window forward, must not press it.
+   */
   armMs?: number;
   onConfirm: () => void;
   onCancel: () => void;
@@ -31,15 +49,17 @@ export function ConfirmDialog({
   const t = useT();
   const scrim = useRef<HTMLDivElement>(null);
   const clear = useCover(scrim, true);
-  const [armed, setArmed] = useState(!armMs);
-  // Counted from when it shows: over a page webview it waits, invisible, for the page's still.
+  const since = useSyncExternalStore(watch, () => focusedSince);
+  const [armedFor, setArmedFor] = useState<number | null>(null);
+  // Counted from when it shows, over a page webview too, which it waits for invisible, and again each time the window comes into focus.
   useEffect(() => {
-    if (armed || !clear) {
+    if (!armMs || !clear || !since) {
       return;
     }
-    const timer = setTimeout(() => setArmed(true), armMs);
+    const timer = setTimeout(() => setArmedFor(since), armMs);
     return () => clearTimeout(timer);
-  }, [armed, clear, armMs]);
+  }, [armMs, clear, since]);
+  const armed = !armMs || (since > 0 && armedFor === since);
   // Not AD.Portal: it mounts a render late, after useCover has measured.
   return createPortal(
     <AD.Root

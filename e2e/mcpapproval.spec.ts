@@ -115,6 +115,28 @@ test("over a page view, Allow waits a moment from when the dialog shows, not fro
   await expect(allow).toBeEnabled();
 });
 
+/** As when another app's window comes in front of Lattice's, or Lattice's comes back into focus. */
+const setFocused = (app: Page, focused: boolean) =>
+  app.evaluate((f) => {
+    document.hasFocus = () => f;
+    window.dispatchEvent(new Event(f ? "focus" : "blur"));
+  }, focused);
+
+test("Allow waits a moment again each time the window comes into focus, so the click that brings it forward allows nothing", async ({ app }) => {
+  await ask(app, [article(1, null, "https://example.com/a")]);
+  const allow = dialogOf(app).getByRole("button", { name: "削除を許可" });
+  await expect(allow).toBeEnabled();
+  await setFocused(app, false);
+  await expect(allow, "the user went on in another app").toBeDisabled();
+  // A later request raises the window, still out of focus, over the app the user is in; their next click brings it forward.
+  await ask(app, [article(1, null, "https://example.com/a"), article(2, null, "https://example.com/b")]);
+  const box = (await allow.boundingBox())!;
+  await setFocused(app, true);
+  await app.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  expect(await callsOf(app, "mcp_answer"), "a click meant for the other app").toEqual([]);
+  await expect(allow).toBeEnabled();
+});
+
 test("each kind of deletion says what goes and what stays, and the time left counts down", async ({ app }) => {
   const by = (id: number, deletion: McpApproval["deletion"]): McpApproval => ({ id, registration: "Research", deletion, deadline_ms: NOW + 90_000 });
   await ask(app, [
