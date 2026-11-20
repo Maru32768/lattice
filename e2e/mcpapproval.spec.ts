@@ -143,6 +143,7 @@ test("Allow waits a moment again each time the window comes into focus, so the c
   await expect(allow, "the user went on in another app").toBeDisabled();
   // A later request raises the window, still out of focus, over the app the user is in; their next click brings it forward.
   await ask(app, [article(1, null, "https://example.com/a"), article(2, null, "https://example.com/b")]);
+  expect(await callsOf(app, "plugin:window|set_focus"), "the keyboard stays in the app the user is in").toEqual([]);
   const box = (await allow.boundingBox())!;
   await setFocused(app, true);
   await app.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
