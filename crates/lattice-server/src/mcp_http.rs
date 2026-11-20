@@ -909,6 +909,7 @@ mod tests {
         let reply: Value = serde_json::from_str(body.lines().find_map(|line| line.strip_prefix("data: ")).unwrap()).unwrap();
         assert!(body.starts_with("event: message\n"), "{body}");
         assert_eq!((reply["id"].as_i64(), reply["result"]["isError"].as_bool()), (Some(7), Some(false)), "{reply}");
+        assert!(reply["result"]["content"][0]["text"].as_str().is_some_and(|t| t.starts_with(crate::mcp::UNTRUSTED)), "{reply}");
         assert_eq!(f.titles().len(), 1);
 
         let hung_up = read(f.send("POST", Some(&r.token), Some(&session), &events, delete(b)).await);
