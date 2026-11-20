@@ -151,6 +151,8 @@ const COMMANDS: &[&str] = &[
     "mobile_tailscale_serve",
     "mcp_status",
     "mcp_edit",
+    "mcp_approvals",
+    "mcp_answer",
     "job_overview",
     "retry_job",
     "retry_failed_jobs",

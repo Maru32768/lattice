@@ -5,7 +5,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::body::Bytes;
@@ -21,10 +21,11 @@ use lattice_core::mcp::{self, Registration, Role, Scope};
 use lattice_core::mobile::{Effects, blocking};
 use lattice_core::store::{Store, random_hex, sha256_hex};
 use serde::Serialize;
+use tokio::sync::oneshot;
 use ts_rs::TS;
 
 use crate::mcp::{Message, PROTOCOL_VERSIONS, Step, step, tool_reply};
-use crate::ops::{self, Ctx, Op, Out};
+use crate::ops::{self, Ctx, Deletion, Op, Out};
 use crate::{OnApplied, bearer, error, internal_error, json};
 
 /// Loopback only: another machine on the network cannot even connect.
@@ -38,8 +39,19 @@ const MAX_SESSIONS: usize = 64;
 const MAX_CALLS: usize = 20;
 /// What an agent names (its client, a tool it asked for) is cut to this before the settings screen shows it.
 const MAX_NAME_CHARS: usize = 64;
+/// How long a deletion waits for the user's answer before it is refused.
+const APPROVAL_WAIT: Duration = Duration::from_secs(120);
+/// Deletions waiting at once: an agent asking again and again is refused at once past it, rather than queueing a dialog
+/// for each.
+const MAX_WAITING: usize = 10;
 const READ_ONLY: &str = "This tool changes the library, and this connection may only read it. The user can change that in Lattice: Settings › AI agents (MCP).";
-const NO_DELETING: &str = "Deleting over MCP needs the user's approval in Lattice, which this version cannot ask for. Nothing was deleted.";
+const MAY_NOT_DELETE: &str =
+    "This tool deletes from the library, and this connection may not delete. The user can change that in Lattice: Settings › AI agents (MCP).";
+const DENIED: &str = "The user did not allow this deletion in Lattice. Nothing was deleted.";
+const UNANSWERED: &str = "Nobody answered in Lattice within 2 minutes, so nothing was deleted.";
+const STOPPED: &str = "The MCP server stopped before the user answered in Lattice. Nothing was deleted.";
+const TOO_MANY: &str = "Too many deletions are waiting for the user's answer in Lattice. Nothing was deleted: ask again once they are answered.";
+const CHANGED: &str = "What this would delete changed while the user decided in Lattice. Nothing was deleted: look it up again.";
 
 /// What the settings screen copies for a registration. One name in every scope, so a project's own takes the place of the
 /// user-wide one there, and an agent's tools are `mcp__lattice__*` whichever it holds.
@@ -59,6 +71,7 @@ struct McpState {
     providers: Arc<Providers<LlmChain, LocalE5>>,
     on_applied: OnApplied,
     activity: Arc<Activity>,
+    approvals: Arc<Approvals>,
 }
 
 /// What the settings screen shows of the server's use. Memory only: the app makes a new one each time it starts the
@@ -88,7 +101,7 @@ pub enum Outcome {
     Succeeded,
     /// The tool ran and failed, or the call named no tool this server has or gave it bad arguments.
     Failed,
-    /// Above the registration's role, or a deletion.
+    /// Above the registration's role, or a deletion the user did not allow.
     Refused,
 }
 
@@ -118,15 +131,56 @@ struct Session {
 }
 
 /// `/mcp` for the registrations in `store`. Writes report what they changed through `on_applied`, as the phone's do;
-/// sessions and calls go to `activity`.
-pub fn router(store: Arc<Store>, providers: Arc<Providers<LlmChain, LocalE5>>, on_applied: OnApplied, activity: Arc<Activity>) -> Router {
+/// sessions and calls go to `activity`, and deletions wait in `approvals` for the user.
+pub fn router(
+    store: Arc<Store>,
+    providers: Arc<Providers<LlmChain, LocalE5>>,
+    on_applied: OnApplied,
+    activity: Arc<Activity>,
+    approvals: Arc<Approvals>,
+) -> Router {
     // GET (a stream from the server) and every other method get 405 from the method router.
     Router::new().route(ENDPOINT, post(post_message).delete(end_session)).layer(middleware::from_fn(refuse_browsers)).with_state(McpState {
         store,
         providers,
         on_applied,
         activity,
+        approvals,
     })
+}
+
+/// Deletions waiting for the user's answer in the app, oldest first. Memory only, and made anew with each server, like
+/// `Activity`.
+pub struct Approvals {
+    waiting: Mutex<Waiting>,
+    wait: Duration,
+    changed: Box<dyn Fn(bool) + Send + Sync>,
+}
+
+#[derive(Default)]
+struct Waiting {
+    asks: Vec<(Approval, oneshot::Sender<bool>)>,
+    next: u64,
+    /// The server is stopping: what waits is refused, and nothing more is asked.
+    closed: bool,
+}
+
+/// A deletion as the app asks the user about it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, rename = "McpApproval")]
+pub struct Approval {
+    pub id: u64,
+    /// The registration asking, by the name the user gave it.
+    pub registration: String,
+    pub deletion: Deletion,
+    /// When it is refused unanswered.
+    pub deadline_ms: u64,
+}
+
+/// What a call may run with: the role, and for a deletion, what the user allowed.
+struct Permit {
+    role: Role,
+    allowed: Option<Deletion>,
 }
 
 /// A page in a browser on this PC could reach the server through a name pointed at 127.0.0.1 (DNS rebinding). Agents
@@ -200,11 +254,17 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
             reply
         }
         Step::Call { id, op } => {
-            // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway, leaving a job it
-            // claimed claimed until the app quits, and the app never told what was written.
-            let st = st.clone();
-            let (role, who, tool) = (registration.role, registration.id, tool.unwrap_or_default());
-            tool_reply(id, tokio::spawn(async move { st.call(role, op, &who, &tool).await }).await.unwrap_or_else(|e| Err(e.to_string())))
+            let tool = tool.unwrap_or_default();
+            let outcome = match st.permit(&registration, &op, &tool).await {
+                Ok(permit) => {
+                    // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway, leaving a
+                    // job it claimed claimed until the app quits, and the app never told what was written.
+                    let (st, who) = (st.clone(), registration.id);
+                    tokio::spawn(async move { st.call(permit, op, &who, &tool).await }).await.unwrap_or_else(|e| Err(e.to_string()))
+                }
+                Err(e) => Err(e),
+            };
+            tool_reply(id, outcome)
         }
     };
     let mut response = json(StatusCode::OK, &reply);
@@ -223,17 +283,6 @@ async fn end_session(State(st): State<McpState>, headers: HeaderMap) -> Response
         None => error(StatusCode::BAD_REQUEST, "no Mcp-Session-Id"),
         Some(id) if st.activity.close(id, &key) => StatusCode::NO_CONTENT.into_response(),
         Some(_) => error(StatusCode::NOT_FOUND, "no such session"),
-    }
-}
-
-/// The role a call runs with, or why it may not run, in words an agent can pass on.
-fn permit(role: Role, op: &Op) -> Result<Role, String> {
-    match op.role() {
-        // shortcut: every deletion is refused until the app can ask the user before each one.
-        Role::Delete => Err(NO_DELETING.into()),
-        Role::Edit if role < Role::Edit => Err(READ_ONLY.into()),
-        // Below deletion, for `ops::run` to check again.
-        Role::Read | Role::Edit => Ok(role.min(Role::Edit)),
     }
 }
 
@@ -304,6 +353,84 @@ impl Activity {
     }
 }
 
+impl Approvals {
+    /// `changed(true)` runs when a deletion starts waiting and `changed(false)` when one stops, with no lock held.
+    pub fn new(changed: impl Fn(bool) + Send + Sync + 'static) -> Arc<Self> {
+        Arc::new(Self { waiting: Mutex::default(), wait: APPROVAL_WAIT, changed: Box::new(changed) })
+    }
+
+    /// Oldest first.
+    pub fn waiting(&self) -> Vec<Approval> {
+        lock(&self.waiting).asks.iter().map(|(approval, _)| approval.clone()).collect()
+    }
+
+    /// The user's answer. One to a deletion no longer waiting comes too late and changes nothing.
+    pub fn answer(&self, id: u64, allow: bool) {
+        if let Some(reply) = self.take(id) {
+            let _ = reply.send(allow);
+        }
+    }
+
+    /// Refuses what waits and all that is asked from here on: the calls of a stopped server can outlive it, and nothing
+    /// would show what they wait for.
+    pub fn close(&self) {
+        let refused = {
+            let mut waiting = lock(&self.waiting);
+            waiting.closed = true;
+            std::mem::take(&mut waiting.asks)
+        };
+        if !refused.is_empty() {
+            (self.changed)(false);
+        }
+    }
+
+    /// Waits for the user to allow `deletion`, in the caller's task: once that is dropped, as when the agent hangs up,
+    /// it waits no more.
+    async fn ask(&self, registration: &str, deletion: Deletion) -> Result<(), &'static str> {
+        let (reply, answer) = oneshot::channel();
+        let id = {
+            let mut waiting = lock(&self.waiting);
+            if waiting.closed {
+                return Err(STOPPED);
+            }
+            if waiting.asks.len() >= MAX_WAITING {
+                return Err(TOO_MANY);
+            }
+            waiting.next += 1;
+            let (id, deadline_ms) = (waiting.next, now_ms() + self.wait.as_millis() as u64);
+            waiting.asks.push((Approval { id, registration: registration.to_string(), deletion, deadline_ms }, reply));
+            id
+        };
+        (self.changed)(true);
+        let _withdraw = Withdraw(self, id);
+        match tokio::time::timeout(self.wait, answer).await {
+            Ok(Ok(true)) => Ok(()),
+            Ok(Ok(false)) => Err(DENIED),
+            Ok(Err(_)) => Err(STOPPED),
+            Err(_) => Err(UNANSWERED),
+        }
+    }
+
+    fn take(&self, id: u64) -> Option<oneshot::Sender<bool>> {
+        let reply = {
+            let mut waiting = lock(&self.waiting);
+            let at = waiting.asks.iter().position(|(approval, _)| approval.id == id)?;
+            waiting.asks.remove(at).1
+        };
+        (self.changed)(false);
+        Some(reply)
+    }
+}
+
+/// Takes a deletion off the screen once it stops waiting, however that happens.
+struct Withdraw<'a>(&'a Approvals, u64);
+
+impl Drop for Withdraw<'_> {
+    fn drop(&mut self) {
+        self.0.take(self.1);
+    }
+}
+
 impl Sessions {
     fn open(&mut self, key: &str, client: Option<String>) -> Result<String, String> {
         let id = random_hex()?;
@@ -338,12 +465,42 @@ impl Sessions {
 }
 
 impl McpState {
+    /// Whether a call may run, in words an agent can pass on if not. A deletion waits for the user here, in the request's
+    /// own task, so an agent that hangs up meanwhile takes its request off the screen.
+    async fn permit(&self, registration: &Registration, op: &Op, tool: &str) -> Result<Permit, String> {
+        let stop = |why: &str, outcome| {
+            self.activity.record(&registration.id, tool, outcome);
+            Err(why.to_string())
+        };
+        match (op.role(), registration.role) {
+            (Role::Edit, Role::Read) => stop(READ_ONLY, Outcome::Refused),
+            (Role::Delete, Role::Read | Role::Edit) => stop(MAY_NOT_DELETE, Outcome::Refused),
+            // Below deletion, for `ops::run` to check again.
+            (Role::Read | Role::Edit, role) => Ok(Permit { role: role.min(Role::Edit), allowed: None }),
+            (Role::Delete, Role::Delete) => {
+                let shown = match op.deletion(&self.store) {
+                    Ok(shown) => shown,
+                    Err(e) => return stop(&e, Outcome::Failed),
+                };
+                match self.approvals.ask(&registration.name, shown.clone()).await {
+                    Ok(()) => Ok(Permit { role: Role::Delete, allowed: Some(shown) }),
+                    Err(why) => stop(why, Outcome::Refused),
+                }
+            }
+        }
+    }
+
     /// Runs a tool call, then tells the app what may have changed: after a failure too, since one can stop halfway,
     /// and a reload that finds nothing new costs little.
-    async fn call(&self, role: Role, op: Op, registration: &str, tool: &str) -> Result<Out, String> {
-        let role = permit(role, &op).inspect_err(|_| self.activity.record(registration, tool, Outcome::Refused))?;
+    async fn call(&self, permit: Permit, op: Op, registration: &str, tool: &str) -> Result<Out, String> {
+        if let Some(allowed) = permit.allowed
+            && !op.deletion(&self.store).is_ok_and(|now| now.same_target(&allowed))
+        {
+            self.activity.record(registration, tool, Outcome::Failed);
+            return Err(CHANGED.into());
+        }
         let effects = op.effects();
-        let outcome = ops::run(&Ctx { store: self.store.clone(), providers: self.providers.clone(), role }, op).await;
+        let outcome = ops::run(&Ctx { store: self.store.clone(), providers: self.providers.clone(), role: permit.role }, op).await;
         if effects != Effects::default() {
             (self.on_applied)(&effects);
         }
@@ -370,15 +527,18 @@ mod tests {
         applied: Arc<Mutex<Vec<Option<i64>>>>,
         activity: Arc<Activity>,
         changes: Arc<AtomicUsize>,
-        /// Set when `changed` ran with a lock of the activity held.
+        /// Set when `changed` ran with a lock of the activity or the approvals held.
         locked: Arc<AtomicBool>,
+        approvals: Arc<Approvals>,
+        /// What each `changed` of the approvals said: whether a deletion started waiting.
+        signals: Arc<Mutex<Vec<bool>>>,
     }
 
     fn fixture() -> Fixture {
-        fixture_with(crate::ops::tests::ctx())
+        fixture_with(crate::ops::tests::ctx(), APPROVAL_WAIT)
     }
 
-    fn fixture_with(Ctx { store, providers, .. }: Ctx) -> Fixture {
+    fn fixture_with(Ctx { store, providers, .. }: Ctx, wait: Duration) -> Fixture {
         let applied = Arc::new(Mutex::new(Vec::new()));
         let log = applied.clone();
         let changes = Arc::new(AtomicUsize::new(0));
@@ -394,8 +554,20 @@ mod tests {
             }
         });
         me.set(Arc::downgrade(&activity)).ok();
-        let app = router(store.clone(), providers, Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)), activity.clone());
-        Fixture { app, store, applied, activity, changes, locked }
+        let signals = Arc::new(Mutex::new(Vec::new()));
+        let asked: Arc<OnceLock<Weak<Approvals>>> = Arc::default();
+        let (said, seen, this) = (signals.clone(), locked.clone(), asked.clone());
+        let changed = move |arrived| {
+            said.lock().unwrap().push(arrived);
+            if this.get().and_then(Weak::upgrade).is_some_and(|a| a.waiting.try_lock().is_err()) {
+                seen.store(true, Ordering::SeqCst);
+            }
+        };
+        let approvals = Arc::new(Approvals { waiting: Mutex::default(), wait, changed: Box::new(changed) });
+        asked.set(Arc::downgrade(&approvals)).ok();
+        let on_applied = Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article));
+        let app = router(store.clone(), providers, on_applied, activity.clone(), approvals.clone());
+        Fixture { app, store, applied, activity, changes, locked, approvals, signals }
     }
 
     impl Fixture {
@@ -444,6 +616,33 @@ mod tests {
                 .await;
             assert_eq!(r.status(), StatusCode::OK);
             body_of(r).await["result"].clone()
+        }
+
+        /// A tool call that goes on while the test answers for the user.
+        fn call_later(&self, token: &str, session: &str, name: &str, arguments: Value) -> tokio::task::JoinHandle<Value> {
+            let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": arguments } });
+            let request = HttpRequest::builder()
+                .method("POST")
+                .uri(ENDPOINT)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(SESSION, session)
+                .body(Body::from(body.to_string()))
+                .unwrap();
+            let app = self.app.clone();
+            tokio::spawn(async move { body_of(app.oneshot(request).await.unwrap()).await["result"].clone() })
+        }
+
+        /// Once `n` deletions wait for the user.
+        async fn asked(&self, n: usize) -> Vec<Approval> {
+            for _ in 0..250 {
+                let waiting = self.approvals.waiting();
+                if waiting.len() == n {
+                    return waiting;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            panic!("{} deletions wait, not {n}", self.approvals.waiting().len());
         }
 
         async fn tool_count(&self, token: &str, session: &str) -> usize {
@@ -556,8 +755,12 @@ mod tests {
         assert_eq!(f.post(&renewed.token, Some(&session), ping).await.status(), StatusCode::UNAUTHORIZED);
     }
 
+    fn says(result: &Value, why: &str) -> bool {
+        result["isError"] == true && result["content"][0]["text"].as_str().is_some_and(|text| text.ends_with(why))
+    }
+
     #[tokio::test]
-    async fn each_role_lists_its_tools_and_runs_no_deletion() {
+    async fn each_role_lists_its_tools_and_only_the_delete_role_gets_asked() {
         let f = fixture();
         let id = f.saved("https://example.com/a");
         let mut counts = Vec::new();
@@ -565,13 +768,147 @@ mod tests {
             let r = f.register(name, role);
             let session = f.initialize(&r.token).await;
             counts.push(f.tool_count(&r.token, &session).await);
-            let refused = f.call(&r.token, &session, "delete_article", json!({ "id": id })).await;
-            assert_eq!(refused["isError"], true, "{name}");
-            assert!(refused["content"][0]["text"].as_str().unwrap().ends_with(NO_DELETING), "{name}: {refused}");
+            if role < Role::Delete {
+                let refused = f.call(&r.token, &session, "delete_article", json!({ "id": id })).await;
+                assert!(says(&refused, MAY_NOT_DELETE), "{name}: {refused}");
+                assert_eq!(f.activity.of(&r).1[0].outcome, Outcome::Refused);
+            }
         }
         assert_eq!(counts, [10, 30, 35]);
+        assert!(f.signals.lock().unwrap().is_empty(), "the user was not asked");
         assert_eq!(f.titles().len(), 1, "nothing was deleted");
         assert!(f.applied.lock().unwrap().is_empty(), "a refused call changes nothing to show");
+    }
+
+    #[tokio::test]
+    async fn a_deletion_runs_once_the_user_allows_it() {
+        let f = fixture();
+        let r = f.register("Claude Code", Role::Delete);
+        let id = f.saved("https://example.com/a");
+        let session = f.initialize(&r.token).await;
+        let before = now_ms();
+        let call = f.call_later(&r.token, &session, "delete_article", json!({ "id": id }));
+        let asked = f.asked(1).await;
+        let article = Deletion::Article { title: None, url: "https://example.com/a".into() };
+        assert_eq!((asked[0].registration.as_str(), &asked[0].deletion), ("Claude Code", &article), "read from the library");
+        let wait = APPROVAL_WAIT.as_millis() as u64;
+        assert!((before + wait..=now_ms() + wait).contains(&asked[0].deadline_ms), "two minutes from when it was asked");
+        assert!(f.titles().len() == 1 && f.applied.lock().unwrap().is_empty(), "nothing deleted before the answer");
+
+        f.approvals.answer(asked[0].id, true);
+        let done = call.await.unwrap();
+        assert_eq!(done["isError"], false, "{done}");
+        assert!(f.titles().is_empty());
+        assert_eq!(*f.applied.lock().unwrap(), [Some(id)]);
+        assert!(f.approvals.waiting().is_empty());
+        assert_eq!(*f.signals.lock().unwrap(), [true, false], "the app hears when it starts waiting and when it stops");
+        assert_eq!(f.activity.of(&r).1[0].outcome, Outcome::Succeeded);
+        assert!(!f.locked.load(Ordering::SeqCst), "changed ran with a lock held, so reading the approvals from it would deadlock");
+    }
+
+    #[tokio::test]
+    async fn a_deletion_the_user_denies_or_leaves_unanswered_deletes_nothing() {
+        let f = fixture_with(crate::ops::tests::ctx(), Duration::from_millis(300));
+        let r = f.register("agent", Role::Delete);
+        let id = f.saved("https://example.com/a");
+        let session = f.initialize(&r.token).await;
+        let call = f.call_later(&r.token, &session, "delete_article", json!({ "id": id }));
+        let asked = f.asked(1).await;
+        f.approvals.answer(asked[0].id, false);
+        let denied = call.await.unwrap();
+        assert!(says(&denied, DENIED), "{denied}");
+        f.approvals.answer(asked[0].id, true);
+
+        let unanswered = f.call(&r.token, &session, "delete_article", json!({ "id": id })).await;
+        assert!(says(&unanswered, UNANSWERED), "{unanswered}");
+        assert!(f.approvals.waiting().is_empty(), "off the screen");
+        assert_eq!(f.titles().len(), 1, "an answer that came too late changed nothing either");
+        assert!(f.applied.lock().unwrap().is_empty());
+        let outcomes: Vec<Outcome> = f.activity.of(&r).1.into_iter().map(|c| c.outcome).collect();
+        assert_eq!(outcomes, [Outcome::Refused, Outcome::Refused]);
+    }
+
+    #[tokio::test]
+    async fn a_deletion_of_nothing_fails_without_asking() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let session = f.initialize(&r.token).await;
+        let missing = [
+            ("delete_article", json!({ "id": 999 })),
+            ("delete_collection", json!({ "id": 999 })),
+            ("remove_feed", json!({ "id": 999 })),
+            ("delete_folder", json!({ "id": 999 })),
+            ("merge_genre", json!({ "from": "Nope", "into": "Ghost" })),
+        ];
+        for (tool, arguments) in missing {
+            assert_eq!(f.call(&r.token, &session, tool, arguments).await["isError"], true, "{tool}");
+        }
+        assert!(f.signals.lock().unwrap().is_empty(), "the user was not asked");
+        assert!(f.activity.of(&r).1.iter().all(|c| c.outcome == Outcome::Failed));
+    }
+
+    #[tokio::test]
+    async fn deletions_wait_oldest_first_up_to_a_limit_and_stop_with_the_server() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let (a, b) = (f.saved("https://example.com/a"), f.saved("https://example.com/b"));
+        let session = f.initialize(&r.token).await;
+        let mut calls = vec![f.call_later(&r.token, &session, "delete_article", json!({ "id": a }))];
+        f.asked(1).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        calls.push(f.call_later(&r.token, &session, "delete_article", json!({ "id": b })));
+        let asked = f.asked(2).await;
+        let urls: Vec<&Deletion> = asked.iter().map(|a| &a.deletion).collect();
+        let article = |url: &str| Deletion::Article { title: None, url: url.into() };
+        assert_eq!(urls, [&article("https://example.com/a"), &article("https://example.com/b")], "oldest first");
+        assert!(asked[0].deadline_ms < asked[1].deadline_ms, "each waits its own two minutes");
+
+        calls.extend((2..MAX_WAITING).map(|_| f.call_later(&r.token, &session, "delete_article", json!({ "id": a }))));
+        f.asked(MAX_WAITING).await;
+        let refused = f.call(&r.token, &session, "delete_article", json!({ "id": a })).await;
+        assert!(says(&refused, TOO_MANY), "{refused}");
+        assert_eq!(f.approvals.waiting().len(), MAX_WAITING, "not asked");
+
+        f.approvals.close();
+        for call in calls {
+            let stopped = call.await.unwrap();
+            assert!(says(&stopped, STOPPED), "{stopped}");
+        }
+        assert!(f.approvals.waiting().is_empty());
+        let after = f.call(&r.token, &session, "delete_article", json!({ "id": a })).await;
+        assert!(says(&after, STOPPED), "a stopped server asks no more: {after}");
+        assert_eq!(f.titles().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn an_agent_that_hangs_up_takes_its_deletion_off_the_screen() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let id = f.saved("https://example.com/a");
+        let session = f.initialize(&r.token).await;
+        let call = f.call(&r.token, &session, "delete_article", json!({ "id": id }));
+        assert!(tokio::time::timeout(Duration::from_millis(200), call).await.is_err(), "still waiting for the user");
+        assert!(f.approvals.waiting().is_empty());
+        assert_eq!(*f.signals.lock().unwrap(), [true, false]);
+        assert_eq!(f.titles().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn what_changed_while_the_user_decided_is_not_deleted() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        f.saved("https://example.com/first");
+        let id = f.saved("https://example.com/a");
+        let session = f.initialize(&r.token).await;
+        let call = f.call_later(&r.token, &session, "delete_article", json!({ "id": id }));
+        let asked = f.asked(1).await;
+        f.store.delete_article(id).unwrap();
+        assert_eq!(f.saved("https://example.com/b"), id, "the id came back on another article");
+        f.approvals.answer(asked[0].id, true);
+        let changed = call.await.unwrap();
+        assert!(says(&changed, CHANGED), "{changed}");
+        assert_eq!(f.titles().len(), 2, "the article saved since stays");
+        assert_eq!(f.activity.of(&r).1[0].outcome, Outcome::Failed);
     }
 
     #[tokio::test]
@@ -612,7 +949,7 @@ mod tests {
         let mut ctx = crate::ops::tests::ctx();
         let local = lattice_core::network::NetworkSettings { allow: vec!["localhost".into()], ..Default::default() };
         Arc::get_mut(&mut ctx.providers).unwrap().http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
-        let f = fixture_with(ctx);
+        let f = fixture_with(ctx, APPROVAL_WAIT);
         let agent = f.register("agent", Role::Edit);
         let session = f.initialize(&agent.token).await;
         let call = f.call(&agent.token, &session, "save", json!({ "url": url, "run": true }));

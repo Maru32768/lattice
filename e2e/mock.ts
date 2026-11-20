@@ -26,6 +26,7 @@ import type {
   LlmSettings,
   ProviderHealth,
   Quiz,
+  McpApproval,
   McpEdit,
   McpRegistration,
   McpStatus,
@@ -189,6 +190,7 @@ const store = {
   mcp: { enabled: false, error: null, fell_back: false, registrations: [] } as McpStatus,
   /** Counts tokens made, so that each one differs. */
   mcpTokens: 0,
+  mcpApprovals: [] as McpApproval[],
   tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
   r2: {
     enabled: false,
@@ -1048,6 +1050,10 @@ export const handlers = {
     return store.mobile;
   },
   mcp_status: (): McpStatus => store.mcp,
+  mcp_approvals: (): McpApproval[] => store.mcpApprovals,
+  mcp_answer: ({ id }: { id: number; allow: boolean }) => {
+    store.mcpApprovals = store.mcpApprovals.filter((a) => a.id !== id);
+  },
   mcp_edit: ({ edit }: { edit: McpEdit }): McpStatus => {
     const command = (scope: string) =>
       `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
@@ -1126,6 +1132,11 @@ export const pluginHandlers: Record<string, () => unknown> = {
 /** What an agent's requests leave on the MCP server for registration `id`, as the app would then report it. */
 export function mcpActivity(id: string, activity: Pick<McpRegistration, "sessions" | "calls">) {
   store.mcp = { ...store.mcp, registrations: store.mcp.registrations.map((r) => (r.id === id ? { ...r, ...activity } : r)) };
+}
+
+/** The deletions agents wait on the user for, as the MCP server would then hold them. */
+export function mcpApprovals(waiting: McpApproval[]) {
+  store.mcpApprovals = waiting;
 }
 
 export function handle(cmd: string, args: unknown): unknown {

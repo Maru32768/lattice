@@ -5,9 +5,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { SetRow, Switch } from "../ui/SetRow";
 import { locale, useT, type Key, type Lang, type PlainKey } from "../i18n";
 
-// shortcut: no delete role here until the app can ask the user before each deletion an agent makes.
-const ROLES = { read: "mcpSettings.roleRead", edit: "mcpSettings.roleEdit" } as const satisfies Partial<Record<McpRole, PlainKey>>;
-type Offered = keyof typeof ROLES;
+const ROLES = { read: "mcpSettings.roleRead", edit: "mcpSettings.roleEdit", delete: "mcpSettings.roleDelete" } as const satisfies Record<McpRole, PlainKey>;
 const SCOPES = { user: "mcpSettings.scopeUser", local: "mcpSettings.scopeLocal" } as const satisfies Record<McpScope, PlainKey>;
 const CONFIRM_DESCS = {
   regenerate: { user: "mcpSettings.regenerateDescUser", local: "mcpSettings.regenerateDescLocal" },
@@ -33,7 +31,7 @@ export function McpSettings() {
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Offered>("read");
+  const [role, setRole] = useState<McpRole>("read");
   /** Until one is picked, the new registration is for all of Claude Code unless another one already is. */
   const [scope, setScope] = useState<McpScope | null>(null);
   /** The command last copied: a regenerated token makes a new one, so the button offers to copy again. */
@@ -114,7 +112,7 @@ export function McpSettings() {
   const off = status.fell_back;
   const userTaken = status.registrations.some((r) => r.scope === "user");
   const newScope = scope ?? (userTaken ? "local" : "user");
-  const roleOptions = (Object.keys(ROLES) as Offered[]).map((r) => (
+  const roleOptions = (Object.keys(ROLES) as McpRole[]).map((r) => (
     <option key={r} value={r}>
       {t(ROLES[r])}
     </option>
@@ -144,7 +142,7 @@ export function McpSettings() {
                 aria-label={t("mcpSettings.roleOf", { name: reg.name })}
                 value={reg.role}
                 disabled={off}
-                onChange={(e) => void edit({ kind: "set_role", id: reg.id, role: e.target.value as Offered })}
+                onChange={(e) => void edit({ kind: "set_role", id: reg.id, role: e.target.value as McpRole })}
               >
                 {roleOptions}
               </select>
@@ -166,7 +164,7 @@ export function McpSettings() {
               className="input sm fit"
               aria-label={t("mcpSettings.role")}
               value={role}
-              onChange={(e) => setRole(e.target.value as Offered)}
+              onChange={(e) => setRole(e.target.value as McpRole)}
               disabled={off}
             >
               {roleOptions}

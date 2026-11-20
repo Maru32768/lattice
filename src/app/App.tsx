@@ -54,6 +54,7 @@ import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { TitleEditor } from "../library/TitleEditor";
 import { UpdateNotice } from "./Update";
+import { McpApprovals } from "./McpApprovals";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
 import { paneOf, stepNav } from "../layout/panes";
 import { scrollerIn } from "../docnav/scroll";
@@ -1328,6 +1329,7 @@ export default function App() {
         {/* A pop-out's top tab strips are its title bar (H19, DocArea). */}
         {HOST.kind !== "doc" && <TitleBar history={{ back: history.back, forward: history.forward, onGo: history.step }} onPalette={openPalette} />}
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
+        {IS_MAIN && <McpApprovals />}
         <ContextMenu label={t("articleMenu.label")} items={ctxItems} targets={MENU_TARGETS}>
           <div
             className={screen === "library" && layout.zoomed != null ? "app zoomed" : "app"}

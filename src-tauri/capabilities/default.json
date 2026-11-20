@@ -175,6 +175,8 @@
     "allow-mobile-tailscale-serve",
     "allow-mcp-status",
     "allow-mcp-edit",
+    "allow-mcp-approvals",
+    "allow-mcp-answer",
     "allow-job-overview",
     "allow-retry-job",
     "allow-retry-failed-jobs",

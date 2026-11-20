@@ -11,6 +11,8 @@ import { useT } from "../i18n";
 export function ConfirmDialog({
   title,
   confirm,
+  cancel,
+  confirmDisabled,
   onConfirm,
   onCancel,
   children,
@@ -18,6 +20,9 @@ export function ConfirmDialog({
   title: string;
   /** Label of the danger button. */
   confirm: string;
+  /** Label of the button that cancels, キャンセル by default. */
+  cancel?: string;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   children: React.ReactNode;
@@ -53,9 +58,9 @@ export function ConfirmDialog({
             <div className="dlg-body">{children}</div>
           </AD.Description>
           <div className="dlg-acts">
-            <AD.Cancel className="btn">{t("common.cancel")}</AD.Cancel>
+            <AD.Cancel className="btn">{cancel ?? t("common.cancel")}</AD.Cancel>
             {/* Not AD.Action: it would also close, calling onCancel after onConfirm. */}
-            <button className="btn danger" onClick={onConfirm}>
+            <button className="btn danger" onClick={onConfirm} disabled={confirmDisabled}>
               {confirm}
             </button>
           </div>

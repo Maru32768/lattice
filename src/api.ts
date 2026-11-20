@@ -38,6 +38,7 @@ import type {
   Progress,
   Quiz,
   R2Settings,
+  McpApproval,
   McpEdit,
   McpStatus,
   MobileSettings,
@@ -351,6 +352,9 @@ export const r2 = {
 export const mcp = {
   status: () => invoke<McpStatus>("mcp_status"),
   edit: (edit: McpEdit) => invoke<McpStatus>("mcp_edit", { edit }),
+  /** Deletions an agent asks for, waiting for the user's answer, oldest first. */
+  approvals: () => invoke<McpApproval[]>("mcp_approvals"),
+  answer: (id: number, allow: boolean) => invoke<void>("mcp_answer", { id, allow }),
 };
 
 /** Reading on a phone (G47). */

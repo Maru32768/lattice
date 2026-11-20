@@ -1790,6 +1790,8 @@ pub fn run() {
             mobile::mobile_tailscale_serve,
             mcp::mcp_status,
             mcp::mcp_edit,
+            mcp::mcp_approvals,
+            mcp::mcp_answer,
             job_overview,
             retry_job,
             retry_failed_jobs,
