@@ -1,6 +1,6 @@
 // A deletion an agent asks for over MCP, put to the user in the main window (design-review §23).
-import type { Page } from "@playwright/test";
-import { test, expect, callsOf } from "./harness.ts";
+import type { Locator, Page } from "@playwright/test";
+import { test, expect, callsOf, openPage } from "./harness.ts";
 import { NOW } from "./fixtures.ts";
 import type { McpApproval } from "../src/api.ts";
 
@@ -73,6 +73,36 @@ test("Allow waits a moment each time a request shows", async ({ app }) => {
   await ask(app, [article(2, null, "https://example.com/second")]);
   await expect(dialog).toContainText("https://example.com/second");
   expect(await allow.isDisabled(), "not armed yet").toBe(true);
+  await expect(allow).toBeEnabled();
+});
+
+test("over a page view, Allow waits a moment from when the dialog shows, not from when it mounts", async ({ app }) => {
+  await openPage(app);
+  // Hold every browser_hide: the dialog stays invisible over the page webview until it is hidden.
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; release: () => void; hides: number };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    const held = new Promise<void>((r) => (w.release = r));
+    w.hides = 0;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) => {
+      if (cmd !== "browser_hide") {
+        return invoke(cmd, args, options);
+      }
+      w.hides++;
+      return held.then(() => invoke(cmd, args, options));
+    };
+  });
+  await ask(app, [article(1, null, "https://example.com/a")]);
+  const opacity = (l: Locator) => l.evaluate((e) => getComputedStyle(e).opacity);
+  const scrim = app.locator(".pal-scrim");
+  await expect.poll(() => app.evaluate(() => (window as unknown as { hides: number }).hides)).toBeGreaterThan(0);
+  await app.waitForTimeout(1_500);
+  expect(await opacity(scrim), "invisible for longer than Allow waits").toBe("0");
+  await app.evaluate(() => (window as unknown as { release: () => void }).release());
+  await expect.poll(() => opacity(scrim)).toBe("1");
+  const allow = dialogOf(app).getByRole("button", { name: "削除を許可" });
+  expect(await allow.isDisabled(), "not armed the moment it shows").toBe(true);
   await expect(allow).toBeEnabled();
 });
 
