@@ -90,15 +90,3 @@ test("a request that stops waiting goes from the screen", async ({ app }) => {
   await expect(dialogOf(app), "answered elsewhere, refused unanswered, or the agent hung up").toBeHidden();
   expect(await callsOf(app, "mcp_answer")).toEqual([]);
 });
-
-test("the delete role can be given to a registration", async ({ app }) => {
-  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
-  await app.getByLabel("MCPサーバーを動かす").check();
-  await expect(app.getByText("削除のたびにアプリが許可を求め、2分のうちに答えなければ拒否します。")).toBeVisible();
-  await app.getByLabel("新しい登録").fill("Cleaner");
-  await app.getByLabel("ロール", { exact: true }).selectOption("削除");
-  await app.getByRole("button", { name: "登録する" }).click();
-  await expect(app.getByLabel("「Cleaner」のロール")).toHaveValue("delete");
-  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "create", name: "Cleaner", role: "delete", scope: "user" } });
-});

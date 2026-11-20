@@ -344,11 +344,11 @@ test("agent registrations copy commands for all of Claude Code or one project, k
   await expect(scope, "Claude Code's user config holds one").toHaveValue("local");
   await expect(scope.locator("option[value=user]")).toBeDisabled();
   await app.getByLabel("新しい登録").fill("Research");
-  await app.getByLabel("ロール", { exact: true }).selectOption("read");
+  await app.getByLabel("ロール", { exact: true }).selectOption("delete");
   await register.click();
   await expect(row("Research")).toContainText("1つのプロジェクト");
   await expect(role("Claude Code")).toHaveValue("edit");
-  await expect(role("Research")).toHaveValue("read");
+  await expect(role("Research")).toHaveValue("delete");
 
   await row("Research").getByRole("button", { name: "コマンドをコピー" }).click();
   await expect.poll(clipboard).toMatch(/^claude mcp add --transport http --scope local lattice .* --header "Authorization: Bearer \w+"$/);
