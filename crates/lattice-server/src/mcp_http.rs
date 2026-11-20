@@ -806,6 +806,7 @@ mod tests {
         let wait = APPROVAL_WAIT.as_millis() as u64;
         assert!((before + wait..=now_ms() + wait).contains(&asked[0].deadline_ms), "two minutes from when it was asked");
         assert!(f.titles().len() == 1 && f.applied.lock().unwrap().is_empty(), "nothing deleted before the answer");
+        f.store.set_title(id, "Fetched while the user read the dialog").unwrap();
 
         f.approvals.answer(asked[0].id, true);
         let done = call.await.unwrap();
