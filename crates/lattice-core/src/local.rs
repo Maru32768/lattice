@@ -100,12 +100,12 @@ impl Server {
                 return out;
             }
         };
-        let (header, mut calls) = (header(to), Calls::default());
+        let mut calls = Calls::default();
         for (snippet, result) in snippets.iter().zip(&mut out.results) {
             if calls.stopped() {
                 break;
             }
-            let answer = self.snippet(&model, &header, snippet, &mut calls).await;
+            let answer = self.snippet(&model, to, snippet, &mut calls).await;
             *result = answer.map(|(units, answered_by)| (units, Origin { provider: PROVIDER.into(), model: answered_by.or_else(|| Some(model.clone())) }));
         }
         log::info!(
@@ -123,10 +123,10 @@ impl Server {
 
     /// One snippet: the block in one request, then sentence by sentence with the block as context when
     /// its lines do not pair up. Also the model that answered.
-    async fn snippet(&self, model: &str, header: &str, snippet: &str, calls: &mut Calls) -> Option<(Vec<Unit>, Option<String>)> {
+    async fn snippet(&self, model: &str, to: &Target, snippet: &str, calls: &mut Calls) -> Option<(Vec<Unit>, Option<String>)> {
         let s = sentences::split(snippet);
         let lines: Vec<String> = s.lines().collect();
-        if let Some(body) = request(model, header, None, &lines.join("\n"))
+        if let Some(body) = request(model, to, None, &lines.join("\n"))
             && let Some(r) = self.call(calls, &body).await
             && let Some(units) = align(&s, &r.content).filter(|units| segments::acceptable(units))
         {
@@ -139,7 +139,7 @@ impl Server {
         let context = segments::plain_text(snippet);
         let (mut units, mut answered_by) = (Vec::with_capacity(lines.len()), None);
         for (source, line) in s.sources().zip(&lines) {
-            let r = self.call(calls, &request(model, header, Some(&context), line)?).await?;
+            let r = self.call(calls, &request(model, to, Some(&context), line)?).await?;
             answered_by = r.model.or(answered_by);
             units.push(Unit { source: source.to_string(), translation: joined(&reply_lines(&r.content)) });
         }
@@ -204,18 +204,14 @@ impl Server {
     }
 }
 
-/// The system message's settings. PLaMo takes `form` only with `target_lang=ja`.
-fn header(to: &Target) -> String {
-    let form = to.japanese_form().map(|f| format!("\nform={}", f.as_str())).unwrap_or_default();
-    format!("[plamo-translate]\ntarget_lang={}{form}", to.language)
-}
-
 /// The request for `text`, or none when it cannot fit its share of the server's context. Tokens are
 /// bounded from chars (measured: about 1 per Japanese char, 0.25 per English one); the context goes first.
-fn request(model: &str, header: &str, context: Option<&str>, text: &str) -> Option<Value> {
+/// PLaMo takes `form` only with `target_lang=ja`.
+fn request(model: &str, to: &Target, context: Option<&str>, text: &str) -> Option<Value> {
     let chars = |s: &str| s.chars().count();
     let max_tokens = chars(text) + 64;
-    let plain = header.to_string();
+    let form = to.japanese_form().map(|f| format!("\nform={}", f.as_str())).unwrap_or_default();
+    let plain = format!("[plamo-translate]\ntarget_lang={}{form}", to.language);
     let with_context = context.map(|c| format!("{plain}\n---\n{c}"));
     let fits = |system: &String| (chars(system) + chars(text)) * 5 / 4 + max_tokens <= CONTEXT_TOKENS / SLOTS;
     let system = with_context.into_iter().chain([plain]).find(fits)?;
@@ -617,21 +613,25 @@ pub(crate) mod tests {
 
     #[test]
     fn a_request_fits_its_share_of_the_context_or_is_not_made() {
-        let with = request("m", &header(&JA), Some("The river. The bank was muddy."), "The bank was muddy.").unwrap();
+        let with = request("m", &JA, Some("The river. The bank was muddy."), "The bank was muddy.").unwrap();
         assert_eq!(system(&with), "[plamo-translate]\ntarget_lang=ja\n---\nThe river. The bank was muddy.");
         let long_context = "Context. ".repeat(1500);
-        let dropped = request("m", &header(&JA), Some(&long_context), "The bank was muddy.").unwrap();
+        let dropped = request("m", &JA, Some(&long_context), "The bank was muddy.").unwrap();
         assert_eq!(system(&dropped), "[plamo-translate]\ntarget_lang=ja", "the context goes before the text does");
         let polite = Target { form: Some(Form::Polite), ..JA.clone() };
-        let styled = request("m", &header(&polite), Some("The river."), "The bank was muddy.").unwrap();
+        let styled = request("m", &polite, Some("The river."), "The bank was muddy.").unwrap();
         assert_eq!(system(&styled), "[plamo-translate]\ntarget_lang=ja\nform=polite\n---\nThe river.");
-        assert_eq!(header(&Target { language: "en", ..polite }), "[plamo-translate]\ntarget_lang=en", "PLaMo takes form only with target_lang=ja");
+        assert_eq!(
+            system(&request("m", &Target { language: "en", ..polite }, None, "x").unwrap()),
+            "[plamo-translate]\ntarget_lang=en",
+            "PLaMo takes form only with target_lang=ja"
+        );
 
         let block = "a".repeat(2000);
-        let body = request("m", &header(&EN), None, &block).unwrap();
+        let body = request("m", &EN, None, &block).unwrap();
         let max_tokens = body["max_tokens"].as_u64().unwrap() as usize;
         assert!(max_tokens > block.len(), "room for a translation longer than its source in tokens");
-        assert!(request("m", &header(&EN), None, &"あ".repeat(5000)).is_none(), "a block that cannot fit is cut into sentences instead");
+        assert!(request("m", &EN, None, &"あ".repeat(5000)).is_none(), "a block that cannot fit is cut into sentences instead");
     }
 
     #[test]
@@ -681,8 +681,7 @@ pub(crate) mod tests {
         let server = Server::new(&std::env::var("PLAMO_URL").unwrap()).unwrap();
         let model = server.model().await.unwrap();
         println!("model: {model}");
-        let r =
-            server.chat(&request(&model, &header(&JA), Some("We walked along the river. The bank was muddy."), "The bank was muddy.").unwrap()).await.unwrap();
+        let r = server.chat(&request(&model, &JA, Some("We walked along the river. The bank was muddy."), "The bank was muddy.").unwrap()).await.unwrap();
         println!("bank with river context: {}", r.content);
         let block = "Run <code>git status</code> to see what changed. Then read <a href=\"https://git-scm.com/docs\">the docs</a> before you commit. It takes a minute.";
         let t = server.translate(&snippets(&[block]), &JA).await;
