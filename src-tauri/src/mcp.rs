@@ -2,7 +2,7 @@
 //! screen the registrations with what each one copies and what each agent has been doing, and puts each deletion an
 //! agent asks for to the user in the main window.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, Weak};
 
 use lattice_core::mcp::{self, Edit, Role, Scope};
 use lattice_core::msg;
@@ -82,15 +82,23 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
         let _ = tell.emit("mcp-activity", ());
     });
     let tell = handle.clone();
+    let me: Arc<OnceLock<Weak<Approvals>>> = Arc::default();
+    let this = me.clone();
     let approvals = Approvals::new(move |arrived| {
         let _ = tell.emit("mcp-approval", ());
-        if arrived
-            && let Some(w) = tell.get_webview_window(MAIN)
-            && let Err(e) = raise(&w)
-        {
-            log::warn!("raising the main window for a deletion to approve: {e}");
+        let Some(w) = tell.get_webview_window(MAIN) else {
+            return;
+        };
+        if arrived {
+            if let Err(e) = raise(&w) {
+                log::warn!("raising the main window for a deletion to approve: {e}");
+            }
+        } else if this.get().and_then(Weak::upgrade).is_some_and(|a| a.waiting().is_empty()) {
+            // It flashes until the window comes into focus, which it need not now: nothing waits.
+            let _ = w.request_user_attention(None);
         }
     });
+    me.set(Arc::downgrade(&approvals)).ok();
     let router = mcp_http::router(app.store.clone(), app.providers.clone(), on_applied, activity.clone(), approvals.clone());
     match lattice_server::start(ADDR, router).await {
         Ok(server) => {
