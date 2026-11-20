@@ -1072,10 +1072,10 @@ pub(crate) mod tests {
         run(&ctx, Op::MoveFeed { id: f, folder: Some("Tech".into()) }).await.unwrap();
         let folder = feed_folders::list(s).unwrap().remove(0).id;
         run(&ctx, Op::SetGenre { id, name: "Databases".into() }).await.unwrap();
-        // Two already there, so that neither their count nor the sum passes for the one that moves.
-        for url in ["https://example.com/b", "https://example.com/c"] {
-            let staying = saved(s, url, "Already there");
-            run(&ctx, Op::SetGenre { id: staying, name: "Storage Engines".into() }).await.unwrap();
+        // Three that move and two already there: neither the other genre's count, nor the sum, nor "any at all" passes for 3.
+        for (url, genre) in [("b", "Databases"), ("c", "Databases"), ("d", "Storage Engines"), ("e", "Storage Engines")] {
+            let other = saved(s, &format!("https://example.com/{url}"), "Another");
+            run(&ctx, Op::SetGenre { id: other, name: genre.into() }).await.unwrap();
         }
 
         assert_eq!(Op::DeleteArticle { id }.deletion(s), Ok(Deletion::Article { title: Some("Found title".into()), url: "https://example.com/a".into() }));
@@ -1086,7 +1086,7 @@ pub(crate) mod tests {
         assert_eq!(Op::RemoveFeed { id: f }.deletion(s), Ok(feed(Some("Mine"))), "the user's name for it");
         assert_eq!(Op::DeleteFolder { id: folder }.deletion(s), Ok(Deletion::Folder { name: "Tech".into(), feeds: 1 }));
         let merge = Op::MergeGenre { from: "databases".into(), into: " storage   engines ".into() };
-        let merged = Deletion::Genre { from: "Databases".into(), into: "Storage Engines".into(), articles: 1 };
+        let merged = Deletion::Genre { from: "Databases".into(), into: "Storage Engines".into(), articles: 3 };
         assert_eq!(merge.deletion(s), Ok(merged), "the stored names, found as merge_genre finds them, and only the articles that move");
 
         let missing = [
