@@ -1,11 +1,12 @@
 import { Suspense, useEffect, useRef, useState } from "react";
-import { api, type ChatMessage, type ChatThread, type Citation, type Effort, type ProviderKind } from "../api";
-import { CUSTOM, EFFORTS, PROVIDERS, type EntryChoice, presets, toChoice, toEntry } from "../settings/providers";
+import { api, type ChatMessage, type ChatThread, type Citation } from "../api";
+import { toChoice, toEntry } from "../settings/providers";
 import { OPEN_ALL, type OpenDoc, openKey, scopeOf, scopeSections, splitCitations, withQuote } from "./chat";
 import { ScopePicker } from "./ScopePicker";
+import { type Choice, ModelMenu } from "./ModelMenu";
 import type { FilterGroup } from "../library/scopes";
 import { Menu } from "../ui/Popover";
-import { Icon, Kbd } from "../ui/Icon";
+import { Icon } from "../ui/Icon";
 import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
 import { plainEnterSends, sendsOn, useSendKey } from "./sendKey";
 import { onMiddle } from "../lib/middle";
@@ -16,9 +17,6 @@ const MODE_LABEL = { full: "chatPane.modeFull", retrieval: "chatPane.modeRetriev
 
 /** `newTab`: Ctrl / middle click. */
 type OnCite = (c: Citation, newTab: boolean) => void;
-
-/** The model a conversation asks; null is the AI provider chain in Settings. */
-type Choice = EntryChoice | null;
 
 /** Click props for a citation: Ctrl / middle click opens it in a new tab, as in the list. */
 const citeClick = (c: Citation, onCite: OnCite) => ({
@@ -108,6 +106,8 @@ export function ChatPane({
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [choice, setChoice] = useState<Choice>(null);
+  /** The AI came from the menu, not with a conversation opened: a model ID box it shows takes the keyboard. */
+  const [aiPicked, setAiPicked] = useState(false);
   const [scopeKey, setScopeKey] = useState(request?.key ?? (article ? "article" : "all"));
   const [picked, setPicked] = useState(request != null);
   const [question, setQuestion] = useState(request?.quote ? withQuote("", request.quote) : "");
@@ -173,6 +173,7 @@ export function ChatPane({
     setThreadId(id);
     const llm = threads.find((t) => t.id === id)?.llm;
     setChoice(llm ? toChoice(llm) : null);
+    setAiPicked(false);
     const ms =
       id == null
         ? []
@@ -293,72 +294,6 @@ export function ChatPane({
           />
           {last && MODE_LABEL[last.mode] && <span className="push">{t(MODE_LABEL[last.mode]!)}</span>}
         </div>
-        <div className="chat-scope chat-llm">
-          {t("chatPane.llm")}
-          <label className="chip scope-chip">
-            <select
-              value={choice?.kind ?? ""}
-              onChange={(e) => {
-                const kind = e.target.value as ProviderKind | "";
-                setChoice(kind ? { kind, model: "", custom: false, effort: "" } : null);
-              }}
-              aria-label={t("chatPane.llmLabel")}
-            >
-              <option value="">{t("chatPane.llmDefault")}</option>
-              {PROVIDERS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-            <Icon name="down" size="sm" />
-          </label>
-          {choice && (
-            <>
-              <label className="chip scope-chip">
-                <select
-                  value={choice.custom ? CUSTOM : choice.model}
-                  onChange={(e) => setChoice({ ...choice, ...(e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false }) })}
-                  aria-label={t("chatPane.llmModel")}
-                >
-                  {presets(t)[choice.kind].map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                  <option value={CUSTOM}>{t("modelSettings.other")}</option>
-                </select>
-                <Icon name="down" size="sm" />
-              </label>
-              {choice.custom && (
-                <input
-                  className="input sm mono"
-                  value={choice.model}
-                  onChange={(e) => setChoice({ ...choice, model: e.target.value })}
-                  placeholder={t("modelSettings.modelId")}
-                  aria-label={t("chatPane.llmModelId")}
-                  spellCheck={false}
-                />
-              )}
-              <label className="chip scope-chip">
-                <select
-                  value={choice.effort}
-                  onChange={(e) => setChoice({ ...choice, effort: e.target.value as Effort | "" })}
-                  aria-label={t("chatPane.llmEffort")}
-                  title={t("modelSettings.effortHint")}
-                >
-                  <option value="">effort: {t(EFFORTS[choice.kind].label)}</option>
-                  {EFFORTS[choice.kind].values.map((v) => (
-                    <option key={v} value={v}>
-                      effort: {v}
-                    </option>
-                  ))}
-                </select>
-                <Icon name="down" size="sm" />
-              </label>
-            </>
-          )}
-        </div>
         <div className="chat-log" ref={log}>
           {messages.length === 0 && !pending && !unsent && <p className="muted chat-hint">{t("chatPane.intro")}</p>}
           {messages.map((m) => (
@@ -431,11 +366,33 @@ export function ChatPane({
           )}
           <div className="chat-f-row">
             {vimOn && <VimMode mode={vimMode} />}
-            <span className="push">
-              {!(plainEnterSends(sendKey, question) && (!vimOn || vimMode.startsWith("NORMAL"))) && <Kbd>Ctrl</Kbd>}
-              <Kbd>Enter</Kbd>
-              {t("chatPane.hintSend")}
-            </span>
+            {choice?.custom && (
+              <input
+                // Mounted again for another provider, so its emptied box takes the keyboard as the first pick's did.
+                key={choice.kind}
+                className="input sm mono"
+                value={choice.model}
+                onChange={(e) => setChoice({ ...choice, model: e.target.value })}
+                placeholder={t("modelSettings.modelId")}
+                aria-label={t("chatPane.llmModelId")}
+                spellCheck={false}
+                autoFocus={aiPicked}
+                // In the form, Enter would submit it and send the question; only the send key sends.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                  }
+                }}
+              />
+            )}
+            <span className="push" />
+            <ModelMenu
+              choice={choice}
+              onChange={(c) => {
+                setChoice(c);
+                setAiPicked(true);
+              }}
+            />
             <button type="submit" className="btn sm pri" disabled={!question.trim() || !!pending || !scope()}>
               {pending ? t("chatPane.sending") : t("chatPane.send")}
             </button>

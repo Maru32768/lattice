@@ -299,6 +299,17 @@ function stepMenu(e: React.KeyboardEvent<HTMLElement>) {
 
 type Parts = Pick<typeof DM, "Item" | "Label" | "Separator" | "Sub" | "SubTrigger" | "SubContent" | "Portal">;
 
+/** The check column of an item that has a `checked` state. */
+function Check({ checked }: { checked?: boolean }) {
+  return (
+    checked !== undefined && (
+      <span className="check" aria-hidden="true">
+        {checked ? "✓" : ""}
+      </span>
+    )
+  );
+}
+
 /** A submenu, kept off a page webview like the menu it opens from. */
 function SubMenu({ parts: P, item, height }: { parts: Parts; item: MenuItem; height: string }) {
   const s = useSurface();
@@ -307,6 +318,7 @@ function SubMenu({ parts: P, item, height }: { parts: Parts; item: MenuItem; hei
     <P.Sub>
       <P.SubTrigger asChild disabled={item.disabled}>
         <button role="menuitem" className="sub" disabled={item.disabled}>
+          <Check checked={item.checked} />
           <span className="grow">{item.label}</span>
           <Icon name="right" size="sm" />
         </button>
@@ -340,11 +352,7 @@ function MenuItems({ parts: P, items, height }: { parts: Parts; items: (MenuItem
           disabled={it.disabled}
           title={it.hint}
         >
-          {it.checked !== undefined && (
-            <span className="check" aria-hidden="true">
-              {it.checked ? "✓" : ""}
-            </span>
-          )}
+          <Check checked={it.checked} />
           {it.hint ? (
             <span className="mi">
               {it.label}

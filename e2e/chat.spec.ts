@@ -42,10 +42,8 @@ test("with 1行ならEnter, Enter sends a one-line question; once it has two lin
 
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const q = app.getByLabel("質問", { exact: true });
-  const hint = app.locator(".chat-f-row .kbd");
   const asked = async () => (await callsOf(app, "chat_ask")).map((a) => (a as { question: string }).question);
   await q.fill("one line");
-  await expect(hint).toHaveText(["Enter"]);
   await q.press("Enter");
   await expect.poll(asked).toEqual(["one line"]);
   await expect(q).toHaveValue("");
@@ -53,7 +51,6 @@ test("with 1行ならEnter, Enter sends a one-line question; once it has two lin
   await q.pressSequentially("first");
   await q.press("Shift+Enter");
   await q.pressSequentially("second");
-  await expect(hint).toHaveText(["Ctrl", "Enter"]);
   await q.press("Enter");
   await expect(q).toHaveValue("first\nsecond\n");
   expect(await asked()).toEqual(["one line"]);
@@ -72,15 +69,12 @@ test("Vim with Enter as the send key: insert-mode Enter is a new line, normal-mo
   const q = shell.getByRole("textbox", { name: "質問", exact: true });
   await q.click();
   const asked = async () => (await callsOf(shell, "chat_ask")).map((a) => (a as { question: string }).question);
-  const hint = shell.locator(".chat-f-row .kbd");
   await shell.keyboard.type("first");
-  await expect(hint, "insert mode sends on Ctrl+Enter only").toHaveText(["Ctrl", "Enter"]);
   await shell.keyboard.press("Enter");
   await shell.keyboard.type("second");
   await expect(q).toHaveText("firstsecond");
   expect(await asked()).toEqual([]);
   await shell.keyboard.press("Escape");
-  await expect(hint).toHaveText(["Enter"]);
   await shell.keyboard.press("2");
   await shell.keyboard.press("Enter");
   expect(await asked(), "a count makes Enter Vim's <CR>").toEqual([]);
@@ -478,25 +472,84 @@ test("the chat scope lists thousands of tags while drawing only the ones in view
   await expect.poll(() => askedScopes(app)).toEqual([{ kind: "filter", filter: { kind: "tag", name: last } }]);
 });
 
+/** Opens the chat's AI menu and picks `pick`, from the submenus `path` names. */
+async function chooseAI(app: Page, path: (string | RegExp)[], pick: string) {
+  await app.getByRole("button", { name: "回答するAI" }).click();
+  for (const name of path) {
+    await app.getByRole("menuitem", { name, exact: true }).click();
+  }
+  const radio = app.getByRole("menuitemradio", { name: pick, exact: true });
+  // A submenu opens to the parent's left here: a pointer that jumps onto it in one step closes it, one moved by hand does not.
+  const b = (await radio.boundingBox())!;
+  await app.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
+  await radio.click();
+}
+
+test("at the pane's narrowest, the send row fits Vim's mode, a long model ID and the AI with its effort", async ({ shell }) => {
+  await shell.addInitScript(() => localStorage.setItem("lattice.chatVim", "on"));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await shell.locator(".chat").evaluate((e) => (e.style.width = "320px"));
+  await chooseAI(shell, ["Anthropic API"], "その他(モデルIDを入力)");
+  await shell.getByLabel("回答するモデルのID").fill("claude-a-very-long-model-id-that-does-not-fit");
+  await chooseAI(shell, [/^effort/], "max");
+  const row = shell.locator(".chat-f-row");
+  expect(await row.evaluate((e) => e.scrollWidth - e.clientWidth)).toBe(0);
+  const send = (await row.getByRole("button", { name: "送信" }).boundingBox())!;
+  const box = (await shell.locator(".chat").boundingBox())!;
+  expect(send.x + send.width).toBeLessThanOrEqual(box.x + box.width);
+});
+
+test("Enter in the model ID box keeps the drafted question", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const q = app.locator("#chat-q");
+  await q.fill("draft question");
+  await chooseAI(app, ["Claude CLI"], "その他(モデルIDを入力)");
+  const modelId = app.getByLabel("回答するモデルのID");
+  await modelId.fill("my-model");
+  await modelId.press("Enter");
+  await expect(q).toHaveValue("draft question");
+  expect(await callsOf(app, "chat_ask")).toEqual([]);
+});
+
+test("opening a conversation on a custom model leaves the keyboard where it was", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const q = app.locator("#chat-q");
+  await chooseAI(app, ["Claude CLI"], "その他(モデルIDを入力)");
+  await app.getByLabel("回答するモデルのID").fill("my-model");
+  await q.fill("WALとは？");
+  await q.press("Control+Enter");
+  await expect.poll(async () => (await callsOf(app, "chat_ask")).length).toBe(1);
+  await app.getByRole("button", { name: "新しい会話" }).click();
+  const pick = app.getByRole("button", { name: "会話を選ぶ" });
+  await pick.click();
+  await app.getByRole("menuitemradio", { name: "WALとは？" }).click();
+  await expect(app.getByLabel("回答するモデルのID")).toHaveValue("my-model");
+  await expect(pick, "focus goes back to the menu's button").toBeFocused();
+});
+
 test("each conversation asks the AI chosen for it, and opening it again brings the choice back", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  const provider = app.getByLabel("回答するAI", { exact: true });
-  const model = app.getByLabel("回答するモデル", { exact: true });
+  const ai = app.getByRole("button", { name: "回答するAI" });
   const modelId = app.getByLabel("回答するモデルのID");
-  const effort = app.getByLabel("回答するAIのeffort");
+  const radio = (name: string) => app.getByRole("menuitemradio", { name, exact: true });
+  const choose = (path: (string | RegExp)[], pick: string) => chooseAI(app, path, pick);
   const asked = async () => (await callsOf(app, "chat_ask")).map((x) => (x as { llm: unknown }).llm);
   const q = app.locator("#chat-q");
   const pickThread = async (title: string) => {
     await app.getByRole("button", { name: "会話を選ぶ" }).click();
     await app.getByRole("menuitemradio", { name: title }).click();
   };
-  await expect(provider).toHaveValue("");
-  await expect(model).toHaveCount(0);
+  await expect(ai, "it sits beside 送信").toHaveText("既定のAI");
+  await ai.click();
+  await expect(app.getByRole("menuitem", { name: /^effort/ }), "the providers in Settings set their own efforts").toHaveCount(0);
+  await app.keyboard.press("Escape");
 
-  await provider.selectOption({ label: "Claude CLI" });
-  await model.selectOption({ label: "その他(モデルIDを入力)" });
+  await choose(["Claude CLI"], "その他(モデルIDを入力)");
+  await expect(modelId, "the ID can be typed right away").toBeFocused();
   await modelId.fill(" claude-opus-5-5 ");
-  await effort.selectOption("max");
+  await choose([/^effort/], "max");
   await q.fill("WALとは？");
   await q.press("Control+Enter");
   const opus = { kind: "claude_cli", model: "claude-opus-5-5", effort: "max" };
@@ -505,46 +558,75 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
 
   // A new conversation starts on the default; a saved one brings back what it chose.
   await app.getByRole("button", { name: "新しい会話" }).click();
-  await expect(provider).toHaveValue("");
+  await expect(ai).toHaveText("既定のAI");
+  await expect(modelId).toHaveCount(0);
   await pickThread("Kafkaのexactly-once");
-  await expect(provider).toHaveValue("anthropic");
-  await expect(model).toHaveValue("claude-haiku-5-5");
-  await expect(effort).toHaveValue("low");
+  await expect(ai).toHaveText("Anthropic API · claude-haiku-5-5 · low");
+  await ai.click();
+  await app.getByRole("menuitem", { name: "Anthropic API", exact: true }).click();
+  await expect(radio("claude-haiku-5-5(速い・安い)"), "the menu marks the model").toHaveAttribute("aria-checked", "true");
+  await expect(radio("既定(claude-opus-5-5)")).toHaveAttribute("aria-checked", "false");
+  await expect(radio("その他(モデルIDを入力)")).toHaveAttribute("aria-checked", "false");
+  await app.keyboard.press("Escape");
+  await ai.click();
+  await app.getByRole("menuitem", { name: /^effort/ }).click();
+  await expect(radio("low"), "and the effort").toHaveAttribute("aria-checked", "true");
+  await expect(radio("モデルの既定")).toHaveAttribute("aria-checked", "false");
+  await app.keyboard.press("Escape");
   await pickThread("WALとは？");
   await expect(modelId).toHaveValue("claude-opus-5-5");
-  await expect(effort).toHaveValue("max");
+  await expect(ai).toHaveText("Claude CLI · claude-opus-5-5 · max");
+  await ai.click();
+  await app.getByRole("menuitem", { name: "Claude CLI", exact: true }).click();
+  await expect(radio("その他(モデルIDを入力)"), "the menu marks the choice").toHaveAttribute("aria-checked", "true");
+  await app.keyboard.press("Escape");
+  await app.keyboard.press("Escape");
 
   // Another provider starts on its own defaults and offers only the efforts it takes.
-  await provider.selectOption({ label: "Gemini API" });
-  await expect(model).toHaveValue("");
-  await expect(effort).toHaveValue("");
-  await expect(effort.locator("option")).toHaveCount(4);
+  await choose(["Gemini API"], "その他(モデルIDを入力)");
+  await expect(modelId, "the ID typed for Claude CLI stays with it").toHaveValue("");
+  await expect(modelId, "the new provider's ID can be typed right away").toBeFocused();
+  await expect(ai).toHaveText("Gemini API");
+  await ai.click();
+  await app.getByRole("menuitem", { name: "Gemini API", exact: true }).click();
+  await expect(radio("その他(モデルIDを入力)")).toHaveAttribute("aria-checked", "true");
+  await expect(radio("既定(gemini-flash-latest)"), "an empty ID is not the default model").toHaveAttribute("aria-checked", "false");
+  await app.keyboard.press("Escape");
+  await choose(["Gemini API"], "既定(gemini-flash-latest)");
+  await expect(ai).toHaveText("Gemini API");
+  await expect(modelId).toHaveCount(0);
+  await ai.click();
+  await app.getByRole("menuitem", { name: /^effort/ }).click();
+  await expect(app.getByRole("menu", { name: /^effort/ }).getByRole("menuitemradio")).toHaveCount(4);
+  await app.keyboard.press("Escape");
+  await app.keyboard.press("Escape");
   // A conversation saved on the default opens on it; a change that was never sent is gone.
   await pickThread("MVCCとVACUUMの関係");
-  await expect(provider).toHaveValue("");
+  await expect(ai).toHaveText("既定のAI");
   await pickThread("WALとは？");
-  await expect(provider).toHaveValue("claude_cli");
+  await expect(ai).toHaveText("Claude CLI · claude-opus-5-5 · max");
 
-  await provider.selectOption({ label: "既定(設定のAIプロバイダ)" });
-  await expect(model).toHaveCount(0);
+  await choose([], "既定(設定のAIプロバイダ)");
+  await expect(modelId).toHaveCount(0);
   await q.fill("続き");
   await q.press("Control+Enter");
   await expect.poll(asked).toEqual([opus, null]);
 
-  // A provider left on its defaults is asked with them, and a follow-up asks it again without touching the row.
+  // A provider left on its defaults is asked with them, and a follow-up asks it again without touching the menu.
   await app.getByRole("button", { name: "新しい会話" }).click();
-  await provider.selectOption({ label: "Gemini API" });
+  await choose(["Gemini API"], "既定(gemini-flash-latest)");
   await q.fill("MVCCとは？");
   await q.press("Control+Enter");
   const gemini = { kind: "gemini", model: null, effort: null };
   await expect.poll(asked).toEqual([opus, null, gemini]);
-  await expect(provider).toHaveValue("gemini");
+  await expect(ai).toHaveText("Gemini API");
   await q.fill("VACUUMは？");
   await q.press("Control+Enter");
   await expect.poll(asked).toEqual([opus, null, gemini, gemini]);
   // Picking a model keeps the effort picked before it, and a follow-up asks that pair again, not the defaults.
-  await effort.selectOption("high");
-  await model.selectOption({ label: "gemini-pro-latest" });
+  await choose([/^effort/], "high");
+  await choose(["Gemini API"], "gemini-pro-latest");
+  await expect(ai).toHaveText("Gemini API · gemini-pro-latest · high");
   await q.fill("続き");
   await q.press("Control+Enter");
   const pro = { kind: "gemini", model: "gemini-pro-latest", effort: "high" };
@@ -552,6 +634,11 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await q.fill("もう一度");
   await q.press("Control+Enter");
   await expect.poll(asked).toEqual([opus, null, gemini, gemini, pro, pro]);
+  await choose([/^effort/], "モデルの既定");
+  await expect(ai).toHaveText("Gemini API · gemini-pro-latest");
+  await q.fill("既定で");
+  await q.press("Control+Enter");
+  await expect.poll(asked).toEqual([opus, null, gemini, gemini, pro, pro, { ...pro, effort: null }]);
 });
 
 /** `chat_ask` waits for `failSend()`, so what the user does while a send is under way can be tried. */
