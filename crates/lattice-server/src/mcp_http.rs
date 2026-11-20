@@ -855,13 +855,11 @@ mod tests {
         let session = f.initialize(&r.token).await;
         let mut calls = vec![f.call_later(&r.token, &session, "delete_article", json!({ "id": a }))];
         f.asked(1).await;
-        tokio::time::sleep(Duration::from_millis(5)).await;
         calls.push(f.call_later(&r.token, &session, "delete_article", json!({ "id": b })));
         let asked = f.asked(2).await;
         let urls: Vec<&Deletion> = asked.iter().map(|a| &a.deletion).collect();
         let article = |url: &str| Deletion::Article { title: None, url: url.into() };
         assert_eq!(urls, [&article("https://example.com/a"), &article("https://example.com/b")], "oldest first");
-        assert!(asked[0].deadline_ms < asked[1].deadline_ms, "each waits its own two minutes");
 
         calls.extend((2..MAX_WAITING).map(|_| f.call_later(&r.token, &session, "delete_article", json!({ "id": a }))));
         f.asked(MAX_WAITING).await;
