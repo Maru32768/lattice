@@ -44,8 +44,6 @@ const MAX_CALLS: usize = 20;
 const MAX_NAME_CHARS: usize = 64;
 /// How long a deletion waits for the user's answer before it is refused.
 const APPROVAL_WAIT: Duration = Duration::from_secs(120);
-/// How often a reply streamed as events says it is still coming.
-const KEEP_ALIVE: Duration = Duration::from_secs(15);
 /// Deletions waiting at once: an agent asking again and again is refused at once past it, rather than queueing a dialog
 /// for each.
 const MAX_WAITING: usize = 10;
@@ -281,7 +279,7 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
                 // Claude Code gives up on a reply whose headers take 60 s, and a deletion waits up to two minutes for
                 // the user, an `ask` for the LLM: the headers go at once, and the reply follows as an event.
                 let event = stream::once(async move { Ok::<_, Infallible>(Event::default().event("message").data(reply.await.to_string())) });
-                return Sse::new(event).keep_alive(KeepAlive::new().interval(KEEP_ALIVE)).into_response();
+                return Sse::new(event).keep_alive(KeepAlive::default()).into_response();
             }
             reply.await
         }
