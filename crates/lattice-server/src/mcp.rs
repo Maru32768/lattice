@@ -387,6 +387,11 @@ mod tests {
     }
 
     #[test]
+    fn a_method_the_server_lacks_is_method_not_found() {
+        assert_eq!(reply(r#"{"jsonrpc":"2.0","id":1,"method":"resources/list"}"#, Role::Delete).unwrap()["error"]["code"], -32601);
+    }
+
+    #[test]
     fn the_tool_list_is_the_roles() {
         let list = |role| reply(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, role).unwrap()["result"]["tools"].as_array().unwrap().len();
         assert_eq!((list(Role::Read), list(Role::Edit), list(Role::Delete)), (10, 30, 35));
