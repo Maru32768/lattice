@@ -967,9 +967,9 @@ struct Glyphs {
     /// The styles `walk` found on each page, and how many of the current page's strings have begun.
     styles: Vec<Vec<Style>>,
     shown: usize,
-    /// Where vertical writing began since the pen was last put down, which pdf-extract tells by `end_line`. A string does
-    /// not start afresh: a TJ shows its strings one after another.
-    start: Option<(f64, f64)>,
+    /// Where the column of vertical writing began, and its last glyph, as pdf-extract placed them. A string that starts
+    /// on along from that glyph goes on down the column, as a TJ shows its strings; any other starts a column.
+    column: Option<((f64, f64), (f64, f64))>,
     /// Where each text has been drawn on the current page.
     drawn: HashMap<String, Spots>,
 }
@@ -983,7 +983,7 @@ type Spots = HashMap<(i64, i64), (f64, f64)>;
 impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
         self.origin = (b.llx, b.lly);
-        (self.shown, self.start) = (0, None);
+        (self.shown, self.column) = (0, None);
         self.drawn.clear();
         self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, left: b.llx, top: b.ury, ..Default::default() });
         Ok(())
@@ -1020,7 +1020,9 @@ impl OutputDev for Glyphs {
         // starts. Its advances are the glyphs' widths, which in a Japanese font match their heights.
         let (mut x, mut y) = (trm.m31 - self.origin.0, trm.m32);
         if style.vertical {
-            let (sx, sy) = *self.start.get_or_insert((x, y));
+            let goes_on = self.column.filter(|&(_, (lx, ly))| (y - ly).abs() < 0.01 && x > lx);
+            let (sx, sy) = goes_on.map_or((x, y), |(start, _)| start);
+            self.column = Some(((sx, sy), (x, y)));
             (x, y) = (sx, sy - (x - sx));
         }
         // A glyph drawn again where it already is adds no ink: a book draws an item's bullet once for each of the
@@ -1056,7 +1058,6 @@ impl OutputDev for Glyphs {
     }
 
     fn end_line(&mut self) -> Result<(), OutputError> {
-        self.start = None;
         Ok(())
     }
 }
@@ -3509,6 +3510,15 @@ pub(crate) mod tests {
             info.set("Ordering", Object::string_literal("Identity"));
         };
         assert_eq!([read(&own), read(&identity)], ["Cats|XY", "Cats"]);
+    }
+
+    #[test]
+    fn columns_put_in_place_by_cm_are_read_as_columns() {
+        // The columns of `vertical_writing_is_read_as_paragraphs_down_the_columns`, each moved into place by a cm, which
+        // pdf-extract does not tell as it does a Tm.
+        let column = |x: f64, y: f64, cids: &str| format!("q 1 0 0 1 {x} {y} cm BT /F3 10 Tf <{cids}> Tj ET Q ");
+        let ops = [column(500., 700., "034B034D034F03510353"), column(488., 700., "03540356"), column(476., 690., "0358035A035C")].concat();
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["あいうえおかき", "くけこ"]);
     }
 
     #[test]
