@@ -11,8 +11,9 @@ use std::sync::LazyLock;
 /// Each CID's text in UTF-16BE.
 static TABLE: LazyLock<HashMap<u32, Vec<u8>>> = LazyLock::new(|| read(include_bytes!("Adobe-Japan1-UCS2.bcmap")).expect("bundled CMap"));
 
+/// None for a CID with no character, which the CMap gives U+FFFD.
 pub(crate) fn utf16(cid: u32) -> Option<&'static [u8]> {
-    TABLE.get(&cid).map(Vec::as_slice)
+    TABLE.get(&cid).map(Vec::as_slice).filter(|u| *u != [0xFF, 0xFD])
 }
 
 /// A CID takes two bytes in this CMap.
@@ -145,6 +146,8 @@ mod tests {
         assert_eq!([94, 1126, 1127, 1200].map(text), ["}", "唖", "娃", "一"]);
         // A character past U+FFFF, and a CID for two characters.
         assert_eq!([14282, 9886].map(text), ["𤋮", "02"]);
+        // CIDs with no character, which the CMap gives U+FFFD.
+        assert_eq!([0, 15429, 20957].map(utf16), [None; 3]);
         assert!(TABLE.len() > 20_000, "{}", TABLE.len());
     }
 }
