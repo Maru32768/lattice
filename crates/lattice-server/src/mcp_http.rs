@@ -401,7 +401,7 @@ impl Approvals {
 
     /// The user's answer. One to a deletion no longer waiting comes too late and changes nothing.
     pub fn answer(&self, id: u64, allow: bool) {
-        if let Some(reply) = self.take(id) {
+        if let Some(reply) = self.take(|ask| ask.approval.id == id) {
             let _ = reply.send(allow.then_some(()).ok_or(DENIED));
         }
     }
@@ -411,8 +411,7 @@ impl Approvals {
     // shortcut: a cancel that overtakes its call (each comes on its own connection) finds nothing, and the deletion waits
     // as if uncancelled; remember cancelled ids if a client ever cancels that fast.
     fn cancel(&self, call: &(String, Value)) {
-        let id = lock(&self.waiting).asks.iter().find(|ask| ask.call == *call).map(|ask| ask.approval.id);
-        if let Some(reply) = id.and_then(|id| self.take(id)) {
+        if let Some(reply) = self.take(|ask| ask.call == *call) {
             let _ = reply.send(Err(CANCELLED));
         }
     }
@@ -456,10 +455,10 @@ impl Approvals {
         }
     }
 
-    fn take(&self, id: u64) -> Option<oneshot::Sender<Result<(), &'static str>>> {
+    fn take(&self, which: impl Fn(&Ask) -> bool) -> Option<oneshot::Sender<Result<(), &'static str>>> {
         let reply = {
             let mut waiting = lock(&self.waiting);
-            let at = waiting.asks.iter().position(|ask| ask.approval.id == id)?;
+            let at = waiting.asks.iter().position(which)?;
             waiting.asks.remove(at).reply
         };
         (self.changed)(false);
@@ -473,7 +472,8 @@ struct Withdraw<'a>(&'a Approvals, u64);
 
 impl Drop for Withdraw<'_> {
     fn drop(&mut self) {
-        self.0.take(self.1);
+        let id = self.1;
+        self.0.take(|ask| ask.approval.id == id);
     }
 }
 
