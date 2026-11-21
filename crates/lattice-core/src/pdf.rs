@@ -3653,18 +3653,19 @@ pub(crate) mod tests {
 
     #[test]
     fn columns_moved_to_by_td_or_set_a_quote_a_character_are_read_as_columns() {
-        // The columns of `vertical_writing_is_read_as_paragraphs_down_the_columns`: moved to by Td or TD, and set as the
-        // book sets them, each character by a quote, which goes down a line first.
-        let td = "BT /F3 10 Tf 500 700 Td <034B034D034F03510353> Tj -12 0 Td <03540356> Tj -12 -10 Td <0358035A035C> Tj ET";
+        // The columns of `vertical_writing_is_read_as_paragraphs_down_the_columns`, with the first kana twice: moved to by
+        // Td or TD, and set as the book sets them, each character by a quote, which goes down a line first. Kept at the top
+        // of its column, the second あ would be drawn where the first is, and dropped.
+        let td = "BT /F3 10 Tf 500 700 Td <034B034B034F03510353> Tj -12 0 Td <03540356> Tj -12 -10 Td <0358035A035C> Tj ET";
         let quoted = |x: f64, y: f64, cids: &[&str]| format!("1 0 0 1 {x} {y} Tm {}", cids.iter().map(|c| format!("<{c}> ' ")).collect::<String>());
         let columns = [
-            quoted(500., 710., &["034B", "034D", "034F", "0351", "0353"]),
+            quoted(500., 710., &["034B", "034B", "034F", "0351", "0353"]),
             quoted(488., 710., &["0354", "0356"]),
             quoted(476., 700., &["0358", "035A", "035C"]),
         ];
         let quotes = format!("BT /F3 10 Tf 10 TL {}ET", columns.concat());
         for ops in [td.to_string(), td.replace("Td", "TD"), quotes] {
-            assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["あいうえおかき", "くけこ"], "{ops}");
+            assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["ああうえおかき", "くけこ"], "{ops}");
         }
     }
 
@@ -3672,7 +3673,9 @@ pub(crate) mod tests {
     fn a_vertical_page_read_again_as_written_keeps_its_columns() {
         // A quote shown before any font is set, then two columns: read again without the quote, the page is still turned.
         let ops = "BT 12 TL 72 692 Td (x) ' ET BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj ET";
-        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()), ["あいうえおかき"]);
+        let bytes = japanese(&[vec![]], "Identity-V", ops);
+        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), ["あいうえおかき"]);
     }
 
     #[test]
