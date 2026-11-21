@@ -101,6 +101,10 @@ test("the local translation engine shows its server's model and turns off the se
   await expect(keepTerms, "the stored setting stays for the AI engine").toBeChecked();
   await expect(instructions).toBeDisabled();
   await expect(app.getByText("組み込みのprompt(英語→日本語)を見る")).toHaveCount(0);
+  const form = app.getByRole("combobox", { name: "文体" });
+  await expect(form, "PLaMo takes a style too").toBeEnabled();
+  await form.selectOption({ label: "敬体(です、ます)" });
+  await expect.poll(() => callsOf(app, "set_translate_form")).toEqual([{ form: "polite" }]);
 
   const saveUrl = app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" });
   await url.fill("http://127.0.0.1:9999/v1/");
@@ -114,6 +118,9 @@ test("the local translation engine shows its server's model and turns off the se
   await section("表示言語").click();
   await section("翻訳").click();
   await expect(url, "the stored URL").toHaveValue("http://127.0.0.1:9999");
+  await expect(form, "the stored style").toHaveValue("polite");
+  await form.selectOption({ label: "指定しない" });
+  await expect.poll(() => callsOf(app, "set_translate_form").then((c) => c.at(-1))).toEqual({ form: null });
   await expect(connection, "checked when the page opens").toHaveText(REFUSED);
 
   await engine.selectOption({ label: "AIプロバイダ" });

@@ -1,10 +1,8 @@
-//! `lattice-cli`: the Lattice library from a terminal or an agent, over the database the app
+//! `lattice-cli`: the Lattice library from a terminal, over the database the app
 //! uses (WAL, so the app may be running). Reads by default; changes need `--allow-write`, deletions `--allow-delete`.
 //! `serve` also creates the phone's token if the library has none: nothing else can read with it.
 //! Not named `lattice` because the app's own binary is `lattice.exe` (and Windows file names
 //! ignore case, so `Lattice.exe` in the portable zip would clash too).
-
-mod mcp;
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
@@ -26,7 +24,7 @@ use lattice_server::ops::{self, Ctx, Op};
 use serde_json::{Value, json};
 
 #[derive(Parser)]
-#[command(name = "lattice-cli", version, about = "Search, read and save to your Lattice library; `mcp` serves it to agents")]
+#[command(name = "lattice-cli", version, about = "Search, read and change your Lattice library from a terminal")]
 struct Cli {
     /// The data folder (default: the one the app uses, portable mode included)
     #[arg(long, global = true)]
@@ -53,8 +51,6 @@ enum Format {
 enum Cmd {
     #[command(flatten)]
     Op(Op),
-    /// Serve the library to agents as an MCP server over stdio
-    Mcp,
     /// Serve the library to a phone's browser, as the app's 設定 › スマホで読む does
     Serve {
         /// Listen on every network interface, not just this PC's own
@@ -153,7 +149,7 @@ async fn serve(store: Arc<Store>, detected_dir: Option<PathBuf>, allow_write: bo
     };
     let shown = reachable.and_then(|ip| mobile::base_of(ip, server.addr.port())).unwrap_or_else(|| "http://<this PC's address>".to_string());
     println!("{}", mobile::phone_url(&url_store, &shown)?);
-    // The server outlives a move of the library, as the MCP server does (mcp.rs): the old copy would keep answering.
+    // The library can move while the server runs, and the old copy would keep answering.
     loop {
         tokio::time::sleep(MOVE_CHECK).await;
         if let Some(dir) = &detected_dir
@@ -188,13 +184,6 @@ fn main() -> ExitCode {
         Err(e) => return fail(cli.format, &e),
     };
     match cli.cmd {
-        // An agent reads untrusted pages, and nothing here can ask the user before it deletes.
-        Cmd::Mcp => {
-            match mcp::serve(&Ctx { role: ctx.role.min(Role::Edit), ..ctx }, detected_dir.as_deref(), &rt, std::io::stdin().lock(), std::io::stdout().lock()) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => fail(cli.format, &e.to_string()),
-            }
-        }
         Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, detected_dir, ctx.role >= Role::Edit, lan, port)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e),

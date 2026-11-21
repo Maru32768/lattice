@@ -8,6 +8,9 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 - **Sources for summaries.** The sentences and key points of a summary end with numbers that point to the passages they come from. Click a number to go to its passage in the Reader.
 - **A check of the numbers in summaries.** Numbers in a summary that are not in the article get a wavy underline and are listed below the summary.
+- **The app serves AI agents over MCP.** AI agents such as Claude Code can use your library through an MCP server in Lattice. Turn the server on in **Settings › AI agents (MCP)**. For each agent, make a registration with the role **Read**, **Edit** or **Delete**, then copy its Claude Code command and run it. The same screen lists each agent's sessions and recent calls. Lattice asks you before each deletion that an agent requests. Changes that an agent makes show in the app at once.
+- **More ways to change the library from `lattice-cli`.** With `--allow-write`, the CLI can remove a tag, a read mark or a favorite; rename articles and put them in genres; add and rename genres and delete empty ones; create and rename collections and add or remove their articles; subscribe to feeds, rename them and move them; and rename folders. With `--allow-delete`, it can also delete articles, collections and folders, unsubscribe from feeds, and merge genres. Agents get the same tools, depending on their role.
+- **Choose the style of Japanese translations.** In **Settings › Translation**, **Japanese style** sets translations into Japanese to **Plain (da, de aru)** or **Polite (desu, masu)**. It works with the AI providers and with the local translation server. Translations are stored per style, so translate an article again to read it in the style you chose.
 
 ### Changed
 
@@ -16,7 +19,12 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Summaries made before this change show a note that regenerating them applies the change. Lattice does not regenerate them automatically.
 - **Find a chat scope by typing.** **Scope** in the chat pane opens a list with a search field, so you can type part of a name to narrow it. The list has every scope, even in a library with thousands of tags, and the chat pane no longer slows down to show them.
 - **The Tag filter lists every tag in the current list.** Before, it showed only the eight most common when nothing was typed. A tag you choose is checked; no row moves, and only the counts change. The order changes when you search again or reopen the filter. **Edit tags…** draws only the rows in view, so thousands of tags no longer slow it down.
+- **Open a collection on a phone.** On a phone, **Filter** lists the collections under **Show**, alongside **Unread** and **All articles**. Choosing a collection shows all its articles, read or not, as in the PC's sidebar. Before, choosing a collection only narrowed the list you had chosen (**Unread** by default), so under **Unread** a collection whose articles were all read did not appear in **Filter**.
 - **The chat's AI sits beside Send.** The button left of **Send** shows the AI that answers the chat. Click it to choose the provider, model and effort from a menu. The send-key hint below the question box is gone. **Send key** in **Settings › Summaries & chat** still sets the key.
+
+### Removed
+
+- **`lattice-cli mcp`.** Agents now use the MCP server in Lattice. If you added Lattice to Claude Code with `lattice-cli.exe mcp`, run `claude mcp remove lattice` in the folder where you added it, then make a registration in **Settings › AI agents (MCP)**.
 
 ### Fixed
 

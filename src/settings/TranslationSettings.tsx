@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "../ui/SetRow";
-import { api, type EngineKind } from "../api";
+import { api, type EngineKind, type Form } from "../api";
 import { ON_SWITCH_KEY, setTranslateOnSwitch, translateOnSwitch } from "../reader/mixed";
 import { useT } from "../i18n";
 import { useSynced } from "../lib/prefs";
@@ -36,6 +36,7 @@ export function TranslationSettings() {
   const [savedUrl, setSavedUrl] = useState("");
   const [connection, setConnection] = useState<Connection>(null);
   const [on, setOn] = useState(true);
+  const [form, setForm] = useState<Form | null>(null);
   const [onSwitch, setOnSwitch] = useSynced(ON_SWITCH_KEY, translateOnSwitch);
   const [onSave, setOnSave] = useState(false);
   const [parallel, setParallel] = useState(3);
@@ -64,6 +65,10 @@ export function TranslationSettings() {
     api
       .translateKeepTerms()
       .then(setOn)
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .translateForm()
+      .then(setForm)
       .catch((e: unknown) => setError(String(e)));
     api
       .autoTranslate()
@@ -129,6 +134,17 @@ export function TranslationSettings() {
     try {
       await api.setTranslateKeepTerms(value);
       // The built-in prompt depends on the term mode.
+      setPrompt(await api.translationPrompt().catch(() => prompt));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function saveForm(value: Form | null) {
+    setForm(value);
+    setError(null);
+    try {
+      await api.setTranslateForm(value);
       setPrompt(await api.translationPrompt().catch(() => prompt));
     } catch (e) {
       setError(String(e));
@@ -260,6 +276,13 @@ export function TranslationSettings() {
         desc={local ? t("translationSettings.localIgnores") : t("translationSettings.keepTermsDesc")}
       >
         <Switch id="keep-terms" checked={on} disabled={local} onChange={toggle} />
+      </SetRow>
+      <SetRow title={t("translationSettings.form")} htmlFor="tr-form" desc={t("translationSettings.formDesc")}>
+        <select id="tr-form" className="select" value={form ?? ""} onChange={(e) => void saveForm((e.target.value || null) as Form | null)}>
+          <option value="">{t("translationSettings.formAny")}</option>
+          <option value="plain">{t("translationSettings.formPlain")}</option>
+          <option value="polite">{t("translationSettings.formPolite")}</option>
+        </select>
       </SetRow>
       <div className="set wide">
         <label className="h" htmlFor="tr-instructions">

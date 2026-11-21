@@ -146,3 +146,8 @@ export function listStep(e: React.KeyboardEvent, typing: boolean): 1 | -1 | 0 {
   }
   return bindings.next.includes(k) ? 1 : bindings.prev.includes(k) ? -1 : 0;
 }
+
+/** Space or Enter on a focused button, which presses it: a popover list's keys leave these to the button. Ctrl+Enter stays the list's. */
+export function pressesButton(e: React.KeyboardEvent): boolean {
+  return e.target instanceof HTMLButtonElement && (e.key === " " || (e.key === "Enter" && !e.ctrlKey && !e.metaKey));
+}

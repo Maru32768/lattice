@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
 import { type LocalOp, fragmentOf, inboxWaits, newOpId, resultOf, settled, settledByPc, withOps } from "./client.ts";
 import { savableUrl } from "./urls.ts";
-import { FIRST_VIEW, type ListScope, type ListView, isOldList, options, visibleArticles } from "./list.ts";
+import { FIRST_VIEW, type ListView, isOldList, options, visibleArticles } from "./list.ts";
 import { NO_FACETS, NO_KEPT, keep, viewKey, type Facets } from "../library/library.ts";
 import { articleInHash } from "./route.ts";
 
@@ -48,7 +48,7 @@ test("a view lists by scope and by title or site, without regard to case", () =>
     row(3, "Zig", { read_status: "read", favorite: true }),
     row(4, null, { domain: "other.org" }),
   ];
-  const ids = (kind: ListScope["kind"], query = "") => visibleArticles(articles, { ...FIRST_VIEW, scope: { kind }, query }).rows.map((a) => a.id);
+  const ids = (kind: "unread" | "all" | "favorites", query = "") => visibleArticles(articles, { ...FIRST_VIEW, scope: { kind }, query }).rows.map((a) => a.id);
   assert.deepEqual(ids("unread"), [1, 4]);
   assert.deepEqual(ids("all"), [1, 2, 3, 4]);
   assert.deepEqual(ids("favorites"), [3]);

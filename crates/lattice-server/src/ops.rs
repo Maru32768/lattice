@@ -1,4 +1,4 @@
-//! The operations the CLI and the MCP server share. `Op` is parsed from command-line arguments
+//! The operations the CLI and the app's MCP server share. `Op` is parsed from command-line arguments
 //! (clap) and from MCP tool calls (serde, `{"name": ..., "arguments": {...}}`) alike, and every
 //! operation answers with JSON plus a plain-text rendering of the same result.
 

@@ -1,7 +1,7 @@
 [package]
 name = "lattice-cli"
 version.workspace = true
-description = "Lattice from the command line, and as an MCP server for agents"
+description = "Lattice from the command line"
 license = "MIT"
 authors = ["Maru32768"]
 edition = "2024"

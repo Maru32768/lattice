@@ -28,6 +28,7 @@ export type * from "./FilterReason";
 export type * from "./FilterRule";
 export type * from "./FilterScope";
 export type * from "./FolderRow";
+export type * from "./Form";
 export type * from "./Grade";
 export type * from "./GroupRow";
 export type * from "./ImageSettings";
