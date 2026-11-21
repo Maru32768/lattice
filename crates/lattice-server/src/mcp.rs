@@ -392,6 +392,14 @@ mod tests {
     }
 
     #[test]
+    fn only_a_cancel_notification_names_a_call_to_give_up() {
+        let cancelled = |m: &str| Message::parse(m.as_bytes()).unwrap().cancelled().cloned();
+        assert_eq!(cancelled(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7}}"#), Some(json!(7)));
+        assert_eq!(cancelled(r#"{"jsonrpc":"2.0","method":"notifications/progress","params":{"requestId":7}}"#), None);
+        assert_eq!(cancelled(r#"{"jsonrpc":"2.0","id":1,"method":"notifications/cancelled","params":{"requestId":7}}"#), None, "a request");
+    }
+
+    #[test]
     fn a_method_the_server_lacks_is_method_not_found() {
         for role in [Role::Read, Role::Edit, Role::Delete] {
             let r = reply(r#"{"jsonrpc":"2.0","id":1,"method":"resources/list"}"#, role).unwrap_or_else(|| panic!("{role:?} left its client waiting"));

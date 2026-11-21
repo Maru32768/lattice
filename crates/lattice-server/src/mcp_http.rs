@@ -1005,6 +1005,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_cancel_takes_off_only_the_call_it_names() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let (a, b, c) = (f.saved("https://example.com/a"), f.saved("https://example.com/b"), f.saved("https://example.com/c"));
+        let (session, other) = (f.initialize(&r.token).await, f.initialize(&r.token).await);
+        let first = f.call_later(&r.token, &session, "delete_article", json!({ "id": a }));
+        f.asked(1).await;
+        let second = {
+            let (f, token, session) = (f.clone(), r.token.clone(), session.clone());
+            let body = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "delete_article", "arguments": { "id": b } } });
+            tokio::spawn(async move { body_of(f.post(&token, Some(&session), body).await).await["result"].clone() })
+        };
+        f.asked(2).await;
+        let elsewhere = f.call_later(&r.token, &other, "delete_article", json!({ "id": c }));
+        let asked = f.asked(3).await;
+
+        let cancel = json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 2 } });
+        assert_eq!(f.post(&r.token, Some(&session), cancel).await.status(), StatusCode::ACCEPTED);
+        assert_eq!(f.approvals.waiting(), [asked[0].clone(), asked[2].clone()], "the session's other call and the other session's");
+        let refused = second.await.unwrap();
+        assert!(says(&refused, CANCELLED), "{refused}");
+        f.approvals.answer(asked[0].id, true);
+        f.approvals.answer(asked[2].id, true);
+        for call in [first, elsewhere] {
+            let done = call.await.unwrap();
+            assert_eq!(done["isError"], false, "{done}");
+        }
+        assert_eq!(f.titles().len(), 1, "only the cancelled article is left");
+    }
+
+    #[tokio::test]
     async fn what_changed_while_the_user_decided_is_not_deleted() {
         let f = fixture();
         let r = f.register("agent", Role::Delete);
