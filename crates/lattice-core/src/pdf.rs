@@ -639,7 +639,7 @@ fn drawable(doc: &Document) -> Result<(), String> {
                 let (len, inner, again) = match streams.entry(id) {
                     Entry::Occupied(seen) => (seen.get().0, seen.get().1.clone(), times),
                     Entry::Vacant(first) => {
-                        let content = stream.decompressed_content().unwrap_or_else(|_| stream.content.clone());
+                        let content = plain(stream);
                         let (len, inner) = &*first.insert((content.len(), draws(doc, &content, own)?));
                         (*len, inner.clone(), times - 1)
                     }
@@ -685,6 +685,16 @@ fn is_image(s: &Stream) -> bool {
 
 fn is_form(s: &Stream) -> bool {
     s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Form")
+}
+
+fn blank(doc: &mut Document, which: fn(&Stream) -> bool) {
+    for s in doc.objects.values_mut().filter_map(|o| o.as_stream_mut().ok()).filter(|s| which(s)) {
+        s.set_plain_content(Vec::new());
+    }
+}
+
+fn plain(s: &Stream) -> Vec<u8> {
+    s.decompressed_content().unwrap_or_else(|_| s.content.clone())
 }
 
 #[derive(Default)]
@@ -733,6 +743,10 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
+    // Before `spell_out_quotes` and `give_japan1_text`, which would otherwise decode forms that pdf-extract is not given.
+    if skip_forms {
+        blank(&mut doc, is_form);
+    }
     mend_to_unicode(&mut doc);
     spell_out_quotes(&mut doc);
     give_japan1_text(&mut doc);
@@ -746,13 +760,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     let (styles, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
-    for o in doc.objects.values_mut() {
-        if let Object::Stream(s) = o
-            && s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image" || (skip_forms && n == b"Form"))
-        {
-            s.set_plain_content(Vec::new());
-        }
-    }
+    blank(&mut doc, is_image);
     drawable(&doc)?;
     let mut out = Glyphs { styles, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
@@ -811,7 +819,7 @@ fn mend_to_unicode(doc: &mut Document) {
         let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
             continue;
         };
-        let content = s.decompressed_content().unwrap_or_else(|_| s.content.clone());
+        let content = plain(s);
         if let Cow::Owned(mended) = CODE_POINT.replace_all(&content, utf16) {
             s.set_plain_content(mended);
         }
@@ -821,14 +829,13 @@ fn mend_to_unicode(doc: &mut Document) {
 /// pdf-extract shows nothing for `'` and `"`, which some books set every line with: it reads the `T*` and `Tj` they stand
 /// for. Before `walk`, so that the faces it counts line up with what pdf-extract shows.
 fn spell_out_quotes(doc: &mut Document) {
-    let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
-    let mut ids: HashSet<ObjectId> = pages.into_iter().flat_map(|p| doc.get_page_contents(p)).collect();
+    let mut ids: HashSet<ObjectId> = doc.get_pages().into_values().flat_map(|p| doc.get_page_contents(p)).collect();
     ids.extend(doc.objects.iter().filter(|(_, o)| o.as_stream().is_ok_and(is_form)).map(|(&id, _)| id));
     for id in ids {
         let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
             continue;
         };
-        let Ok(mut content) = Content::decode(&s.decompressed_content().unwrap_or_else(|_| s.content.clone())) else {
+        let Ok(mut content) = Content::decode(&plain(s)) else {
             continue;
         };
         if !content.operations.iter().any(|op| op.operator == "'" || op.operator == "\"") {
@@ -861,8 +868,7 @@ fn give_japan1_text(doc: &mut Document) {
     let pages =
         doc.get_pages().into_values().map(|p| (doc.get_page_content(p).unwrap_or_default(), inherited(doc, p, b"Resources", Object::as_dict).ok().flatten()));
     let forms = doc.objects.values().filter_map(|o| o.as_stream().ok()).filter(|s| is_form(s));
-    let forms =
-        forms.map(|s| (s.decompressed_content().unwrap_or_else(|_| s.content.clone()), s.dict.get_deref(b"Resources", doc).and_then(Object::as_dict).ok()));
+    let forms = forms.map(|s| (plain(s), s.dict.get_deref(b"Resources", doc).and_then(Object::as_dict).ok()));
     let mut shown: HashMap<ObjectId, BTreeSet<u32>> = HashMap::new();
     for (content, resources) in pages.chain(forms) {
         let names = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
