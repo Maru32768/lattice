@@ -19,7 +19,7 @@ import { placeStore } from "../lib/places.ts";
 export const PAGE = 100;
 
 /**
- * The PC's fixed scopes, and its groups. Genre and feed scopes are the same as their facets here, so the sheet offers
+ * The PC's fixed scopes, and its groups. A genre or feed scope is its facet over All articles here, so the sheet offers
  * those once. A group is a scope, as in the PC's sidebar: as a facet it met 未読, and a group's articles are mostly read.
  */
 export type ListScope = Extract<Scope, { kind: "unread" | "recent" | "favorites" | "all" | "group" }>;
