@@ -3433,6 +3433,14 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
+        let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
+        let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
+        let (_, pages) = glyphs(&japanese(&[paragraph], "Identity-V", label), true).unwrap();
+        assert!(!pages[0].vertical);
+    }
+
+    #[test]
     fn strings_shown_one_after_another_go_on_down_their_column() {
         // One column as a TJ of two strings, the next as two Tj after one Tm.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
