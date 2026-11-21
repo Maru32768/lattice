@@ -1033,6 +1033,7 @@ When an agent with the **Delete** role asks to delete something, Lattice brings 
 - **Allow deletion** becomes available after the window with the dialog has been in focus for 1 second. Press it, or press **Deny**.
 - If you don't answer within 2 minutes, nothing is deleted. All agents together can have up to 10 deletions waiting at once, and Lattice refuses requests beyond that.
 - If what would be deleted changes while you decide, nothing is deleted.
+- If the agent cancels its request before you answer, the dialog closes and nothing is deleted.
 
 ### Watch out for prompt injection
 
