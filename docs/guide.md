@@ -1201,6 +1201,7 @@ The results say why only full-text results are shown. Usually the semantic searc
 - An article marked **Little text** may be a page built with JavaScript. Use **Render and import again** in the ⋯ menu, or the Page view method above.
 - For sites that need a login, log in in the Page view first. The hidden browser that renders pages uses the same login.
 - A PDF made only of scanned images has no text data, so there is no text to import.
+- Japanese set vertically in a PDF comes out with its characters in the wrong order, so it does not read as sentences.
 
 See [Pages that don't extract well](#pages-that-dont-extract-well) for details.
 

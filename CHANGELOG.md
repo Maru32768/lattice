@@ -29,6 +29,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Fixed
 
 - A focused drop-down in a chip, such as **Search scope** in the search pane, showed two focus rings, one inside the other. It now shows one.
+- **Some PDFs failed to import or lost their text.** A PDF whose fonts were written by PDF::API2, as in some books, failed to import with a read error. Lines set with the PDF operators `'` and `"`, and Japanese fonts that do not say which characters they draw, came out without their text. Lattice now reads them. Japanese set vertically is read, but not yet in reading order.
 
 ## [0.5.0] - 2026-11-18
 
