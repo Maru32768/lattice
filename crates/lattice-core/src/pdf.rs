@@ -850,6 +850,9 @@ fn turn(page: &mut Page) {
             && (g.y - r.y).abs() < 0.3 * r.size
             && (g.x - r.end).abs() < 0.5 * r.size
         {
+            if g.x > r.end + 0.15 * r.size.min(g.size) && !r.text.ends_with(' ') && !between_japanese(&r.text, &g.text) {
+                r.text.push(' ');
+            }
             r.text.push_str(&g.text);
             r.end = g.end;
             continue;
@@ -1190,6 +1193,11 @@ fn is_script(g: &Glyph, line: &[&Glyph]) -> bool {
     g.size < SCRIPT * line.iter().map(|x| x.size).fold(0., f64::max)
 }
 
+/// Whether two texts meet between Japanese characters.
+fn between_japanese(before: &str, after: &str) -> bool {
+    before.chars().last().is_some_and(joins_without_space) && after.chars().next().is_some_and(joins_without_space)
+}
+
 fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     let ink: Vec<&&Glyph> = glyphs.iter().filter(|g| !g.text.trim().is_empty()).collect();
     // The size most of the line is set in: superscripts and inline symbols don't count.
@@ -1235,9 +1243,8 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
             gaps.push(gap);
             // Japanese has no spaces between words: a gap between its characters is a heading's spacing, or a line set
             // out to its full width. Only a gap as wide as between a table's cells parts them.
-            let japanese = p.text.chars().last().is_some_and(joins_without_space) && g.text.chars().next().is_some_and(joins_without_space);
             let wide = gap > 1.8 * base.size;
-            if space || g.x > p.end + 0.15 * p.size.min(g.size) && (!japanese || wide) {
+            if space || g.x > p.end + 0.15 * p.size.min(g.size) && (!between_japanese(&p.text, &g.text) || wide) {
                 text.push(' ');
                 marked.push(' ');
             }
