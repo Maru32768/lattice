@@ -768,8 +768,8 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     let mut out = Glyphs { styles, ..Default::default() };
     match catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc(&doc, &mut out))) {
         Ok(read) => read.map_err(|e| unreadable(&e))?,
-        // pdf-extract passes over a quote it would panic at as the Tj it is spelt out to, one shown with no font set for
-        // one. So a page it panics at is read as it was written, and only what its quotes show is lost, not the PDF.
+        // pdf-extract passes over a quote, but may panic at the Tj it is spelt out to: one shown with no font set, for one.
+        // A page it panics at is read again as written, which loses what its quotes show rather than the PDF.
         Err(_) => {
             out.pages.clear();
             let mut written = None;
