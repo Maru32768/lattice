@@ -705,6 +705,7 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
     mend_to_unicode(&mut doc);
+    spell_out_quotes(&mut doc);
     let mut walked = Vec::new();
     for &page in doc.get_pages().values() {
         // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
@@ -747,6 +748,39 @@ fn mend_to_unicode(doc: &mut Document) {
         let content = s.decompressed_content().unwrap_or_else(|_| s.content.clone());
         if let Cow::Owned(mended) = CODE_POINT.replace_all(&content, utf16) {
             s.set_plain_content(mended);
+        }
+    }
+}
+
+/// pdf-extract shows nothing for `'` and `"`, which some books set every line with: it reads the `T*` and `Tj` they stand
+/// for. Before `walk`, so that the faces it counts line up with what pdf-extract shows.
+fn spell_out_quotes(doc: &mut Document) {
+    let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+    let mut ids: HashSet<ObjectId> = pages.into_iter().flat_map(|p| doc.get_page_contents(p)).collect();
+    let is_form = |o: &Object| o.as_stream().is_ok_and(|s| s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Form"));
+    ids.extend(doc.objects.iter().filter(|(_, o)| is_form(o)).map(|(&id, _)| id));
+    for id in ids {
+        let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
+            continue;
+        };
+        let Ok(mut content) = Content::decode(&s.decompressed_content().unwrap_or_else(|_| s.content.clone())) else {
+            continue;
+        };
+        if !content.operations.iter().any(|op| op.operator == "'" || op.operator == "\"") {
+            continue;
+        }
+        let op = |name: &str, operand: Option<&Object>| Operation::new(name, operand.into_iter().cloned().collect());
+        content.operations = content
+            .operations
+            .into_iter()
+            .flat_map(|o| match (o.operator.as_str(), &o.operands[..]) {
+                ("'", [text]) => vec![op("T*", None), op("Tj", Some(text))],
+                ("\"", [aw, ac, text]) => vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))],
+                _ => vec![o],
+            })
+            .collect();
+        if let Ok(encoded) = content.encode() {
+            s.set_plain_content(encoded);
         }
     }
 }
@@ -3133,6 +3167,18 @@ pub(crate) mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert_eq!(to_ir(&bytes, None).unwrap().blocks[0].text, "\u{26951} cat sat on the mat.");
+    }
+
+    #[test]
+    fn lines_set_with_quote_operators_are_read() {
+        let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let content = doc.get_page_contents(page)[0];
+        let ops = b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET";
+        doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap().set_plain_content(ops.to_vec());
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(to_ir(&bytes, None).unwrap().blocks[0].text, "The cat sat on the mat by the door.");
     }
 
     #[test]
