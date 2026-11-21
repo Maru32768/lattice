@@ -3618,6 +3618,13 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn words_drawn_apart_from_their_column_are_read_in_their_place_down_it() {
+        // え drawn last, between う and か, as the book draws a phrase it sets in bold.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F> Tj 1 0 0 1 500 660 Tm <03540356> Tj 1 0 0 1 500 670 Tm <0351> Tj ET";
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()).concat(), "あいうえかき");
+    }
+
+    #[test]
     fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
         let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
         let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
