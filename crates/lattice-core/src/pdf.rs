@@ -475,8 +475,8 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<
         let font = fonts.and_then(|f| f.get_deref(name, doc).and_then(Object::as_dict).ok());
         let base = font.and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
         let vertical = font.filter(|f| writes_down(doc, f));
-        let dw2 = vertical.map(|f| cid_font(doc, f).and_then(|c| c.get_deref(b"DW2", doc).and_then(Object::as_array).ok()?.first()?.as_float().ok()));
-        let top = dw2.map_or(0., |v| v.map_or(ASCENT, |v| f64::from(v) / 1000.) - ASCENT);
+        let vy = vertical.and_then(|f| cid_font(doc, f)?.get_deref(b"DW2", doc).and_then(Object::as_array).ok()?.first()?.as_float().ok());
+        let top = vy.map_or(0., |v| f64::from(v) / 1000. - ASCENT);
         let vertical = vertical.is_some();
         Style { face: base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b))), vertical, top }
     };
