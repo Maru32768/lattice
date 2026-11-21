@@ -3453,6 +3453,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_japan1_font_gets_a_tounicode_of_only_the_cids_it_shows() {
+        let mut doc = Document::load_mem(&japanese(&[vec![]], "Identity-H", "BT /F3 10 Tf 72 600 Td <034B0377034B> Tj ET")).unwrap();
+        give_japan1_text(&mut doc);
+        let font = doc.objects.values().filter_map(|o| o.as_dict().ok()).find(|d| d.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Type0"));
+        let cmap = doc.get_object(font.unwrap().get(b"ToUnicode").and_then(Object::as_reference).unwrap()).and_then(Object::as_stream).unwrap();
+        assert!(String::from_utf8_lossy(&cmap.content).contains("2 beginbfchar\n<034B> <3042>\n<0377> <306e>\nendbfchar"));
+    }
+
+    #[test]
     fn strings_shown_one_after_another_go_on_down_their_column() {
         // One column as a TJ of two strings, the next as two Tj after one Tm.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
