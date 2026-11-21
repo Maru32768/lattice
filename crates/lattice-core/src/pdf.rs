@@ -24,7 +24,7 @@ use crate::msg;
 use crate::pdf_image::Format;
 use crate::pdf_japan1;
 use crate::pdf_worker::{self, Request, Session};
-use crate::store::{NewSnapshot, Store, sha256_hex};
+use crate::store::{NewSnapshot, Store, hex, sha256_hex};
 
 /// `original_url` and `normalized_url` of every PDF imported from a file.
 pub const URL_PREFIX: &str = "local:pdf/";
@@ -880,11 +880,9 @@ fn give_japan1_text(doc: &mut Document) {
                     font = named.filter(|id| fonts.contains(id));
                 }
                 ("Tj" | "TJ", Some(shown_text)) if let Some(id) = font => {
-                    let strings: Vec<&Object> = shown_text.as_array().map_or_else(|_| vec![shown_text], |a| a.iter().collect());
-                    let cids = strings
-                        .into_iter()
-                        .filter_map(|o| o.as_str().ok())
-                        .flat_map(|s| s.as_chunks::<2>().0.iter().map(|&c| u32::from(u16::from_be_bytes(c))));
+                    let strings = shown_text.as_array().map_or(std::slice::from_ref(shown_text), Vec::as_slice);
+                    let cids =
+                        strings.iter().filter_map(|o| o.as_str().ok()).flat_map(|s| s.as_chunks::<2>().0.iter().map(|&c| u32::from(u16::from_be_bytes(c))));
                     shown.entry(id).or_default().extend(cids);
                 }
                 _ => {}
@@ -892,7 +890,6 @@ fn give_japan1_text(doc: &mut Document) {
         }
     }
     for (font, cids) in shown {
-        let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02X}")).collect::<String>();
         let entries: Vec<String> = cids.into_iter().filter_map(|cid| Some(format!("<{cid:04X}> <{}>", hex(pdf_japan1::utf16(cid)?)))).collect();
         let cmap = format!(
             "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <0000> <FFFF> endcodespacerange\n{} beginbfchar\n{}\nendbfchar\nendcmap end end\n",
