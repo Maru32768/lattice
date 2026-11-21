@@ -1,4 +1,4 @@
-import type { ArticleRow } from "../bindings/index.ts";
+import type { ArticleRow, GroupRow } from "../bindings/index.ts";
 import {
   NO_FACETS,
   NO_KEPT,
@@ -18,9 +18,19 @@ import { placeStore } from "../lib/places.ts";
 /** How many rows are added at a time. */
 export const PAGE = 100;
 
-/** The PC's fixed scopes. Genre, feed and group scopes are the same as their facets here, so the sheet offers those once. */
-export type ListScope = Extract<Scope, { kind: "unread" | "recent" | "favorites" | "all" }>;
+/**
+ * The PC's fixed scopes, and its groups. Genre and feed scopes are the same as their facets here, so the sheet offers
+ * those once. A group is a scope, as in the PC's sidebar: as a facet it met 未読, and a group's articles are mostly read.
+ */
+export type ListScope = Extract<Scope, { kind: "unread" | "recent" | "favorites" | "all" | "group" }>;
 export const SCOPES: ListScope[] = [{ kind: "unread" }, { kind: "recent" }, { kind: "favorites" }, { kind: "all" }];
+
+function storedScope(s: Record<string, unknown>): ListScope | undefined {
+  if (s.kind === "group") {
+    return Number.isInteger(s.id) ? { kind: "group", id: s.id as number } : undefined;
+  }
+  return SCOPES.find((x) => x.kind === s.kind);
+}
 
 export interface ListView {
   scope: ListScope;
@@ -41,8 +51,7 @@ function isStored(v: unknown): v is Stored {
   if (!isObj(v) || !isObj(v.scope)) {
     return false;
   }
-  const { scope } = v;
-  return SCOPES.some((s) => s.kind === scope.kind) && isFacets(v.facets) && typeof v.query === "string" && Number.isInteger(v.shown);
+  return storedScope(v.scope) !== undefined && isFacets(v.facets) && typeof v.query === "string" && Number.isInteger(v.shown);
 }
 
 /** The list last shown on this phone, which a phone that dropped the page in the background shows again; else the first. */
@@ -50,8 +59,7 @@ export function storedView(): ListView {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null");
     if (isStored(v)) {
-      const scope = SCOPES.find((s) => s.kind === v.scope.kind)!;
-      return { scope, facets: v.facets, query: v.query, shown: Math.max(PAGE, v.shown), kept: NO_KEPT };
+      return { scope: storedScope(v.scope)!, facets: v.facets, query: v.query, shown: Math.max(PAGE, v.shown), kept: NO_KEPT };
     }
   } catch {
     // Blocked storage, or a view an older version wrote.
@@ -103,6 +111,12 @@ export const forgetListPlace = () => {
     // Blocked storage holds nothing.
   }
 };
+
+/** The view, back on all articles if its group was deleted on the PC, as the PC goes back. The same view otherwise. */
+export function withoutGoneGroup(v: ListView, groups: GroupRow[]): ListView {
+  const s = v.scope;
+  return s.kind !== "group" || groups.some((g) => g.id === s.id) ? v : { ...v, scope: { kind: "all" }, shown: PAGE, kept: NO_KEPT };
+}
 
 /** `base`: scope ∧ search, what the filter counts against. `rows`: what the list shows, in the order they came. */
 export function visibleArticles(articles: ArticleRow[], view: ListView, now = Date.now()): { base: ArticleRow[]; rows: ArticleRow[] } {

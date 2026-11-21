@@ -3,7 +3,7 @@ import type { MobileIndex, MobileOp } from "../bindings";
 import { isLang, setDisplayLang, useT } from "../i18n";
 import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
-import { FIRST_VIEW, forgetListPlace, keepListPlace, showListPlace, storeView, storedView, type ListView } from "./list";
+import { FIRST_VIEW, forgetListPlace, keepListPlace, showListPlace, storeView, storedView, withoutGoneGroup, type ListView } from "./list";
 import { keepOnRest } from "../lib/places";
 import { readingPlaces } from "../reader/useReadingPlace";
 import { keep, viewKey } from "../library/library";
@@ -133,6 +133,7 @@ export function App() {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
+      setView((v) => withoutGoneGroup(v, index.groups ?? []));
       // After the list, which says where the PC is: the icons come from the same place. Once per page: they rarely
       // change, and a refresh need not fetch them again on mobile data.
       if (!iconsAsked.current) {
