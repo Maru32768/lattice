@@ -3382,11 +3382,50 @@ pub(crate) mod tests {
         assert_eq!(read(&[lines]), "The cat sat on the mat by the door.");
         // Quotes with no string to show, or no spacing, which pdf-extract passes over: as a Tj or Tw they would panic.
         assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"]), "The cat sat.");
-        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj /N 0 (on the mat.) \" 0 0 5 \" ET"]), "The cat sat.");
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj /N 0 (on the mat.) \" 0 /N (on the mat.) \" 0 0 5 \" ET"]), "The cat sat.");
+        // Spacing given as real numbers.
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj 0.1 0.0 (on the mat.) \" ET"]), "The cat sat on the mat.");
         // An inline image, which lopdf cannot write back.
         assert_eq!(read(&[&[lines, b" q 10 0 0 10 300 300 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \x80 EI Q"].concat()]), "The cat sat on the mat by the door.");
         // Streams split between a quote and its string.
         assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat.)", b"' ET"]), "The cat sat on the mat.");
+    }
+
+    #[test]
+    fn a_quote_shown_before_any_font_is_set_does_not_lose_the_pdf() {
+        // pdf-extract panics at a Tj with no font, and passes over a quote: spelt out, the quote would lose the PDF.
+        let sentence = "The cat sat on the mat by the door, as it does every day.";
+        let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let content = format!("BT 12 TL 72 692 Td (by the door.) ' ET BT /F1 10 Tf 72 600 Td ({sentence}) Tj ET");
+        let content = doc.add_object(Stream::new(Dictionary::new(), content.into_bytes()));
+        doc.get_dictionary_mut(page).unwrap().set("Contents", Object::Reference(content));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), [sentence]);
+    }
+
+    #[test]
+    fn a_quote_in_a_form_that_sets_no_font_does_not_lose_the_other_pages() {
+        // The second page is drawn by a form, which shows its text with a quote in the font the page set. pdf-extract
+        // starts a form with no font, so the page has no text; the first page keeps its own.
+        let sentence = "The cat sat on the mat by the door, as it does every day.";
+        let mut doc = Document::load_mem(&pdf(&[vec![(72., 100., 10., sentence)], vec![]], None)).unwrap();
+        let mut form = Dictionary::new();
+        form.set("Type", name("XObject"));
+        form.set("Subtype", name("Form"));
+        form.set("BBox", vec![0.into(), 0.into(), 612.into(), 792.into()]);
+        let form = doc.add_object(Stream::new(form, b"BT 12 TL 72 692 Td (Then it slept.) ' ET".to_vec()));
+        let page = *doc.get_pages().values().next_back().unwrap();
+        let content = doc.add_object(Stream::new(Dictionary::new(), b"BT /F1 10 Tf ET /X1 Do".to_vec()));
+        let page = doc.get_dictionary_mut(page).unwrap();
+        page.set("Contents", Object::Reference(content));
+        let mut xobjects = Dictionary::new();
+        xobjects.set("X1", Object::Reference(form));
+        page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), [sentence]);
     }
 
     /// `pages`, then `ops` drawn on the last in F3: a Japanese font that shows the CIDs of Adobe-Japan1 by `encoding`
