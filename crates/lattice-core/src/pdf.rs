@@ -3607,6 +3607,14 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_columns_of_a_turned_page_are_read_from_the_right_in_whatever_order_they_are_drawn() {
+        // The rightmost column, a heading's place, drawn after the two left of it, as the book draws its headings.
+        let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <0354035603580359035A> Tj 1 0 0 1 476 700 Tm <035C035E> Tj \
+            1 0 0 1 500 700 Tm <034B034D034F03510353> Tj ET";
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()).concat(), "あいうえおかきくぐけこさ");
+    }
+
+    #[test]
     fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
         let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
         let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
