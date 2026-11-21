@@ -846,8 +846,8 @@ fn spell_out_quotes(doc: &mut Document) {
             .operations
             .into_iter()
             .flat_map(|o| match (o.operator.as_str(), &o.operands[..]) {
-                ("'", [text]) => vec![op("T*", None), op("Tj", Some(text))],
-                ("\"", [aw, ac, text]) => vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))],
+                ("'", [text @ Object::String(..)]) => vec![op("T*", None), op("Tj", Some(text))],
+                ("\"", [aw, ac, text @ Object::String(..)]) => vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))],
                 _ => vec![o],
             })
             .collect();
@@ -3334,14 +3334,18 @@ pub(crate) mod tests {
 
     #[test]
     fn lines_set_with_quote_operators_are_read() {
-        let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
-        let page = *doc.get_pages().values().next().unwrap();
-        let content = doc.get_page_contents(page)[0];
-        let ops = b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET";
-        doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap().set_plain_content(ops.to_vec());
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
-        assert_eq!(to_ir(&bytes, None).unwrap().blocks[0].text, "The cat sat on the mat by the door.");
+        let read = |ops: &[u8]| {
+            let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
+            let page = *doc.get_pages().values().next().unwrap();
+            let content = doc.get_page_contents(page)[0];
+            doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap().set_plain_content(ops.to_vec());
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            to_ir(&bytes, None).unwrap().blocks[0].text.clone()
+        };
+        assert_eq!(read(b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET"), "The cat sat on the mat by the door.");
+        // A quote with no string to show, which pdf-extract passes over: as a Tj it would panic.
+        assert_eq!(read(b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"), "The cat sat.");
     }
 
     /// `runs`, then `ops` drawn in F3: a Japanese font that shows the CIDs of Adobe-Japan1 by `encoding` and has no
