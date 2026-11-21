@@ -384,7 +384,7 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
         lines.push(page_lines(i, page));
     }
     drop_running_lines(&mut lines, &doc.pages);
-    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p.width)).collect();
+    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p)).collect();
     let body = body_size(&lines);
     let half = doc.pages.first().map_or(0., |p| p.height / 2.);
     let front = take_front_matter(&mut lines, body, half);
@@ -1464,9 +1464,10 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
 
 /// Reading order of one page. Two columns when each half holds a fifth of the text: lines across
 /// the middle (title, wide figures) split the page into bands, read left column then right.
-/// Otherwise the content order stands.
-fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
-    let (mid, tol) = (width / 2., width * 0.01);
+/// Otherwise the content order stands, except on a turned page, whose lines are its columns from the right: a book
+/// draws its headings after the text they head.
+fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
+    let (mid, tol) = (page.width / 2., page.width * 0.01);
     let side = |l: &Line| match () {
         _ if l.x1 <= mid + tol => Side::Left,
         _ if l.x0 >= mid - tol => Side::Right,
@@ -1491,10 +1492,12 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
             (l.left, l.right) = (lo, hi);
         }
     }
+    if two || page.vertical {
+        lines.sort_by(|a, b| a.y.total_cmp(&b.y));
+    }
     if !two {
         return lines;
     }
-    lines.sort_by(|a, b| a.y.total_cmp(&b.y));
     let mut out = Vec::with_capacity(lines.len());
     let (mut left, mut right) = (Vec::new(), Vec::new());
     for l in lines {
@@ -3732,9 +3735,9 @@ pub(crate) mod tests {
 
     #[test]
     fn a_string_put_beside_a_column_at_its_top_starts_its_own() {
-        // The left column drawn first, then the right one from the same height. The layout reads a page in the order it
-        // is drawn, so the text is the same either way: on the turned page the right column is a line of its own, 12pt
-        // above the left one and starting as far in, where joined it would go on along the left one's line.
+        // The left column drawn first, then the right one from the same height: on the turned page the right column is a
+        // line of its own, 12pt above the left one and starting as far in, where joined it would go on along the left
+        // one's line.
         let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <034B> Tj 1 0 0 1 500 700 Tm <034D034F> Tj ET";
         let (_, pages) = glyphs(&japanese(&[vec![]], "Identity-V", ops), true).unwrap();
         let [a, i, u] = &pages[0].glyphs[..] else {
