@@ -3424,11 +3424,12 @@ pub(crate) mod tests {
     #[test]
     fn vertical_writing_is_read_as_paragraphs_down_the_columns() {
         // Kana down three columns from the right, each column one string: a paragraph that ends short in the second, and
-        // one that starts a character down in the third. The page number is set across.
+        // one that starts a character down in the third. Page numbers are set across, at the foot and at the head.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj \
             1 0 0 1 476 690 Tm <0358035A035C> Tj ET";
-        let ir = to_ir(&japanese(&[vec![(300., 760., 10., "12")]], "Identity-V", ops), None).unwrap();
-        assert_eq!(texts(&ir), ["あいうえおかき", "くけこ"]);
+        let bytes = japanese(&[vec![(300., 760., 10., "12"), (300., 20., 10., "13")]], "Identity-V", ops);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), ["あいうえおかき", "くけこ"]);
+        assert!(regions(&bytes).unwrap().is_empty());
     }
 
     #[test]
