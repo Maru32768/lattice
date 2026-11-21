@@ -1005,34 +1005,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_cancel_takes_off_only_the_call_it_names() {
+    async fn a_cancel_takes_off_only_the_call_it_names_and_later_ones_are_still_asked() {
         let f = fixture();
         let r = f.register("agent", Role::Delete);
-        let (a, b, c) = (f.saved("https://example.com/a"), f.saved("https://example.com/b"), f.saved("https://example.com/c"));
+        let [a, b, c, d] = ["a", "b", "c", "d"].map(|p| f.saved(&format!("https://example.com/{p}")));
         let (session, other) = (f.initialize(&r.token).await, f.initialize(&r.token).await);
         let first = f.call_later(&r.token, &session, "delete_article", json!({ "id": a }));
         f.asked(1).await;
         let second = {
             let (f, token, session) = (f.clone(), r.token.clone(), session.clone());
-            let body = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "delete_article", "arguments": { "id": b } } });
+            let body = json!({ "jsonrpc": "2.0", "id": "two", "method": "tools/call", "params": { "name": "delete_article", "arguments": { "id": b } } });
             tokio::spawn(async move { body_of(f.post(&token, Some(&session), body).await).await["result"].clone() })
         };
         f.asked(2).await;
         let elsewhere = f.call_later(&r.token, &other, "delete_article", json!({ "id": c }));
         let asked = f.asked(3).await;
+        let cancel = |request: Value| json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": request } });
 
-        let cancel = json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 2 } });
-        assert_eq!(f.post(&r.token, Some(&session), cancel).await.status(), StatusCode::ACCEPTED);
-        assert_eq!(f.approvals.waiting(), [asked[0].clone(), asked[2].clone()], "the session's other call and the other session's");
-        let refused = second.await.unwrap();
-        assert!(says(&refused, CANCELLED), "{refused}");
-        f.approvals.answer(asked[0].id, true);
-        f.approvals.answer(asked[2].id, true);
-        for call in [first, elsewhere] {
+        assert_eq!(f.post(&r.token, Some(&session), cancel(json!(1))).await.status(), StatusCode::ACCEPTED);
+        assert_eq!(f.approvals.waiting(), [asked[1].clone(), asked[2].clone()], "the oldest went; the rest keep their order");
+        assert!(says(&first.await.unwrap(), CANCELLED));
+        assert_eq!(f.post(&r.token, Some(&session), cancel(json!("two"))).await.status(), StatusCode::ACCEPTED);
+        assert_eq!(f.approvals.waiting(), [asked[2].clone()], "a string id, and the other session's request 1 stays");
+        assert!(says(&second.await.unwrap(), CANCELLED));
+
+        let later = f.call_later(&r.token, &session, "delete_article", json!({ "id": d }));
+        let now = f.asked(2).await;
+        f.approvals.answer(now[0].id, true);
+        f.approvals.answer(now[1].id, true);
+        for call in [elsewhere, later] {
             let done = call.await.unwrap();
             assert_eq!(done["isError"], false, "{done}");
         }
-        assert_eq!(f.titles().len(), 1, "only the cancelled article is left");
+        assert_eq!(f.titles().len(), 2, "the two cancelled articles are left");
     }
 
     #[tokio::test]
