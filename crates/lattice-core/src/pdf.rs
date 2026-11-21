@@ -3536,10 +3536,11 @@ pub(crate) mod tests {
     #[test]
     fn latin_turned_to_run_down_a_column_is_read_in_its_place() {
         // Two kana, whose em boxes end at 688.8; "If it" in Helvetica from there, 13.3pt long, turned a quarter clockwise
-        // with its baseline 3.8pt left of the column's middle; two kana more.
+        // with its baseline 3.8pt left of the column's middle; two kana more. An arXiv stamp, turned the other way, stays out.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D> Tj ET BT /F1 10 Tf 0 -1 1 0 496.2 688.8 Tm (If it) Tj ET \
             BT /F3 10 Tf 1 0 0 1 500 666.6 Tm <034F0351> Tj ET";
-        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()), ["あいIf itうえ"]);
+        let stamp = vec![(30., 400., 10., "arXiv:2401.00001")];
+        assert_eq!(texts(&to_ir(&japanese(&[stamp], "Identity-V", ops), None).unwrap()), ["あいIf itうえ"]);
     }
 
     #[test]
