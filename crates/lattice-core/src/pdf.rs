@@ -3374,15 +3374,7 @@ pub(crate) mod tests {
         resources.get_mut(b"Font").and_then(Object::as_dict_mut).unwrap().set("F3", Object::Reference(font));
         let content = doc.get_page_contents(page)[0];
         let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
-        stream.set_plain_content(
-            [
-                &stream.content[..],
-                b"
-",
-                ops.as_bytes(),
-            ]
-            .concat(),
-        );
+        stream.set_plain_content([&stream.content[..], b"\n", ops.as_bytes()].concat());
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         bytes
