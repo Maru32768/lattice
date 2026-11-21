@@ -210,15 +210,16 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let mut out = Vec::new();
     // shortcut: a turned page has no regions, as a box over a column would need turning back and a translation set
     // down it; give them one when vertical text turns up for the Page view to translate.
-    let turned = |d: &Draft| d.lines.iter().any(|l| doc.pages.get(l.page).is_some_and(|p| p.vertical));
-    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d) && !turned(d)) {
+    let on_upright_page = |piece: &[&Line]| doc.pages.get(piece[0].page).is_some_and(|p| !p.vertical);
+    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
         } else {
             None
         };
         let pieces: Vec<&[&Line]> = d.lines.chunk_by(run_on).collect();
-        out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level, block)));
+        let texts = pieces.iter().zip(piece_texts(&pieces, &vocab)).filter(|(piece, _)| on_upright_page(piece));
+        out.extend(texts.filter_map(|(piece, text)| region(piece, text, level, block)));
     }
     // A turned page's lines lie across its height, not down it.
     let upright: Vec<&Line> = lines.iter().filter(|l| doc.pages.get(l.page).is_some_and(|p| !p.vertical)).collect();
