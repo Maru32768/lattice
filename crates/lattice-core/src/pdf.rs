@@ -3596,14 +3596,45 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_paragraph_that_runs_on_from_a_turned_page_gives_the_page_set_across_its_own_text() {
+        let sentence = "the cat sat on the mat by the door, as it does every day.";
+        let bytes = japanese(&[vec![(72., 100., 10., sentence)], vec![]], "Identity-V", "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj ET");
+        // The turned page first.
+        let mut doc = Document::load_mem(&bytes).unwrap();
+        let pages = doc.catalog().unwrap().get(b"Pages").and_then(Object::as_reference).unwrap();
+        doc.get_dictionary_mut(pages).unwrap().get_mut(b"Kids").and_then(Object::as_array_mut).unwrap().reverse();
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()).len(), 1, "one paragraph across the two pages");
+        assert_eq!(regions(&bytes).unwrap().iter().map(|r| (r.page, r.text.as_str())).collect::<Vec<_>>(), [(1, sentence)]);
+    }
+
+    #[test]
     fn latin_set_across_on_a_turned_page_keeps_the_spaces_its_pen_moves_make() {
-        // Three columns of ten kana: most of the page is set down it, so it is turned.
+        // Three columns of ten kana: most of the page is set down it, so it is turned. A word loosened by a tenth of an
+        // em, under the 0.15 em that parts words, stays whole.
         let column = |x: f64| format!("1 0 0 1 {x} 700 Tm <034B034D034F035103530354035603580359035A> Tj ");
         let columns = format!("BT /F3 10 Tf {}{}{}ET", column(500.), column(488.), column(476.));
-        for across in ["BT /F1 10 Tf 1 0 0 1 100 400 Tm [(Hello) -300 (world)] TJ ET", "BT /F1 10 Tf 100 400 Td (Hello) Tj 26 0 Td (world) Tj ET"] {
-            let ir = to_ir(&japanese(&[vec![]], "Identity-V", &format!("{columns} {across}")), None).unwrap();
+        let across = [
+            "BT /F1 10 Tf 1 0 0 1 100 400 Tm [(Hello) -300 (world)] TJ ET",
+            "BT /F1 10 Tf 100 400 Td (Hello) Tj 26 0 Td (world) Tj ET",
+            "BT /F1 10 Tf 1 0 0 1 100 400 Tm [(Hel) -100 (lo) -300 (world)] TJ ET",
+        ];
+        for across in across {
+            let bytes = japanese(&[vec![]], "Identity-V", &format!("{columns} {across}"));
+            assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+            let ir = to_ir(&bytes, None).unwrap();
             assert!(texts(&ir).iter().any(|t| t.contains("Hello world")), "{across}: {:?}", texts(&ir));
         }
+    }
+
+    #[test]
+    fn japanese_set_across_on_a_turned_page_takes_no_space_for_a_gap() {
+        // Kana set across, 0.3 em apart: one run, with no space between Japanese, as `line` reads it.
+        let g = |x: f64, text: &str| Glyph { x, y: 400., end: x + 10., size: 10., text: text.into(), face: Face::Body, vertical: false, turned: false };
+        let mut page = Page { width: 612., height: 792., glyphs: vec![g(100., "目"), g(113., "次")], ..Default::default() };
+        turn(&mut page);
+        assert_eq!(page.glyphs.iter().map(|g| g.text.as_str()).collect::<Vec<_>>(), ["目次"]);
     }
 
     #[test]
