@@ -384,7 +384,7 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
         lines.push(page_lines(i, page));
     }
     drop_running_lines(&mut lines, &doc.pages);
-    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p)).collect();
+    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p.width)).collect();
     let body = body_size(&lines);
     let half = doc.pages.first().map_or(0., |p| p.height / 2.);
     let front = take_front_matter(&mut lines, body, half);
@@ -865,6 +865,12 @@ fn turn(page: &mut Page) {
         }
     }
     turned.extend(run.map(sideways));
+    // The layout reads a page's glyphs in the order they come, and a book draws a heading after the text it heads, or a
+    // phrase in bold apart from its column: they go a column at a time from the right, each down from its top.
+    turned.sort_by(|a, b| a.y.total_cmp(&b.y));
+    for column in turned.chunk_by_mut(|a, b| b.y - a.y < 0.3 * a.size.max(b.size)) {
+        column.sort_by(|a, b| a.x.total_cmp(&b.x));
+    }
     page.glyphs = turned;
     page.drawn = std::mem::take(&mut page.drawn).into_iter().map(|d| Drawn { x0: d.y0, y0: width - d.x1, x1: d.y1, y1: width - d.x0, ..d }).collect();
     (page.width, page.height, page.vertical) = (page.height, page.width, true);
@@ -1464,10 +1470,9 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
 
 /// Reading order of one page. Two columns when each half holds a fifth of the text: lines across
 /// the middle (title, wide figures) split the page into bands, read left column then right.
-/// Otherwise the content order stands, except on a turned page, whose lines are its columns from the right: a book
-/// draws its headings after the text they head.
-fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
-    let (mid, tol) = (page.width / 2., page.width * 0.01);
+/// Otherwise the content order stands.
+fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
+    let (mid, tol) = (width / 2., width * 0.01);
     let side = |l: &Line| match () {
         _ if l.x1 <= mid + tol => Side::Left,
         _ if l.x0 >= mid - tol => Side::Right,
@@ -1492,12 +1497,10 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
             (l.left, l.right) = (lo, hi);
         }
     }
-    if two || page.vertical {
-        lines.sort_by(|a, b| a.y.total_cmp(&b.y));
-    }
     if !two {
         return lines;
     }
+    lines.sort_by(|a, b| a.y.total_cmp(&b.y));
     let mut out = Vec::with_capacity(lines.len());
     let (mut left, mut right) = (Vec::new(), Vec::new());
     for l in lines {
@@ -3742,16 +3745,10 @@ pub(crate) mod tests {
 
     #[test]
     fn a_string_put_beside_a_column_at_its_top_starts_its_own() {
-        // The left column drawn first, then the right one from the same height: on the turned page the right column is a
-        // line of its own, 12pt above the left one and starting as far in, where joined it would go on along the left
-        // one's line.
+        // The left column drawn first, then the right one from the same height, which would follow on down the left one
+        // if it were taken to go on from it.
         let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <034B> Tj 1 0 0 1 500 700 Tm <034D034F> Tj ET";
-        let (_, pages) = glyphs(&japanese(&[vec![]], "Identity-V", ops), true).unwrap();
-        let [a, i, u] = &pages[0].glyphs[..] else {
-            panic!("{} glyphs", pages[0].glyphs.len());
-        };
-        let from_a = [a, i, u].map(|g| (g.text.as_str(), (g.x - a.x).round(), (g.y - a.y).round()));
-        assert_eq!(from_a, [("あ", 0., 0.), ("い", 0., -12.), ("う", 10., -12.)]);
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()).concat(), "いうあ");
     }
 
     #[test]
