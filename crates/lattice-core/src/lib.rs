@@ -34,6 +34,7 @@ pub mod numbers;
 pub mod openai;
 pub mod pdf;
 mod pdf_image;
+mod pdf_japan1;
 pub mod pdf_worker;
 pub mod quiz;
 pub mod r2;

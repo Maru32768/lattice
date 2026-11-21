@@ -8,7 +8,7 @@
 
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::LazyLock;
 
@@ -22,6 +22,7 @@ use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
 use crate::msg;
 use crate::pdf_image::Format;
+use crate::pdf_japan1;
 use crate::pdf_worker::{self, Request, Session};
 use crate::store::{NewSnapshot, Store, sha256_hex};
 
@@ -660,6 +661,10 @@ fn is_image(s: &Stream) -> bool {
     s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image")
 }
 
+fn is_form(s: &Stream) -> bool {
+    s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Form")
+}
+
 #[derive(Default)]
 struct Page {
     width: f64,
@@ -706,6 +711,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     let mut doc = load(bytes)?;
     mend_to_unicode(&mut doc);
     spell_out_quotes(&mut doc);
+    give_japan1_text(&mut doc);
     let mut walked = Vec::new();
     for &page in doc.get_pages().values() {
         // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
@@ -757,8 +763,7 @@ fn mend_to_unicode(doc: &mut Document) {
 fn spell_out_quotes(doc: &mut Document) {
     let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
     let mut ids: HashSet<ObjectId> = pages.into_iter().flat_map(|p| doc.get_page_contents(p)).collect();
-    let is_form = |o: &Object| o.as_stream().is_ok_and(|s| s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Form"));
-    ids.extend(doc.objects.iter().filter(|(_, o)| is_form(o)).map(|(&id, _)| id));
+    ids.extend(doc.objects.iter().filter(|(_, o)| o.as_stream().is_ok_and(is_form)).map(|(&id, _)| id));
     for id in ids {
         let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
             continue;
@@ -783,6 +788,69 @@ fn spell_out_quotes(doc: &mut Document) {
             s.set_plain_content(encoded);
         }
     }
+}
+
+/// A Japanese font that shows the CIDs of Adobe-Japan1 as they are, with no ToUnicode, gives pdf-extract no text. It gets a
+/// ToUnicode of the CIDs it shows, not of the whole collection: pdf-extract parses a font's ToUnicode again on each page.
+/// A form without Resources of its own is not looked in.
+fn give_japan1_text(doc: &mut Document) {
+    let fonts: HashSet<ObjectId> = doc.objects.iter().filter(|(_, o)| o.as_dict().is_ok_and(|f| shows_japan1(doc, f))).map(|(&id, _)| id).collect();
+    if fonts.is_empty() {
+        return;
+    }
+    let pages =
+        doc.get_pages().into_values().map(|p| (doc.get_page_content(p).unwrap_or_default(), inherited(doc, p, b"Resources", Object::as_dict).ok().flatten()));
+    let forms = doc.objects.values().filter_map(|o| o.as_stream().ok()).filter(|s| is_form(s));
+    let forms =
+        forms.map(|s| (s.decompressed_content().unwrap_or_else(|_| s.content.clone()), s.dict.get_deref(b"Resources", doc).and_then(Object::as_dict).ok()));
+    let mut shown: HashMap<ObjectId, BTreeSet<u32>> = HashMap::new();
+    for (content, resources) in pages.chain(forms) {
+        let names = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
+        let mut font = None;
+        for op in Content::decode(&content).map(|c| c.operations).unwrap_or_default() {
+            match (op.operator.as_str(), op.operands.first()) {
+                ("Tf", Some(name)) => {
+                    let named = name.as_name().ok().and_then(|n| names?.get(n).ok()?.as_reference().ok());
+                    font = named.filter(|id| fonts.contains(id));
+                }
+                ("Tj" | "TJ", Some(shown_text)) if let Some(id) = font => {
+                    let strings: Vec<&Object> = shown_text.as_array().map_or_else(|_| vec![shown_text], |a| a.iter().collect());
+                    let cids = strings
+                        .into_iter()
+                        .filter_map(|o| o.as_str().ok())
+                        .flat_map(|s| s.as_chunks::<2>().0.iter().map(|&c| u32::from(u16::from_be_bytes(c))));
+                    shown.entry(id).or_default().extend(cids);
+                }
+                _ => {}
+            }
+        }
+    }
+    for (font, cids) in shown {
+        let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02X}")).collect::<String>();
+        let entries: Vec<String> = cids.into_iter().filter_map(|cid| Some(format!("<{cid:04X}> <{}>", hex(pdf_japan1::utf16(cid)?)))).collect();
+        let cmap = format!(
+            "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <0000> <FFFF> endcodespacerange\n{} beginbfchar\n{}\nendbfchar\nendcmap end end\n",
+            entries.len(),
+            entries.join("\n")
+        );
+        let cmap = doc.add_object(Stream::new(Dictionary::new(), cmap.into_bytes()));
+        if let Ok(f) = doc.get_dictionary_mut(font) {
+            f.set("ToUnicode", Object::Reference(cmap));
+        }
+    }
+}
+
+/// A Type0 font without a ToUnicode whose codes are the CIDs of Adobe-Japan1.
+fn shows_japan1(doc: &Document, font: &Dictionary) -> bool {
+    let name = |key: &[u8]| font.get(key).and_then(Object::as_name).ok();
+    let cid_font = font.get_deref(b"DescendantFonts", doc).and_then(Object::as_array).ok().and_then(|d| d.first()).and_then(|d| doc.dereference(d).ok());
+    let info = cid_font.and_then(|(_, f)| f.as_dict().ok()?.get_deref(b"CIDSystemInfo", doc).and_then(Object::as_dict).ok());
+    let says = |key: &[u8], value: &[u8]| info.is_some_and(|i| i.get_deref(key, doc).and_then(Object::as_str).is_ok_and(|s| s == value));
+    matches!(name(b"Subtype"), Some(b"Type0"))
+        && matches!(name(b"Encoding"), Some(b"Identity-H" | b"Identity-V"))
+        && !font.has(b"ToUnicode")
+        && says(b"Registry", b"Adobe")
+        && says(b"Ordering", b"Japan1")
 }
 
 fn load(bytes: &[u8]) -> Result<Document, String> {
@@ -3179,6 +3247,43 @@ pub(crate) mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert_eq!(to_ir(&bytes, None).unwrap().blocks[0].text, "The cat sat on the mat by the door.");
+    }
+
+    #[test]
+    fn text_from_a_japanese_font_with_no_tounicode_is_read() {
+        let mut doc = Document::load_mem(&pdf(&[vec![(72., 100., 10., "Cats")]], None)).unwrap();
+        let mut info = Dictionary::new();
+        info.set("Registry", Object::string_literal("Adobe"));
+        info.set("Ordering", Object::string_literal("Japan1"));
+        info.set("Supplement", Object::Integer(6));
+        let mut descriptor = Dictionary::new();
+        descriptor.set("Type", name("FontDescriptor"));
+        descriptor.set("FontName", name("Mincho"));
+        let mut cid_font = Dictionary::new();
+        cid_font.set("Type", name("Font"));
+        cid_font.set("Subtype", name("CIDFontType0"));
+        cid_font.set("BaseFont", name("Mincho"));
+        cid_font.set("CIDSystemInfo", Object::Dictionary(info));
+        cid_font.set("FontDescriptor", Object::Reference(doc.add_object(descriptor)));
+        let mut font = Dictionary::new();
+        font.set("Type", name("Font"));
+        font.set("Subtype", name("Type0"));
+        font.set("BaseFont", name("Mincho"));
+        font.set("Encoding", name("Identity-V"));
+        font.set("DescendantFonts", vec![Object::Reference(doc.add_object(cid_font))]);
+        let font = doc.add_object(font);
+        let page = *doc.get_pages().values().next().unwrap();
+        let resources = doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
+        resources.get_mut(b"Font").and_then(Object::as_dict_mut).unwrap().set("F3", Object::Reference(font));
+        let content = doc.get_page_contents(page)[0];
+        // Two kana by their CIDs, 843 and 887, as a book typeset in Japanese draws them.
+        let ops = b"BT /F3 10 Tf 72 600 Td <034B0377> Tj ET";
+        let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+        stream.set_plain_content([&stream.content[..], b"\n", ops].concat());
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(ir.blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>(), ["Cats", "あの"]);
     }
 
     #[test]
