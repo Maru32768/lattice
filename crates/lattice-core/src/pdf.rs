@@ -3580,6 +3580,14 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_paragraph_that_runs_on_to_a_turned_page_keeps_its_region_on_the_page_set_across() {
+        // One line at the foot of a page set across, read on into the column of the next page, which is turned.
+        let line = vec![(72., 740., 10., "The cat sat on the mat by the door, as it does every day, and then it")];
+        let bytes = japanese(&[line, vec![]], "Identity-V", "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj ET");
+        assert_eq!(regions(&bytes).unwrap().iter().map(|r| r.page).collect::<Vec<_>>(), [0]);
+    }
+
+    #[test]
     fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
         let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
         let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
