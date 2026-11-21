@@ -9,6 +9,7 @@
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::rc::Rc;
 use std::sync::LazyLock;
 
@@ -465,13 +466,16 @@ struct Drawn {
     y1: f64,
 }
 
+/// The styles and the images `walk` finds on a page.
+type Walked = (Vec<Style>, Vec<Drawn>);
+
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
 /// style of each string, in the order pdf-extract shows them, and the images, in the PDF's own coordinates. pdf-extract
 /// calls `begin_word` once per string, so the styles line up with what it reports. Images inside forms, and inline
 /// images, are not followed. A clip counts by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
 // pixels when a figure's hidden part turns out to matter.
-fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<Style>, Vec<Drawn>) {
+fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walked {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
     };
@@ -747,28 +751,35 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// `skip_forms`: figures are form XObjects, whose labels are noise, and pdf-extract places text
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
-    let mut doc = load(bytes)?;
-    // Before `spell_out_quotes` and `give_japan1_text`, which would otherwise decode forms that pdf-extract is not given.
-    if skip_forms {
-        blank(&mut doc, is_form);
-    }
-    mend_to_unicode(&mut doc);
-    spell_out_quotes(&mut doc);
-    give_japan1_text(&mut doc);
-    let mut walked = Vec::new();
-    for &page in doc.get_pages().values() {
-        // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
-        inherited(&doc, page, b"MediaBox", Object::as_array)?;
-        // Before the blanking below takes the images' filters, which `Format::of` reads.
-        walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
-    }
+    let (doc, walked) = prepared(bytes, skip_forms, true)?;
     let (styles, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
-    // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
-    // panics on some of them; an image holds no text.
-    blank(&mut doc, is_image);
-    drawable(&doc)?;
     let mut out = Glyphs { styles, ..Default::default() };
-    pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
+    match catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc(&doc, &mut out))) {
+        Ok(read) => read.map_err(|e| unreadable(&e))?,
+        // pdf-extract passes over a quote it would panic at as the Tj it is spelt out to, one shown with no font set for
+        // one. So a page it panics at is read as it was written, and only what its quotes show is lost, not the PDF.
+        Err(_) => {
+            out.pages.clear();
+            let mut written = None;
+            for &number in doc.get_pages().keys() {
+                let index = out.pages.len();
+                let spelt = catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc_page(&doc, &mut out, number)));
+                let read = spelt.or_else(|_| {
+                    out.pages.truncate(index);
+                    let (written, walked) = match &mut written {
+                        Some(written) => written,
+                        none => none.insert(prepared(bytes, skip_forms, false)?),
+                    };
+                    if let (Some(spelt), Some((written, _))) = (out.styles.get_mut(index), walked.get_mut(index)) {
+                        *spelt = std::mem::take(written);
+                    }
+                    let read = catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc_page(written, &mut out, number)));
+                    Ok::<_, String>(read.unwrap_or_else(|panic| resume_unwind(panic)))
+                })?;
+                read.map_err(|e| unreadable(&e))?;
+            }
+        }
+    }
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
         let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
@@ -780,6 +791,33 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         }
     }
     Ok((doc, out.pages))
+}
+
+/// The document as pdf-extract is given it, with what `walk` finds on each of its pages. `quotes`: with `'` and `"`
+/// spelt out.
+fn prepared(bytes: &[u8], skip_forms: bool, quotes: bool) -> Result<(Document, Vec<Walked>), String> {
+    let mut doc = load(bytes)?;
+    // Before `spell_out_quotes` and `give_japan1_text`, which would otherwise decode forms that pdf-extract is not given.
+    if skip_forms {
+        blank(&mut doc, is_form);
+    }
+    mend_to_unicode(&mut doc);
+    if quotes {
+        spell_out_quotes(&mut doc);
+    }
+    give_japan1_text(&mut doc);
+    let mut walked = Vec::new();
+    for &page in doc.get_pages().values() {
+        // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
+        inherited(&doc, page, b"MediaBox", Object::as_array)?;
+        // Before the blanking below takes the images' filters, which `Format::of` reads.
+        walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
+    }
+    // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
+    // panics on some of them; an image holds no text.
+    blank(&mut doc, is_image);
+    drawable(&doc)?;
+    Ok((doc, walked))
 }
 
 /// A page set mostly in vertical writing, turned a quarter so that its columns, right to left, read as lines down the
