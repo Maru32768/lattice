@@ -3554,9 +3554,10 @@ pub(crate) mod tests {
 
     #[test]
     fn a_turned_page_leaves_the_room_of_the_other_pages_regions_as_it_was() {
-        // A paragraph halfway down a page, then a page of columns, whose lines once turned start higher up.
+        // A paragraph halfway down a page, then a page of columns, whose lines once turned start higher up and, from a
+        // column at the left edge, end lower down.
         let paragraph = vec![(72., 400., 10., "The cat sat on the mat by the door, as it does every day."), (72., 412., 10., "Then it slept.")];
-        let ops = "BT /F3 10 Tf 1 0 0 1 500 760 Tm <034B034D034F03510353> Tj 1 0 0 1 488 760 Tm <03540356> Tj ET";
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 760 Tm <034B034D034F03510353> Tj 1 0 0 1 488 760 Tm <03540356> Tj 1 0 0 1 60 760 Tm <0358> Tj ET";
         let room = |bytes: &[u8]| regions(bytes).unwrap().iter().filter(|r| r.page == 0).map(|r| (r.room_up, r.room_down)).collect::<Vec<_>>();
         let alone = room(&pdf(std::slice::from_ref(&paragraph), None));
         assert!(alone[0].0 > 0., "{alone:?}");
