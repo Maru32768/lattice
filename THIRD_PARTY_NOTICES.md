@@ -234,7 +234,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## Adobe-Japan1 CMap
 
-`crates/lattice-core/src/Adobe-Japan1-UCS2.bcmap` is Adobe's `Adobe-Japan1-UCS2` CMap, in the binary form that pdfjs-dist ships in `cmaps/`. Lattice reads from it the text of Japanese fonts in PDFs that leave their text out.
+`crates/lattice-core/src/Adobe-Japan1-UCS2.bcmap` is Adobe's `Adobe-Japan1-UCS2` CMap, in the binary form that pdfjs-dist ships in its `cmaps/` folder. Lattice compiles it into the app and uses it to read text in a Japanese font when the PDF leaves out the font's own ToUnicode map.
 
 ```
 Copyright 1990-2009 Adobe Systems Incorporated.

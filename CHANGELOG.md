@@ -29,7 +29,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Fixed
 
 - A focused drop-down in a chip, such as **Search scope** in the search pane, showed two focus rings, one inside the other. It now shows one.
-- **Some PDFs failed to import or lost their text.** A PDF whose fonts were written by PDF::API2, as in some books, failed to import with a read error. Lines set with the PDF operators `'` and `"`, and Japanese fonts that do not say which characters they draw, came out without their text. Lattice now reads them. Japanese set vertically is now read column by column from the right, and Japanese set with space between its characters, as in headings, no longer comes out with spaces.
+- **Some PDFs failed to import or lost their text.** Some PDFs whose fonts were written by PDF::API2, such as books, failed to import with an error that the PDF could not be parsed. The text of lines set with the PDF operators `'` and `"` was lost, and so was text in Japanese fonts that do not say which characters they draw. Lattice now imports these PDFs and reads their text. Vertical Japanese is now read column by column from the right. Japanese set with gaps between its characters, as in headings, no longer comes out with spaces. To apply this to a saved PDF, use **Re-extract**.
 
 ## [0.5.0] - 2026-11-18
 
