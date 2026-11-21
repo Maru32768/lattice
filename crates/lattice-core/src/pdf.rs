@@ -835,34 +835,42 @@ fn mend_to_unicode(doc: &mut Document) {
 }
 
 /// pdf-extract shows nothing for `'` and `"`, which some books set every line with: it reads the `T*` and `Tj` they stand
-/// for. Before `walk`, so that the faces it counts line up with what pdf-extract shows.
+/// for. Before `walk`, so that the faces it counts line up with what pdf-extract shows. A page's streams may part anywhere,
+/// even between a string and its quote, so a page is spelt out as a whole, into one stream.
 fn spell_out_quotes(doc: &mut Document) {
-    let mut ids: HashSet<ObjectId> = doc.get_pages().into_values().flat_map(|p| doc.get_page_contents(p)).collect();
-    ids.extend(doc.objects.iter().filter(|(_, o)| o.as_stream().is_ok_and(is_form)).map(|(&id, _)| id));
-    for id in ids {
-        let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
-            continue;
-        };
-        let Ok(mut content) = Content::decode(&plain(s)) else {
-            continue;
-        };
-        if !content.operations.iter().any(|op| op.operator == "'" || op.operator == "\"") {
-            continue;
-        }
-        let op = |name: &str, operand: Option<&Object>| Operation::new(name, operand.into_iter().cloned().collect());
-        content.operations = content
-            .operations
-            .into_iter()
-            .flat_map(|o| match (o.operator.as_str(), &o.operands[..]) {
-                ("'", [text @ Object::String(..)]) => vec![op("T*", None), op("Tj", Some(text))],
-                ("\"", [aw, ac, text @ Object::String(..)]) => vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))],
-                _ => vec![o],
-            })
-            .collect();
-        if let Ok(encoded) = content.encode() {
-            s.set_plain_content(encoded);
+    for page in doc.get_pages().into_values() {
+        if let Some(spelt) = doc.get_page_content(page).ok().and_then(|c| spelt_out(&c)) {
+            let id = doc.add_object(Stream::new(Dictionary::new(), spelt));
+            if let Ok(page) = doc.get_dictionary_mut(page) {
+                page.set("Contents", Object::Reference(id));
+            }
         }
     }
+    for s in doc.objects.values_mut().filter_map(|o| o.as_stream_mut().ok()).filter(|s| is_form(s)) {
+        if let Some(spelt) = spelt_out(&plain(s)) {
+            s.set_plain_content(spelt);
+        }
+    }
+}
+
+/// `content` with its quotes spelt out, if it has any. Inline images are left out: lopdf cannot write one back, and
+/// neither pdf-extract nor `walk` reads them.
+fn spelt_out(content: &[u8]) -> Option<Vec<u8>> {
+    if !content.iter().any(|&b| b == b'\'' || b == b'"') {
+        return None;
+    }
+    let content = Content::decode(content).ok()?;
+    if !content.operations.iter().any(|op| op.operator == "'" || op.operator == "\"") {
+        return None;
+    }
+    let op = |name: &str, operand: Option<&Object>| Operation::new(name, operand.into_iter().cloned().collect());
+    let operations = content.operations.into_iter().flat_map(|o| match (o.operator.as_str(), &o.operands[..]) {
+        ("'", [text @ Object::String(..)]) => vec![op("T*", None), op("Tj", Some(text))],
+        ("\"", [aw, ac, text @ Object::String(..)]) => vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))],
+        ("BI", _) => vec![],
+        _ => vec![o],
+    });
+    Content { operations: operations.collect::<Vec<_>>() }.encode().ok()
 }
 
 /// A Japanese font that shows the CIDs of Adobe-Japan1 as they are, with no ToUnicode, gives pdf-extract no text. It gets a
@@ -3357,18 +3365,24 @@ pub(crate) mod tests {
 
     #[test]
     fn lines_set_with_quote_operators_are_read() {
-        let read = |ops: &[u8]| {
+        // The page's content in as many streams as `parts`.
+        let read = |parts: &[&[u8]]| {
             let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
             let page = *doc.get_pages().values().next().unwrap();
-            let content = doc.get_page_contents(page)[0];
-            doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap().set_plain_content(ops.to_vec());
+            let streams: Vec<Object> = parts.iter().map(|p| Object::Reference(doc.add_object(Stream::new(Dictionary::new(), p.to_vec())))).collect();
+            doc.get_dictionary_mut(page).unwrap().set("Contents", streams);
             let mut bytes = Vec::new();
             doc.save_to(&mut bytes).unwrap();
             to_ir(&bytes, None).unwrap().blocks[0].text.clone()
         };
-        assert_eq!(read(b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET"), "The cat sat on the mat by the door.");
+        let lines: &[u8] = b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET";
+        assert_eq!(read(&[lines]), "The cat sat on the mat by the door.");
         // A quote with no string to show, which pdf-extract passes over: as a Tj it would panic.
-        assert_eq!(read(b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"), "The cat sat.");
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"]), "The cat sat.");
+        // An inline image, which lopdf cannot write back.
+        assert_eq!(read(&[&[lines, b" q 10 0 0 10 300 300 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \x80 EI Q"].concat()]), "The cat sat on the mat by the door.");
+        // Streams split between a quote and its string.
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat.)", b"' ET"]), "The cat sat on the mat.");
     }
 
     /// `pages`, then `ops` drawn on the last in F3: a Japanese font that shows the CIDs of Adobe-Japan1 by `encoding`
