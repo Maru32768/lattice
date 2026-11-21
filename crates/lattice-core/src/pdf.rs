@@ -866,7 +866,9 @@ fn spelt_out(content: &[u8]) -> Option<Vec<u8>> {
     let op = |name: &str, operand: Option<&Object>| Operation::new(name, operand.into_iter().cloned().collect());
     let operations = content.operations.into_iter().flat_map(|o| match (o.operator.as_str(), &o.operands[..]) {
         ("'", [text @ Object::String(..)]) => vec![op("T*", None), op("Tj", Some(text))],
-        ("\"", [aw, ac, text @ Object::String(..)]) => vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))],
+        ("\"", [aw @ (Object::Integer(_) | Object::Real(_)), ac @ (Object::Integer(_) | Object::Real(_)), text @ Object::String(..)]) => {
+            vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))]
+        }
         ("BI", _) => vec![],
         _ => vec![o],
     });
@@ -3378,8 +3380,9 @@ pub(crate) mod tests {
         };
         let lines: &[u8] = b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET";
         assert_eq!(read(&[lines]), "The cat sat on the mat by the door.");
-        // A quote with no string to show, which pdf-extract passes over: as a Tj it would panic.
+        // Quotes with no string to show, or no spacing, which pdf-extract passes over: as a Tj or Tw they would panic.
         assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"]), "The cat sat.");
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj /N 0 (on the mat.) \" 0 0 5 \" ET"]), "The cat sat.");
         // An inline image, which lopdf cannot write back.
         assert_eq!(read(&[&[lines, b" q 10 0 0 10 300 300 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \x80 EI Q"].concat()]), "The cat sat on the mat by the door.");
         // Streams split between a quote and its string.
