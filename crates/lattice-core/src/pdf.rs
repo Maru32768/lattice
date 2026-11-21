@@ -3589,6 +3589,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn latin_set_across_on_a_turned_page_keeps_the_spaces_its_pen_moves_make() {
+        // Three columns of ten kana: most of the page is set down it, so it is turned.
+        let column = |x: f64| format!("1 0 0 1 {x} 700 Tm <034B034D034F035103530354035603580359035A> Tj ");
+        let columns = format!("BT /F3 10 Tf {}{}{}ET", column(500.), column(488.), column(476.));
+        for across in ["BT /F1 10 Tf 1 0 0 1 100 400 Tm [(Hello) -300 (world)] TJ ET", "BT /F1 10 Tf 100 400 Td (Hello) Tj 26 0 Td (world) Tj ET"] {
+            let ir = to_ir(&japanese(&[vec![]], "Identity-V", &format!("{columns} {across}")), None).unwrap();
+            assert!(texts(&ir).iter().any(|t| t.contains("Hello world")), "{across}: {:?}", texts(&ir));
+        }
+    }
+
+    #[test]
     fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
         let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
         let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
