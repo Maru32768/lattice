@@ -6,9 +6,11 @@
 //! lines, two-column reading order, running headers and page numbers, title, headings,
 //! paragraphs (with hyphenated line breaks joined), captions and the reference list.
 
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 use pdf_extract::content::{Content, Operation};
 use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
@@ -702,6 +704,7 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
+    mend_to_unicode(&mut doc);
     let mut walked = Vec::new();
     for &page in doc.get_pages().values() {
         // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
@@ -726,6 +729,26 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
     }
     Ok((doc, out.pages))
+}
+
+/// PDF::API2 writes a character past U+FFFF in a ToUnicode CMap as its code point (`<26951>`) where UTF-16 is due.
+/// pdf-extract's CMap parser stops at a hex string of odd length and then panics, which loses the whole PDF.
+fn mend_to_unicode(doc: &mut Document) {
+    static CODE_POINT: LazyLock<regex::bytes::Regex> = LazyLock::new(|| regex::bytes::Regex::new("<([0-9A-Fa-f]{5})>").expect("static regex"));
+    let utf16 = |c: &regex::bytes::Captures| {
+        let ch = std::str::from_utf8(&c[1]).ok().and_then(|h| u32::from_str_radix(h, 16).ok()).and_then(char::from_u32);
+        ch.map_or_else(|| c[0].to_vec(), |ch| format!("<{}>", ch.encode_utf16(&mut [0; 2]).iter().map(|u| format!("{u:04X}")).collect::<String>()).into_bytes())
+    };
+    let cmaps: HashSet<ObjectId> = doc.objects.values().filter_map(|o| o.as_dict().ok()?.get(b"ToUnicode").ok()?.as_reference().ok()).collect();
+    for id in cmaps {
+        let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
+            continue;
+        };
+        let content = s.decompressed_content().unwrap_or_else(|_| s.content.clone());
+        if let Cow::Owned(mended) = CODE_POINT.replace_all(&content, utf16) {
+            s.set_plain_content(mended);
+        }
+    }
 }
 
 fn load(bytes: &[u8]) -> Result<Document, String> {
@@ -3096,6 +3119,20 @@ pub(crate) mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn a_character_past_u_ffff_written_as_its_code_point_in_a_cmap_is_read() {
+        let mut doc = Document::load_mem(&pdf(&[vec![(72., 100., 10., "A cat sat on the mat.")]], None)).unwrap();
+        let cmap = b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <00> <ff> endcodespacerange\n\
+            2 beginbfchar\n<41> <26951>\n<63> <0063>\nendbfchar\nendcmap end end\n";
+        let cmap = doc.add_object(Stream::new(Dictionary::new(), cmap.to_vec()));
+        let helvetica = |o: &Object| o.as_dict().is_ok_and(|d| d.get(b"BaseFont").and_then(Object::as_name).is_ok_and(|n| n == b"Helvetica"));
+        let font = doc.objects.values_mut().find(|o| helvetica(o)).and_then(|o| o.as_dict_mut().ok()).unwrap();
+        font.set("ToUnicode", Object::Reference(cmap));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(to_ir(&bytes, None).unwrap().blocks[0].text, "\u{26951} cat sat on the mat.");
     }
 
     #[test]
