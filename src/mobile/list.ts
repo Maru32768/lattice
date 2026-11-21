@@ -59,7 +59,9 @@ export function storedView(): ListView {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null");
     if (isStored(v)) {
-      return { scope: storedScope(v.scope)!, facets: v.facets, query: v.query, shown: Math.max(PAGE, v.shown), kept: NO_KEPT };
+      // The sheet offers groups as scopes only, so a group chosen as a facet could not be taken off there.
+      const facets = { ...v.facets, groups: [] };
+      return { scope: storedScope(v.scope)!, facets, query: v.query, shown: Math.max(PAGE, v.shown), kept: NO_KEPT };
     }
   } catch {
     // Blocked storage, or a view an older version wrote.

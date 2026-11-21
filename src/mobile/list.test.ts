@@ -31,6 +31,8 @@ test("the phone keeps a group's list, and leaves it when the PC deletes the grou
   assert.equal(withoutGoneGroup(view, [group]), view, "an empty group is still there");
   assert.deepEqual(withoutGoneGroup(view, []), { ...view, scope: { kind: "all" }, shown: PAGE });
   assert.equal(withoutGoneGroup(FIRST_VIEW, []), FIRST_VIEW);
+  stored.set("lattice.mobile.view", JSON.stringify({ ...FIRST_VIEW, facets: { ...NO_FACETS, groups: [7], tags: ["rust"] } }));
+  assert.deepEqual(storedView().facets, { ...NO_FACETS, tags: ["rust"] }, "a group chosen as a filter, which the sheet no longer offers, is dropped");
 });
 
 test("a stored view of another shape is not shown", () => {
