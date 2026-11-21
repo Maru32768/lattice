@@ -133,7 +133,6 @@ export function App() {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
-      setView((v) => withoutGoneGroup(v, index.groups ?? []));
       // After the list, which says where the PC is: the icons come from the same place. Once per page: they rarely
       // change, and a refresh need not fetch them again on mobile data.
       if (!iconsAsked.current) {
@@ -310,7 +309,7 @@ export function App() {
         icons={icons}
         unsent={unsent}
         writable={!load.index.read_only}
-        view={view}
+        view={withoutGoneGroup(view, load.index.groups ?? [])}
         onView={setView}
         generatedAt={load.index.generated_at}
         refreshFailed={refreshFailed}

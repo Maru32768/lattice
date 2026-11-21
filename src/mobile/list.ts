@@ -112,7 +112,10 @@ export const forgetListPlace = () => {
   }
 };
 
-/** The view, back on all articles if its group was deleted on the PC, as the PC goes back. The same view otherwise. */
+/**
+ * The view to show: all articles while its group is not in the list, as the PC goes back when the group is deleted.
+ * The chosen group stays: an older snapshot, read while the PC is off, may not have it yet.
+ */
 export function withoutGoneGroup(v: ListView, groups: GroupRow[]): ListView {
   const s = v.scope;
   return s.kind !== "group" || groups.some((g) => g.id === s.id) ? v : { ...v, scope: { kind: "all" }, shown: PAGE, kept: NO_KEPT };
