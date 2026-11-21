@@ -3432,8 +3432,9 @@ pub(crate) mod tests {
 
     #[test]
     fn text_from_a_japanese_font_with_no_tounicode_is_read() {
-        // Two kana by their CIDs, 843 and 887: in F3 as it is set, and as a Q brings it back.
-        for ops in ["BT /F3 10 Tf 72 600 Td <034B0377> Tj ET", "BT /F3 10 Tf ET q BT /F1 10 Tf ET Q BT 72 600 Td <034B0377> Tj ET"] {
+        // Two kana by their CIDs, 843 and 887: in F3 as it is set, as a Q brings it back, and shown by a quote.
+        let quoted = "BT /F3 10 Tf 12 TL 72 612 Td <034B0377> ' ET";
+        for ops in ["BT /F3 10 Tf 72 600 Td <034B0377> Tj ET", "BT /F3 10 Tf ET q BT /F1 10 Tf ET Q BT 72 600 Td <034B0377> Tj ET", quoted] {
             let ir = to_ir(&japanese(&[vec![(72., 100., 10., "Cats")]], "Identity-H", ops), None).unwrap();
             assert_eq!(texts(&ir), ["Cats", "あの"], "{ops}");
         }
