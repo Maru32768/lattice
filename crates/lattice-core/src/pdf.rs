@@ -3441,6 +3441,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_turned_page_keeps_its_glyphs_and_images_on_it() {
+        // On a page 612 wide: a glyph down the column at 500, and an image.
+        let glyph = Glyph { x: 500., y: 100., end: 510., size: 10., text: "あ".into(), face: Face::Body, vertical: true, turned: false };
+        let image = Drawn { id: (1, 0), x0: 100., y0: 200., x1: 300., y1: 400. };
+        let mut page = Page { width: 612., height: 792., glyphs: vec![glyph], drawn: vec![image], ..Default::default() };
+        turn(&mut page);
+        assert_eq!((page.width, page.height, page.vertical), (792., 612., true));
+        assert_eq!(page.glyphs.iter().map(|g| (g.x, g.end, g.y)).collect::<Vec<_>>(), [(100., 110., 112.)]);
+        assert_eq!(page.drawn.iter().map(|d| (d.x0, d.y0, d.x1, d.y1)).collect::<Vec<_>>(), [(200., 312., 400., 512.)]);
+    }
+
+    #[test]
     fn strings_shown_one_after_another_go_on_down_their_column() {
         // One column as a TJ of two strings, the next as two Tj after one Tm.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
