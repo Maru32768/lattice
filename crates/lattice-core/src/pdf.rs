@@ -992,13 +992,11 @@ impl OutputDev for Glyphs {
         let style = self.styles.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
         // pdf-extract moves along every string as if it ran across the page; one in vertical writing runs down from
         // where it starts. Its advances are the glyphs' widths, which in a Japanese font match their heights.
-        let (x, y) = (trm.m31 - self.origin.0, trm.m32);
-        let (x, y) = if style.vertical {
+        let (mut x, mut y) = (trm.m31 - self.origin.0, trm.m32);
+        if style.vertical {
             let (sx, sy) = *self.start.get_or_insert((x, y));
-            (sx, sy - (x - sx))
-        } else {
-            (x, y)
-        };
+            (x, y) = (sx, sy - (x - sx));
+        }
         // A glyph drawn again where it already is adds no ink: a book draws an item's bullet once for each of the
         // item's lines, and the pen's return to it would start a line. The repeats lie within 0.01pt of each other.
         // Looked up by square, not by scanning: a page can draw one glyph a million times.
