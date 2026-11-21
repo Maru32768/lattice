@@ -25,6 +25,7 @@ use lattice_core::mcp::{self, Registration, Role, Scope};
 use lattice_core::mobile::{Effects, blocking};
 use lattice_core::store::{Store, random_hex, sha256_hex};
 use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::oneshot;
 use ts_rs::TS;
 
@@ -57,6 +58,7 @@ const MAY_NOT_DELETE: &str =
 const DENIED: &str = "The user did not allow this deletion in Lattice. Nothing was deleted.";
 const UNANSWERED: &str = "Nobody answered in Lattice within 2 minutes, so nothing was deleted.";
 const STOPPED: &str = "The MCP server stopped before the user answered in Lattice. Nothing was deleted.";
+const CANCELLED: &str = "This call was cancelled before the user answered in Lattice. Nothing was deleted.";
 const TOO_MANY: &str = "Too many deletions are waiting for the user's answer in Lattice. Nothing was deleted: ask again once they are answered.";
 const CHANGED: &str = "What this would delete changed while the user decided in Lattice. Nothing was deleted: look it up again.";
 
@@ -166,9 +168,16 @@ pub struct Approvals {
 
 #[derive(Default)]
 struct Waiting {
-    asks: Vec<(Approval, oneshot::Sender<bool>)>,
+    asks: Vec<Ask>,
     /// The server is stopping: what waits is refused, and nothing more is asked.
     closed: bool,
+}
+
+struct Ask {
+    approval: Approval,
+    /// The session the call came in and its JSON-RPC id, which a cancel names.
+    call: (String, Value),
+    reply: oneshot::Sender<Result<(), &'static str>>,
 }
 
 /// A deletion as the app asks the user about it.
@@ -242,21 +251,26 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
         Ok(m) => m,
         Err(reply) => return json(StatusCode::BAD_REQUEST, &reply),
     };
-    let opened = if message.is_initialize() {
+    let (session, opened) = if message.is_initialize() {
         match st.activity.open(&key, message.client().as_deref().map(clip)) {
-            Ok(id) => Some(id),
+            Ok(id) => (id, true),
             Err(e) => return internal_error(&e),
         }
     } else {
         match session_id(&headers) {
             None => return error(StatusCode::BAD_REQUEST, "no Mcp-Session-Id: initialize first"),
             Some(id) if !st.activity.holds(id, &key) => return error(StatusCode::NOT_FOUND, "no such session: initialize again"),
-            Some(_) => None,
+            Some(id) => (id.to_string(), false),
         }
     };
     let tool = message.tool().map(clip);
     let reply = match step(&message, registration.role) {
-        Step::Silent => return StatusCode::ACCEPTED.into_response(),
+        Step::Silent => {
+            if let Some(request) = message.cancelled() {
+                st.approvals.cancel(&(session, request.clone()));
+            }
+            return StatusCode::ACCEPTED.into_response();
+        }
         Step::Reply(reply) => {
             // A tools/call answered without running: a tool this server lacks, or arguments that do not fit it.
             if let Some(tool) = &tool {
@@ -266,8 +280,9 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
         }
         Step::Call { id, op } => {
             let tool = tool.unwrap_or_default();
+            let call = (session.clone(), id.clone());
             let reply = async move {
-                let outcome = match st.permit(&registration, &op, &tool).await {
+                let outcome = match st.permit(&registration, &op, &tool, call).await {
                     Ok(permit) => {
                         // Its own task: an agent that hangs up mid-call would otherwise drop the operation halfway,
                         // leaving a job it claimed claimed until the app quits, and the app never told what was written.
@@ -288,7 +303,7 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
         }
     };
     let mut response = json(StatusCode::OK, &reply);
-    if let Some(id) = opened.and_then(|id| HeaderValue::from_str(&id).ok()) {
+    if opened && let Ok(id) = HeaderValue::from_str(&session) {
         response.headers_mut().insert(SESSION, id);
     }
     response
@@ -381,13 +396,23 @@ impl Approvals {
 
     /// Oldest first.
     pub fn waiting(&self) -> Vec<Approval> {
-        lock(&self.waiting).asks.iter().map(|(approval, _)| approval.clone()).collect()
+        lock(&self.waiting).asks.iter().map(|ask| ask.approval.clone()).collect()
     }
 
     /// The user's answer. One to a deletion no longer waiting comes too late and changes nothing.
     pub fn answer(&self, id: u64, allow: bool) {
-        if let Some(reply) = self.take(id) {
-            let _ = reply.send(allow);
+        if let Some(reply) = self.take(|ask| ask.approval.id == id) {
+            let _ = reply.send(allow.then_some(()).ok_or(DENIED));
+        }
+    }
+
+    /// The agent gave up on `call`. By session as well as JSON-RPC id, since each session numbers its own requests; one
+    /// for a call no longer waiting changes nothing.
+    // shortcut: a cancel that overtakes its call (each comes on its own connection) finds nothing, and the deletion waits
+    // as if uncancelled; remember cancelled ids if a client ever cancels that fast.
+    fn cancel(&self, call: &(String, Value)) {
+        if let Some(reply) = self.take(|ask| ask.call == *call) {
+            let _ = reply.send(Err(CANCELLED));
         }
     }
 
@@ -406,7 +431,7 @@ impl Approvals {
 
     /// Waits for the user to allow `deletion`, in the caller's task: once that is dropped, as when the agent hangs up,
     /// it waits no more.
-    async fn ask(&self, registration: &str, deletion: Deletion) -> Result<(), &'static str> {
+    async fn ask(&self, registration: &str, deletion: Deletion, call: (String, Value)) -> Result<(), &'static str> {
         let (reply, answer) = oneshot::channel();
         let id = {
             let mut waiting = lock(&self.waiting);
@@ -417,24 +442,24 @@ impl Approvals {
                 return Err(TOO_MANY);
             }
             let (id, deadline_ms) = (NEXT_APPROVAL.fetch_add(1, Ordering::Relaxed), now_ms() + self.wait.as_millis() as u64);
-            waiting.asks.push((Approval { id, registration: registration.to_string(), deletion, deadline_ms }, reply));
+            let approval = Approval { id, registration: registration.to_string(), deletion, deadline_ms };
+            waiting.asks.push(Ask { approval, call, reply });
             id
         };
         (self.changed)(true);
         let _withdraw = Withdraw(self, id);
         match tokio::time::timeout(self.wait, answer).await {
-            Ok(Ok(true)) => Ok(()),
-            Ok(Ok(false)) => Err(DENIED),
+            Ok(Ok(verdict)) => verdict,
             Ok(Err(_)) => Err(STOPPED),
             Err(_) => Err(UNANSWERED),
         }
     }
 
-    fn take(&self, id: u64) -> Option<oneshot::Sender<bool>> {
+    fn take(&self, which: impl Fn(&Ask) -> bool) -> Option<oneshot::Sender<Result<(), &'static str>>> {
         let reply = {
             let mut waiting = lock(&self.waiting);
-            let at = waiting.asks.iter().position(|(approval, _)| approval.id == id)?;
-            waiting.asks.remove(at).1
+            let at = waiting.asks.iter().position(which)?;
+            waiting.asks.remove(at).reply
         };
         (self.changed)(false);
         Some(reply)
@@ -447,7 +472,8 @@ struct Withdraw<'a>(&'a Approvals, u64);
 
 impl Drop for Withdraw<'_> {
     fn drop(&mut self) {
-        self.0.take(self.1);
+        let id = self.1;
+        self.0.take(|ask| ask.approval.id == id);
     }
 }
 
@@ -486,8 +512,8 @@ impl Sessions {
 
 impl McpState {
     /// Whether a call may run, in words an agent can pass on if not. A deletion waits for the user here, in the request's
-    /// own task, so an agent that hangs up meanwhile takes its request off the screen.
-    async fn permit(&self, registration: &Registration, op: &Op, tool: &str) -> Result<Permit, String> {
+    /// own task, so an agent that hangs up meanwhile takes its request off the screen, as one that cancels `call` does.
+    async fn permit(&self, registration: &Registration, op: &Op, tool: &str, call: (String, Value)) -> Result<Permit, String> {
         let stop = |why: &str, outcome| {
             self.activity.record(&registration.id, tool, outcome);
             Err(why.to_string())
@@ -502,7 +528,7 @@ impl McpState {
                     Ok(shown) => shown,
                     Err(e) => return stop(&e, Outcome::Failed),
                 };
-                match self.approvals.ask(&registration.name, shown.clone()).await {
+                match self.approvals.ask(&registration.name, shown.clone(), call).await {
                     Ok(()) => Ok(Permit { role: Role::Delete, allowed: Some(shown) }),
                     Err(why) => stop(why, Outcome::Refused),
                 }
@@ -947,6 +973,71 @@ mod tests {
         assert!(f.approvals.waiting().is_empty());
         assert_eq!(*f.signals.lock().unwrap(), [true, false]);
         assert_eq!(f.titles().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_deletion_its_own_session_cancels_leaves_the_screen_and_an_allow_after_deletes_nothing() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let id = f.saved("https://example.com/a");
+        let (session, other) = (f.initialize(&r.token).await, f.initialize(&r.token).await);
+        let call = f.call_later(&r.token, &session, "delete_article", json!({ "id": id }));
+        let asked = f.asked(1).await;
+        let cancel = |request: i64| json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": request, "reason": "Esc" } });
+        for (from, request) in [(&other, 1), (&session, 2)] {
+            assert_eq!(f.post(&r.token, Some(from), cancel(request)).await.status(), StatusCode::ACCEPTED);
+        }
+        assert_eq!(f.approvals.waiting(), asked, "another session's request 1, and another request of its own");
+
+        let cancelled = f.post(&r.token, Some(&session), cancel(1)).await;
+        assert_eq!(cancelled.status(), StatusCode::ACCEPTED);
+        assert!(axum::body::to_bytes(cancelled.into_body(), usize::MAX).await.unwrap().is_empty());
+        assert!(f.approvals.waiting().is_empty(), "off the screen");
+        let refused = call.await.unwrap();
+        assert!(says(&refused, CANCELLED), "{refused}");
+        f.approvals.answer(asked[0].id, true);
+        assert_eq!(f.post(&r.token, Some(&session), cancel(1)).await.status(), StatusCode::ACCEPTED, "a cancel for a call that ended");
+        assert_eq!(f.titles().len(), 1);
+        assert!(f.applied.lock().unwrap().is_empty());
+        assert_eq!(f.activity.of(&r).1[0].outcome, Outcome::Refused);
+        assert_eq!(*f.signals.lock().unwrap(), [true, false]);
+        assert!(!f.locked.load(Ordering::SeqCst), "changed ran with a lock held, so reading the approvals from it would deadlock");
+    }
+
+    #[tokio::test]
+    async fn a_cancel_takes_off_only_the_call_it_names_and_later_ones_are_still_asked() {
+        let f = fixture();
+        let r = f.register("agent", Role::Delete);
+        let [a, b, c, d] = ["a", "b", "c", "d"].map(|p| f.saved(&format!("https://example.com/{p}")));
+        let (session, other) = (f.initialize(&r.token).await, f.initialize(&r.token).await);
+        let first = f.call_later(&r.token, &session, "delete_article", json!({ "id": a }));
+        f.asked(1).await;
+        let second = {
+            let (f, token, session) = (f.clone(), r.token.clone(), session.clone());
+            let body = json!({ "jsonrpc": "2.0", "id": "two", "method": "tools/call", "params": { "name": "delete_article", "arguments": { "id": b } } });
+            tokio::spawn(async move { body_of(f.post(&token, Some(&session), body).await).await["result"].clone() })
+        };
+        f.asked(2).await;
+        let elsewhere = f.call_later(&r.token, &other, "delete_article", json!({ "id": c }));
+        let asked = f.asked(3).await;
+        let cancel = |request: Value| json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": request } });
+
+        assert_eq!(f.post(&r.token, Some(&session), cancel(json!(1))).await.status(), StatusCode::ACCEPTED);
+        assert_eq!(f.approvals.waiting(), [asked[1].clone(), asked[2].clone()], "the oldest went; the rest keep their order");
+        assert!(says(&first.await.unwrap(), CANCELLED));
+        assert_eq!(f.post(&r.token, Some(&session), cancel(json!("two"))).await.status(), StatusCode::ACCEPTED);
+        assert_eq!(f.approvals.waiting(), [asked[2].clone()], "a string id, and the other session's request 1 stays");
+        assert!(says(&second.await.unwrap(), CANCELLED));
+
+        let later = f.call_later(&r.token, &session, "delete_article", json!({ "id": d }));
+        let now = f.asked(2).await;
+        f.approvals.answer(now[0].id, true);
+        f.approvals.answer(now[1].id, true);
+        for call in [elsewhere, later] {
+            let done = call.await.unwrap();
+            assert_eq!(done["isError"], false, "{done}");
+        }
+        assert_eq!(f.titles().len(), 2, "the two cancelled articles are left");
     }
 
     #[tokio::test]

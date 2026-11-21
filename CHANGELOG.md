@@ -29,6 +29,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Fixed
 
 - A focused drop-down in a chip, such as **Search scope** in the search pane, showed two focus rings, one inside the other. It now shows one.
+- A footnote number or an exponent set in superscript ran into the number before it, so a year with footnote 1 read as `2019.1` and `10⁶` as `106` in the Reader, search and translations. It is now written in superscript digits (`2019.¹`, `10⁶`), and saved articles are read again from their stored pages, with no network and no LLM. Where this changes an article's text, its summary and quiz say that the article has changed, and Lattice does not regenerate them. In a translated article, the changed paragraphs are translated again if automatic translation is on.
+- Deleting an article, importing it again or re-extracting it took about a second for each paragraph that went away, and other actions waited meanwhile, so a long article could hold up Lattice for minutes. It now takes a moment.
 - **Some PDFs failed to import or lost their text.** Some PDFs whose fonts were written by PDF::API2, such as books, failed to import with an error that the PDF could not be parsed. The text of lines set with the PDF operators `'` and `"` was lost, and so was text in Japanese fonts that do not say which characters they draw. Lattice now imports these PDFs and reads their text. Vertical Japanese is now read column by column from the right. Japanese set with gaps between its characters, as in headings, no longer comes out with spaces. To apply this to a saved PDF, use **Re-extract**.
 
 ## [0.5.0] - 2026-11-18

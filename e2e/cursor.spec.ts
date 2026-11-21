@@ -56,10 +56,9 @@ test("rows and headings keep the fixed heights the virtualized list is given, in
     if (width) {
       await app.locator(".list").evaluate((e, w) => void ((e as HTMLElement).style.width = w), width);
     }
-    const heights = (sel: string) =>
-      list(app)
-        .locator(sel)
-        .evaluateAll((els) => [...new Set(els.map((e) => e.getBoundingClientRect().height))]);
+    // Found and measured in one evaluation: evaluateAll does each in its own round trip, and a row Virtuoso unmounts
+    // between them (the narrow list's header wraps, so fewer rows fit) is detached and measures 0.
+    const heights = (sel: string) => list(app).evaluate((l, s) => [...new Set([...l.querySelectorAll(s)].map((e) => e.getBoundingClientRect().height))], sel);
     expect(await heights(".row")).toEqual([104]);
     expect(await heights(".grp-h")).toEqual([27]);
   }

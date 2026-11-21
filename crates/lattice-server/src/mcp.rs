@@ -210,6 +210,11 @@ impl Message {
     pub fn tool(&self) -> Option<&str> {
         (self.id.is_some() && self.method.as_deref() == Some("tools/call")).then(|| self.params["name"].as_str().unwrap_or_default())
     }
+
+    /// The id of the request a `notifications/cancelled` gives up on.
+    pub fn cancelled(&self) -> Option<&Value> {
+        (self.id.is_none() && self.method.as_deref() == Some("notifications/cancelled")).then(|| self.params.get("requestId")).flatten()
+    }
 }
 
 /// What `mcp_http` does with one message. All but running a tool is decided here.
@@ -384,6 +389,14 @@ mod tests {
         assert_eq!(init("1999-01-01")["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
         assert!(Message::parse(br#"{"jsonrpc":"2.0","id":0,"method":"initialize"}"#).unwrap().is_initialize());
         assert!(!Message::parse(br#"{"jsonrpc":"2.0","method":"initialize"}"#).unwrap().is_initialize(), "a notification opens nothing");
+    }
+
+    #[test]
+    fn only_a_cancel_notification_names_a_call_to_give_up() {
+        let cancelled = |m: &str| Message::parse(m.as_bytes()).unwrap().cancelled().cloned();
+        assert_eq!(cancelled(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7}}"#), Some(json!(7)));
+        assert_eq!(cancelled(r#"{"jsonrpc":"2.0","method":"notifications/progress","params":{"requestId":7}}"#), None);
+        assert_eq!(cancelled(r#"{"jsonrpc":"2.0","id":1,"method":"notifications/cancelled","params":{"requestId":7}}"#), None, "a request");
     }
 
     #[test]

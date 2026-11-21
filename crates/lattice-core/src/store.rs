@@ -63,6 +63,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00042_chat_thread_llm.sql"),
     include_str!("../db/migrations/00043_content_hash_of_what_a_summary_reads.sql"),
     include_str!("../db/migrations/00044_summary_items.sql"),
+    include_str!("../db/migrations/00045_blocks_heading_index.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -1669,6 +1670,13 @@ mod tests {
             std::fs::write(&path, &master).unwrap();
         }
         assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), master, "db/master.sql is stale: rerun with UPDATE_MASTER_SQL=1");
+    }
+
+    #[test]
+    fn deleting_a_block_finds_the_blocks_under_it_by_index() {
+        let s = Store::open_in_memory().unwrap();
+        let plan: String = s.conn().query_row("EXPLAIN QUERY PLAN SELECT 1 FROM blocks WHERE heading_id = 1", [], |r| r.get(3)).unwrap();
+        assert!(plan.contains("blocks_heading"), "{plan}");
     }
 
     #[test]
