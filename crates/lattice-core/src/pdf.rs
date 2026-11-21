@@ -865,12 +865,6 @@ fn turn(page: &mut Page) {
         }
     }
     turned.extend(run.map(sideways));
-    // The layout reads a page's glyphs in the order they come, and a book draws a heading after the text it heads, or a
-    // phrase in bold apart from its column: they go a column at a time from the right, each down from its top.
-    turned.sort_by(|a, b| a.y.total_cmp(&b.y));
-    for column in turned.chunk_by_mut(|a, b| b.y - a.y < 0.3 * a.size.max(b.size)) {
-        column.sort_by(|a, b| a.x.total_cmp(&b.x));
-    }
     page.glyphs = turned;
     page.drawn = std::mem::take(&mut page.drawn).into_iter().map(|d| Drawn { x0: d.y0, y0: width - d.x1, x1: d.y1, y1: width - d.x0, ..d }).collect();
     (page.width, page.height, page.vertical) = (page.height, page.width, true);
@@ -3613,21 +3607,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_columns_of_a_turned_page_are_read_from_the_right_in_whatever_order_they_are_drawn() {
-        // The rightmost column, a heading's place, drawn after the two left of it, as the book draws its headings.
-        let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <0354035603580359035A> Tj 1 0 0 1 476 700 Tm <035C035E> Tj \
-            1 0 0 1 500 700 Tm <034B034D034F03510353> Tj ET";
-        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()).concat(), "あいうえおかきくぐけこさ");
-    }
-
-    #[test]
-    fn words_drawn_apart_from_their_column_are_read_in_their_place_down_it() {
-        // え drawn last, between う and か, as the book draws a phrase it sets in bold.
-        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F> Tj 1 0 0 1 500 660 Tm <03540356> Tj 1 0 0 1 500 670 Tm <0351> Tj ET";
-        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()).concat(), "あいうえかき");
-    }
-
-    #[test]
     fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
         let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
         let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
@@ -3745,10 +3724,16 @@ pub(crate) mod tests {
 
     #[test]
     fn a_string_put_beside_a_column_at_its_top_starts_its_own() {
-        // The left column drawn first, then the right one from the same height, which would follow on down the left one
-        // if it were taken to go on from it.
+        // The left column drawn first, then the right one from the same height. The layout reads a page in the order it
+        // is drawn, so the text is the same either way: on the turned page the right column is a line of its own, 12pt
+        // above the left one and starting as far in, where joined it would go on along the left one's line.
         let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <034B> Tj 1 0 0 1 500 700 Tm <034D034F> Tj ET";
-        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()).concat(), "いうあ");
+        let (_, pages) = glyphs(&japanese(&[vec![]], "Identity-V", ops), true).unwrap();
+        let [a, i, u] = &pages[0].glyphs[..] else {
+            panic!("{} glyphs", pages[0].glyphs.len());
+        };
+        let from_a = [a, i, u].map(|g| (g.text.as_str(), (g.x - a.x).round(), (g.y - a.y).round()));
+        assert_eq!(from_a, [("あ", 0., 0.), ("い", 0., -12.), ("う", 10., -12.)]);
     }
 
     #[test]
