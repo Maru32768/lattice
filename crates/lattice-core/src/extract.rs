@@ -8,8 +8,8 @@ use url::Url;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 
 /// Bump when segmentation output changes: the articles an older version read are re-extracted from their
-/// stored pages (`ingest::REEXTRACT_JOB`). 3: images inside paragraphs and links.
-pub const EXTRACTION_VERSION: i64 = 3;
+/// stored pages (`ingest::REEXTRACT_JOB`). 3: images inside paragraphs and links. 4: a `<sup>` of digits in superscript.
+pub const EXTRACTION_VERSION: i64 = 4;
 
 /// Asides inside the article body: boxed sidebars and footnotes that belong to the text.
 const BODY_ASIDES: &str = "article aside, main aside, [role=main] aside, [itemprop=articleBody] aside";
@@ -217,7 +217,7 @@ impl Walker {
             .select("tr")
             .nodes()
             .iter()
-            .map(|tr| Selection::from(*tr).select("th, td").nodes().iter().map(|c| collapse(&c.text()).trim().to_string()).collect())
+            .map(|tr| Selection::from(*tr).select("th, td").nodes().iter().map(|c| collapse(&text_of(c)).trim().to_string()).collect())
             .filter(|r: &Vec<String>| !r.is_empty())
             .collect();
         if rows.is_empty() {
@@ -256,17 +256,74 @@ fn collect_inline(base: &Url, node: &NodeRef, out: &mut Vec<Inline>) {
             }
         }
         "a" => {
-            let v = collapse(&node.text()).trim().to_string();
+            let v = collapse(&text_of(node)).trim().to_string();
             match node.attr("href").and_then(|h| http_url(base, &h)) {
                 Some(href) if !v.is_empty() => out.push(Inline::Link { v, href }),
                 _ => push_text(out, &v),
             }
         }
         "br" => push_text(out, " "),
+        "sup" => superscript(base, node, out),
         "ul" | "ol" | "img" => {} // nested lists and images are emitted as their own blocks
         n if SKIP.contains(&n) => {}
         _ => collect_children(base, node, out),
     }
+}
+
+/// A `<sup>` of digits in superscript digits, as the page shows it: joined as they are, a footnote's number or an exponent
+/// becomes one number with the digits before it (`2019.<sup>1</sup>` would read 2019.1, `10<sup>6</sup>` 106). Which of
+/// the two it is takes no guess: `2019.¹`, `10⁶`. Anything else in it (`1<sup>st</sup>`, Wikipedia's `[1]`) stays as written.
+fn superscript(base: &Url, node: &NodeRef, out: &mut Vec<Inline>) {
+    let mut inner = Vec::new();
+    collect_children(base, node, &mut inner);
+    let raise = inner.iter().flat_map(|i| inline_text(i).chars()).all(raisable);
+    let lift = |v: String| {
+        if raise {
+            raised(&v)
+        } else {
+            v
+        }
+    };
+    for i in inner {
+        match i {
+            Inline::Text { v } => push_text(out, &lift(v)),
+            Inline::Link { v, href } => out.push(Inline::Link { v: lift(v), href }),
+            code @ Inline::Code { .. } => out.push(code),
+        }
+    }
+}
+
+/// `text()` with the `<sup>`s of digits raised as in prose: a link's text (Pandoc's footnotes are `<a><sup>1</sup></a>`)
+/// and a table cell's.
+fn text_of(node: &NodeRef) -> String {
+    let mut out = String::new();
+    for child in node.children() {
+        if child.is_text() {
+            out.push_str(&child.text());
+        } else if child.has_name("sup") {
+            let t = text_of(&child);
+            out.push_str(&if t.chars().all(raisable) {
+                raised(&t)
+            } else {
+                t
+            });
+        } else if child.is_element() {
+            out.push_str(&text_of(&child));
+        }
+    }
+    out
+}
+
+const PLAIN: &str = "0123456789+-\u{2212}=()";
+pub(crate) const RAISED: &str = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁻⁼⁽⁾";
+
+/// Digits and signs, and what separates footnote numbers (`1, 2`, `1–3`).
+fn raisable(c: char) -> bool {
+    PLAIN.contains(c) || c.is_whitespace() || matches!(c, ',' | '\u{2013}')
+}
+
+fn raised(s: &str) -> String {
+    s.chars().map(|c| PLAIN.chars().zip(RAISED.chars()).find(|&(p, _)| p == c).map_or(c, |(_, r)| r)).collect()
 }
 
 pub(crate) fn collapse(s: &str) -> String {
@@ -394,6 +451,33 @@ mod tests {
             ]
         );
         assert!(ir.blocks.iter().any(|b| b.text == "Figure 1"), "text beside the linked image stays");
+    }
+
+    #[test]
+    fn superscript_digits_stay_apart_from_the_digits_before_them() {
+        let prose = "<p>A paragraph long enough for readability to keep, with commas, clauses, and detail about write-ahead logging.</p>".repeat(3);
+        let html = format!(
+            r##"<html><body><article>{prose}
+<p>It started in 2019.<sup><a href="#fn1">1</a></sup> It now has 1,129<sup>2</sup> users<sup>3, 4</sup>, 2 of them<a href="#fn5"><sup>5</sup></a>.</p>
+<p>About 10<sup>6</sup> requests, 2<sup>&minus;10</sup> of them slow, at 9.8 m/s<sup>2</sup>, from Na<sup>+</sup>.</p>
+<p>On the 1<sup>st</sup> try, as Wikipedia says.<sup class="reference"><a href="#cite_note-3">[3]</a></sup> 約2千<sup>1</sup>人が参加した。</p>
+<table><tr><th>Year</th><th>Users</th></tr><tr><td>2019</td><td>1,129<sup><a href="#t1">2</a></sup></td></tr></table>
+{prose}</article></body></html>"##
+        );
+        let ir = extract(&html, "https://example.com/post").unwrap();
+        let block = |prefix: &str| ir.blocks.iter().find(|b| b.text.starts_with(prefix)).unwrap_or_else(|| panic!("{prefix}: {:?}", ir.blocks));
+
+        let footnotes = block("It started");
+        assert_eq!(footnotes.text, "It started in 2019.¹ It now has 1,129² users³, ⁴, 2 of them⁵.");
+        assert!(footnotes.inlines.contains(&Inline::Link { v: "¹".into(), href: "https://example.com/post#fn1".into() }), "{:?}", footnotes.inlines);
+        assert!(footnotes.inlines.contains(&Inline::Link { v: "⁵".into(), href: "https://example.com/post#fn5".into() }), "Pandoc's footnote");
+        assert_eq!(block("About").text, "About 10⁶ requests, 2⁻¹⁰ of them slow, at 9.8 m/s², from Na⁺.");
+        assert_eq!(block("On the").text, "On the 1st try, as Wikipedia says.[3] 約2千¹人が参加した。", "letters and brackets stay as written");
+        assert_eq!(block("Year").text, "Year\tUsers\n2019\t1,129²");
+
+        let article = crate::numbers::Article::new(ir.blocks.iter().map(|b| b.text.as_str()));
+        let flagged = crate::numbers::unverified("2019年に始まり、利用者は1,129人、約2千人が参加した", &article);
+        assert!(flagged.is_empty(), "a summary that copies the numbers the footnotes follow: {flagged:?}");
     }
 
     #[test]
