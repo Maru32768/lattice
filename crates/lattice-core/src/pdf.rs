@@ -3529,7 +3529,7 @@ pub(crate) mod tests {
         let paragraph = vec![(72., 400., 10., "The cat sat on the mat by the door, as it does every day."), (72., 412., 10., "Then it slept.")];
         let ops = "BT /F3 10 Tf 1 0 0 1 500 760 Tm <034B034D034F03510353> Tj 1 0 0 1 488 760 Tm <03540356> Tj ET";
         let room = |bytes: &[u8]| regions(bytes).unwrap().iter().filter(|r| r.page == 0).map(|r| (r.room_up, r.room_down)).collect::<Vec<_>>();
-        let alone = room(&pdf(&[paragraph.clone()], None));
+        let alone = room(&pdf(std::slice::from_ref(&paragraph), None));
         assert!(alone[0].0 > 0., "{alone:?}");
         assert_eq!(room(&japanese(&[paragraph, vec![]], "Identity-V", ops)), alone);
     }
