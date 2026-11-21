@@ -219,8 +219,10 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
         let pieces: Vec<&[&Line]> = d.lines.chunk_by(run_on).collect();
         out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level, block)));
     }
-    let top = lines.iter().map(|l| l.y - l.size).fold(f64::MAX, f64::min);
-    let bottom = lines.iter().map(|l| l.y + 0.3 * l.size).fold(f64::MIN, f64::max);
+    // A turned page's lines lie across its height, not down it.
+    let upright: Vec<&Line> = lines.iter().filter(|l| doc.pages.get(l.page).is_some_and(|p| !p.vertical)).collect();
+    let top = upright.iter().map(|l| l.y - l.size).fold(f64::MAX, f64::min);
+    let bottom = upright.iter().map(|l| l.y + 0.3 * l.size).fold(f64::MIN, f64::max);
     for r in &mut out {
         if let Some(page) = doc.pages.get(r.page) {
             give_room(r, page, top, bottom);
@@ -3350,10 +3352,10 @@ pub(crate) mod tests {
         assert_eq!(read(b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"), "The cat sat.");
     }
 
-    /// `runs`, then `ops` drawn in F3: a Japanese font that shows the CIDs of Adobe-Japan1 by `encoding` and has no
-    /// ToUnicode, as typeset Japanese books embed one.
-    fn japanese(runs: Vec<Run>, encoding: &str, ops: &str) -> Vec<u8> {
-        let mut doc = Document::load_mem(&pdf(&[runs], None)).unwrap();
+    /// `pages`, then `ops` drawn on the last in F3: a Japanese font that shows the CIDs of Adobe-Japan1 by `encoding`
+    /// and has no ToUnicode, as typeset Japanese books embed one.
+    fn japanese(pages: &[Vec<Run>], encoding: &str, ops: &str) -> Vec<u8> {
+        let mut doc = Document::load_mem(&pdf(pages, None)).unwrap();
         let mut info = Dictionary::new();
         info.set("Registry", Object::string_literal("Adobe"));
         info.set("Ordering", Object::string_literal("Japan1"));
@@ -3376,7 +3378,7 @@ pub(crate) mod tests {
         font.set("Encoding", name(encoding));
         font.set("DescendantFonts", vec![Object::Reference(doc.add_object(cid_font))]);
         let font = doc.add_object(font);
-        let page = *doc.get_pages().values().next().unwrap();
+        let page = *doc.get_pages().values().next_back().unwrap();
         let resources = doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
         resources.get_mut(b"Font").and_then(Object::as_dict_mut).unwrap().set("F3", Object::Reference(font));
         let content = doc.get_page_contents(page)[0];
@@ -3395,7 +3397,7 @@ pub(crate) mod tests {
     fn text_from_a_japanese_font_with_no_tounicode_is_read() {
         // Two kana by their CIDs, 843 and 887: in F3 as it is set, and as a Q brings it back.
         for ops in ["BT /F3 10 Tf 72 600 Td <034B0377> Tj ET", "BT /F3 10 Tf ET q BT /F1 10 Tf ET Q BT 72 600 Td <034B0377> Tj ET"] {
-            let ir = to_ir(&japanese(vec![(72., 100., 10., "Cats")], "Identity-H", ops), None).unwrap();
+            let ir = to_ir(&japanese(&[vec![(72., 100., 10., "Cats")]], "Identity-H", ops), None).unwrap();
             assert_eq!(texts(&ir), ["Cats", "あの"], "{ops}");
         }
     }
@@ -3406,7 +3408,7 @@ pub(crate) mod tests {
         // one that starts a character down in the third. The page number is set across.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj \
             1 0 0 1 476 690 Tm <0358035A035C> Tj ET";
-        let ir = to_ir(&japanese(vec![(300., 760., 10., "12")], "Identity-V", ops), None).unwrap();
+        let ir = to_ir(&japanese(&[vec![(300., 760., 10., "12")]], "Identity-V", ops), None).unwrap();
         assert_eq!(texts(&ir), ["あいうえおかき", "くけこ"]);
     }
 
@@ -3414,7 +3416,7 @@ pub(crate) mod tests {
     fn strings_shown_one_after_another_go_on_down_their_column() {
         // One column as a TJ of two strings, the next as two Tj after one Tm.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
-        let ir = to_ir(&japanese(vec![], "Identity-V", ops), None).unwrap();
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap();
         assert_eq!(texts(&ir), ["あいうえおか"]);
     }
 
@@ -3423,8 +3425,19 @@ pub(crate) mod tests {
         // Kana by CID at 10pt steps down a column, and "25" across in Helvetica where the third would be.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B> Tj 1 0 0 1 500 690 Tm <034D> Tj ET BT /F1 10 Tf 1 0 0 1 494.4 680 Tm (25) Tj ET \
             BT /F3 10 Tf 1 0 0 1 500 670 Tm <034F> Tj 1 0 0 1 500 660 Tm <0351> Tj ET";
-        let ir = to_ir(&japanese(vec![], "Identity-V", ops), None).unwrap();
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap();
         assert_eq!(texts(&ir), ["あい25うえ"]);
+    }
+
+    #[test]
+    fn a_turned_page_leaves_the_room_of_the_other_pages_regions_as_it_was() {
+        // A paragraph halfway down a page, then a page of columns, whose lines once turned start higher up.
+        let paragraph = vec![(72., 400., 10., "The cat sat on the mat by the door, as it does every day."), (72., 412., 10., "Then it slept.")];
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 760 Tm <034B034D034F03510353> Tj 1 0 0 1 488 760 Tm <03540356> Tj ET";
+        let room = |bytes: &[u8]| regions(bytes).unwrap().iter().filter(|r| r.page == 0).map(|r| (r.room_up, r.room_down)).collect::<Vec<_>>();
+        let alone = room(&pdf(&[paragraph.clone()], None));
+        assert!(alone[0].0 > 0., "{alone:?}");
+        assert_eq!(room(&japanese(&[paragraph, vec![]], "Identity-V", ops)), alone);
     }
 
     #[test]
