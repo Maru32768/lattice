@@ -3441,6 +3441,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn text_turned_on_a_page_set_across_is_left_out() {
+        // A figure's label turned a quarter clockwise, beside a paragraph.
+        let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
+        let label = "BT /F1 10 Tf 0 -1 1 0 500 400 Tm (Figure label) Tj ET";
+        let ir = to_ir(&japanese(&[paragraph], "Identity-H", label), None).unwrap();
+        assert_eq!(texts(&ir), ["The cat sat on the mat by the door, as it does every day. Then it slept."]);
+    }
+
+    #[test]
     fn a_turned_page_keeps_its_glyphs_and_images_on_it() {
         // On a page 612 wide: a glyph down the column at 500, and an image.
         let glyph = Glyph { x: 500., y: 100., end: 510., size: 10., text: "あ".into(), face: Face::Body, vertical: true, turned: false };
