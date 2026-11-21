@@ -20,7 +20,7 @@ const CID: usize = 2;
 
 fn read(data: &[u8]) -> Option<HashMap<u32, Vec<u8>>> {
     // The first byte only says whether the CMap is vertical.
-    let mut r = Reader { data, at: 1 };
+    let mut r = Reader(data.get(1..)?.iter());
     let mut map = HashMap::new();
     while let Some(b) = r.byte() {
         // A comment; a `usecmap` would be 0xE1, which this table has none of.
@@ -33,11 +33,9 @@ fn read(data: &[u8]) -> Option<HashMap<u32, Vec<u8>>> {
         match kind {
             // codespacerange, whose ranges are not needed
             0 => {
-                let start = r.raw(size)?;
-                let mut end = start.wrapping_add(r.hex(size)?);
-                for _ in 1..count {
-                    let start = end.wrapping_add(1).wrapping_add(r.hex(size)?);
-                    end = start.wrapping_add(r.hex(size)?);
+                r.raw(size)?;
+                for _ in 1..2 * count {
+                    r.number()?;
                 }
             }
             // bfchar
@@ -55,22 +53,19 @@ fn read(data: &[u8]) -> Option<HashMap<u32, Vec<u8>>> {
             }
             // bfrange: each CID from `start` to `end` has the text after the one before
             5 => {
-                let start = r.raw(CID)?;
-                let mut end = start + r.hex(CID)?;
-                let mut text = r.raw(size)?;
-                for (i, cid) in (start..=end).enumerate() {
-                    map.insert(cid as u32, bytes(text.wrapping_add(i as u128), size));
-                }
-                for _ in 1..count {
-                    let start = if sequence {
+                let mut end = 0;
+                for i in 0..count {
+                    let start = if i == 0 {
+                        r.raw(CID)?
+                    } else if sequence {
                         end + 1
                     } else {
                         end + 1 + r.hex(CID)?
                     };
                     end = start + r.hex(CID)?;
-                    text = r.raw(size)?;
-                    for (i, cid) in (start..=end).enumerate() {
-                        map.insert(cid as u32, bytes(text.wrapping_add(i as u128), size));
+                    let text = r.raw(size)?;
+                    for (j, cid) in (start..=end).enumerate() {
+                        map.insert(cid as u32, bytes(text.wrapping_add(j as u128), size));
                     }
                 }
             }
@@ -85,16 +80,11 @@ fn bytes(n: u128, size: usize) -> Vec<u8> {
     n.to_be_bytes()[16 - size..].to_vec()
 }
 
-struct Reader<'a> {
-    data: &'a [u8],
-    at: usize,
-}
+struct Reader<'a>(std::slice::Iter<'a, u8>);
 
 impl Reader<'_> {
     fn byte(&mut self) -> Option<u8> {
-        let b = *self.data.get(self.at)?;
-        self.at += 1;
-        Some(b)
+        self.0.next().copied()
     }
 
     /// Seven bits a byte, most significant first; a set top bit means more follow.
