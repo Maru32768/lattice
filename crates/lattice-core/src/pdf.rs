@@ -3438,9 +3438,12 @@ pub(crate) mod tests {
         };
         let lines: &[u8] = b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET";
         assert_eq!(read(&[lines]), "The cat sat on the mat by the door.");
-        // Quotes with no string to show, or no spacing, which pdf-extract passes over: as a Tj or Tw they would panic.
-        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj 5 ' ET"]), "The cat sat.");
-        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat.) Tj /N 0 (on the mat.) \" 0 /N (on the mat.) \" 0 0 5 \" ET"]), "The cat sat.");
+        // Quotes with no string to show, or no spacing, which pdf-extract passes over: as a Tj, Tw or Tc they would panic,
+        // and the page would be read again with none of its quotes.
+        for bad in ["5 '", "/N 0 (by the door.) \"", "0 /N (by the door.) \"", "0 0 5 \""] {
+            let content = format!("BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat.) ' {bad} ET");
+            assert_eq!(read(&[content.as_bytes()]), "The cat sat on the mat.", "{bad}");
+        }
         // Spacing given as real numbers.
         assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj 0.1 0.0 (on the mat.) \" ET"]), "The cat sat on the mat.");
         // An inline image, which lopdf cannot write back.
@@ -3449,18 +3452,44 @@ pub(crate) mod tests {
         assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat.)", b"' ET"]), "The cat sat on the mat.");
     }
 
+    /// `bytes` with the content of each page given, by its index, in place of its own.
+    fn with_contents(bytes: &[u8], contents: &[(usize, &str)]) -> Vec<u8> {
+        let mut doc = Document::load_mem(bytes).unwrap();
+        let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+        for &(page, ops) in contents {
+            let content = doc.add_object(Stream::new(Dictionary::new(), ops.as_bytes().to_vec()));
+            doc.get_dictionary_mut(pages[page]).unwrap().set("Contents", Object::Reference(content));
+        }
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
     #[test]
     fn a_quote_shown_before_any_font_is_set_does_not_lose_the_pdf() {
         // pdf-extract panics at a Tj with no font, and passes over a quote: spelt out, the quote would lose the PDF.
         let sentence = "The cat sat on the mat by the door, as it does every day.";
-        let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
-        let page = *doc.get_pages().values().next().unwrap();
         let content = format!("BT 12 TL 72 692 Td (by the door.) ' ET BT /F1 10 Tf 72 600 Td ({sentence}) Tj ET");
-        let content = doc.add_object(Stream::new(Dictionary::new(), content.into_bytes()));
-        doc.get_dictionary_mut(page).unwrap().set("Contents", Object::Reference(content));
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
+        let bytes = with_contents(&pdf(&[vec![]], None), &[(0, &content)]);
         assert_eq!(texts(&to_ir(&bytes, None).unwrap()), [sentence]);
+    }
+
+    #[test]
+    fn the_pages_around_one_read_again_as_written_keep_their_quotes() {
+        // The middle page panics once spelt out, after its first line: its quote is in the no font a Q took back.
+        let quoted = |line: &str, quote: &str| format!("BT /F1 10 Tf 12 TL 72 700 Td ({line}) Tj ({quote}) ' ET");
+        let middle = "q BT /F1 10 Tf 72 700 Td (It saw a dog.) Tj ET Q BT 12 TL 72 600 Td (by the door.) ' ET";
+        let (first, last) = (quoted("The cat sat", "on the mat."), quoted("Then it slept", "by the fire."));
+        let bytes = with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &first), (1, middle), (2, &last)]);
+        assert_eq!(glyphs(&bytes, true).unwrap().1.len(), 3);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()).join(" "), "The cat sat on the mat. It saw a dog. Then it slept by the fire.");
+    }
+
+    #[test]
+    fn a_page_pdf_extract_cannot_read_as_written_still_fails_the_pdf() {
+        // A Tj with no font set, which pdf-extract panics at whether or not quotes are spelt out.
+        let bytes = with_contents(&pdf(&[vec![(72., 100., 10., "The cat sat on the mat.")], vec![]], None), &[(1, "BT 72 692 Td (by the door.) Tj ET")]);
+        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
     }
 
     #[test]
@@ -3620,6 +3649,30 @@ pub(crate) mod tests {
         let column = |x: f64, y: f64, cids: &str| format!("q 1 0 0 1 {x} {y} cm BT /F3 10 Tf <{cids}> Tj ET Q ");
         let ops = [column(500., 700., "034B034D034F03510353"), column(488., 700., "03540356"), column(476., 690., "0358035A035C")].concat();
         assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["あいうえおかき", "くけこ"]);
+    }
+
+    #[test]
+    fn columns_moved_to_by_td_or_set_a_quote_a_character_are_read_as_columns() {
+        // The columns of `vertical_writing_is_read_as_paragraphs_down_the_columns`: moved to by Td or TD, and set as the
+        // book sets them, each character by a quote, which goes down a line first.
+        let td = "BT /F3 10 Tf 500 700 Td <034B034D034F03510353> Tj -12 0 Td <03540356> Tj -12 -10 Td <0358035A035C> Tj ET";
+        let quoted = |x: f64, y: f64, cids: &[&str]| format!("1 0 0 1 {x} {y} Tm {}", cids.iter().map(|c| format!("<{c}> ' ")).collect::<String>());
+        let columns = [
+            quoted(500., 710., &["034B", "034D", "034F", "0351", "0353"]),
+            quoted(488., 710., &["0354", "0356"]),
+            quoted(476., 700., &["0358", "035A", "035C"]),
+        ];
+        let quotes = format!("BT /F3 10 Tf 10 TL {}ET", columns.concat());
+        for ops in [td.to_string(), td.replace("Td", "TD"), quotes] {
+            assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["あいうえおかき", "くけこ"], "{ops}");
+        }
+    }
+
+    #[test]
+    fn a_vertical_page_read_again_as_written_keeps_its_columns() {
+        // A quote shown before any font is set, then two columns: read again without the quote, the page is still turned.
+        let ops = "BT 12 TL 72 692 Td (x) ' ET BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj ET";
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()), ["あいうえおかき"]);
     }
 
     #[test]
