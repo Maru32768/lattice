@@ -1135,11 +1135,12 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
             marked.push(MATH_END);
         }
         if let Some(p) = prev {
-            gaps.push(g.x - reach);
+            let gap = g.x - reach;
+            gaps.push(gap);
             // Japanese has no spaces between words: a gap between its characters is a heading's spacing, or a line set
             // out to its full width. Only a gap as wide as between a table's cells parts them.
             let japanese = p.text.chars().last().is_some_and(joins_without_space) && g.text.chars().next().is_some_and(joins_without_space);
-            let wide = g.x - reach > 1.8 * main as f64 / 10.;
+            let wide = gap > 1.8 * base.size;
             if space || g.x > p.end + 0.15 * p.size.min(g.size) && (!japanese || wide) {
                 text.push(' ');
                 marked.push(' ');
