@@ -416,6 +416,9 @@ struct Style {
     /// In vertical writing, how far below where a glyph is placed its em box starts, in ems. The glyph's place is its
     /// vertical origin, which the font's `DW2` puts so far above the baseline: 0.88 em unless it says otherwise.
     top: f64,
+    /// Shown where the string before it on the page left the pen: a string of a TJ after its first, or one that nothing
+    /// placed since the last.
+    goes_on: bool,
 }
 
 /// What a glyph's font says about it.
@@ -487,13 +490,18 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
         let vy = vertical.and_then(|f| cid_font(doc, f)?.get_deref(b"DW2", doc).and_then(Object::as_array).ok()?.first()?.as_float().ok());
         let top = vy.map_or(0., |v| f64::from(v) / 1000. - ASCENT);
         let vertical = vertical.is_some();
-        Style { face: base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b))), vertical, top }
+        Style { face: base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b))), vertical, top, goes_on: false }
     };
     let images = page_images(doc, resources);
     let (mut style, mut ctm, mut saved, mut styles, mut drawn) = (Style::default(), Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
+    // Whether the pen is where the last string left it.
+    let mut goes_on = false;
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
     for op in &content.operations {
+        if matches!(op.operator.as_str(), "BT" | "Td" | "TD" | "Tm" | "T*" | "cm" | "q" | "Q") {
+            goes_on = false;
+        }
         match op.operator.as_str() {
             "q" => saved.push((style, ctm, clip, mode)),
             "Q" => (style, ctm, clip, mode) = saved.pop().unwrap_or((style, ctm, clip, mode)),
@@ -535,12 +543,16 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
             }
             "Tr" => mode = op.operands.first().and_then(|o| o.as_i64().ok()).unwrap_or(0),
             "Tj" => {
-                styles.push(style);
+                styles.push(Style { goes_on, ..style });
+                goes_on = true;
                 invisible |= mode == 3;
             }
             "TJ" => {
                 if let Some(Ok(items)) = op.operands.first().map(Object::as_array) {
-                    styles.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| style));
+                    for _ in items.iter().filter(|o| matches!(o, Object::String(..))) {
+                        styles.push(Style { goes_on, ..style });
+                        goes_on = true;
+                    }
                 }
                 invisible |= mode == 3;
             }
@@ -1007,9 +1019,9 @@ struct Glyphs {
     /// The styles `walk` found on each page, and how many of the current page's strings have begun.
     styles: Vec<Vec<Style>>,
     shown: usize,
-    /// Where the column of vertical writing began, and its last glyph, as pdf-extract placed them. A string that starts
-    /// on along from that glyph goes on down the column, as a TJ shows its strings; any other starts a column.
-    column: Option<((f64, f64), (f64, f64))>,
+    /// Where the column of vertical writing began, as pdf-extract placed its first glyph: of the strings since one that
+    /// did not go on from the string before it.
+    column: Option<(f64, f64)>,
     /// Where each text has been drawn on the current page.
     drawn: HashMap<String, Spots>,
 }
@@ -1020,10 +1032,18 @@ const SAME_SPOT: f64 = 0.05;
 /// The places a text was drawn, by the `SAME_SPOT` square each lies in.
 type Spots = HashMap<(i64, i64), (f64, f64)>;
 
+impl Glyphs {
+    /// The style of the string being shown.
+    fn style(&self) -> Style {
+        let page = self.styles.get(self.pages.len().wrapping_sub(1));
+        page.and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default()
+    }
+}
+
 impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
         self.origin = (b.llx, b.lly);
-        (self.shown, self.column) = (0, None);
+        self.shown = 0;
         self.drawn.clear();
         self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, left: b.llx, top: b.ury, ..Default::default() });
         Ok(())
@@ -1051,18 +1071,15 @@ impl OutputDev for Glyphs {
             trm.m11 * trm.m22
         };
         let size = font_size.abs() * scale.sqrt();
-        let index = self.pages.len().wrapping_sub(1);
+        let style = self.style();
         let Some(page) = self.pages.last_mut().filter(|_| (upright || turned) && size > 0.5) else {
             return Ok(());
         };
-        let style = self.styles.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
         // pdf-extract moves along every string as if it ran across the page; vertical writing runs down from where it
         // starts. Its advances are the glyphs' widths, which in a Japanese font match their heights.
         let (mut x, mut y) = (trm.m31 - self.origin.0, trm.m32);
         if style.vertical {
-            let goes_on = self.column.filter(|&(_, (lx, ly))| (y - ly).abs() < 0.01 && x > lx);
-            let (sx, sy) = goes_on.map_or((x, y), |(start, _)| start);
-            self.column = Some(((sx, sy), (x, y)));
+            let (sx, sy) = *self.column.get_or_insert((x, y));
             (x, y) = (sx, sy - (x - sx));
         }
         // A glyph drawn again where it already is adds no ink: a book draws an item's bullet once for each of the
@@ -1076,7 +1093,7 @@ impl OutputDev for Glyphs {
             return Ok(());
         }
         places.entry((sx, sy)).or_insert((x, y));
-        let Style { face, vertical, top } = style;
+        let Style { face, vertical, top, .. } = style;
         let y = page.height - (y - self.origin.1) + top * size;
         // A turned glyph's baseline runs down the column's left, and its em box rises to the right.
         let x = if turned {
@@ -1090,6 +1107,9 @@ impl OutputDev for Glyphs {
 
     fn begin_word(&mut self) -> Result<(), OutputError> {
         self.shown += 1;
+        if !self.style().goes_on {
+            self.column = None;
+        }
         Ok(())
     }
 
