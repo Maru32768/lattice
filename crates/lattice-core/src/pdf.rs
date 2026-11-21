@@ -399,6 +399,9 @@ struct Glyph {
     face: Face,
     /// Set in vertical writing, where `x` is the middle of the column and `y` the top of the glyph's em box.
     vertical: bool,
+    /// Turned a quarter clockwise to run down the page, and placed as in vertical writing: Latin set down a column on a
+    /// page that is `turn`ed. On any other page it is a label, and dropped.
+    turned: bool,
 }
 
 /// How far a Japanese font's em box rises above its baseline, in ems.
@@ -768,10 +771,12 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
-        let set = page.glyphs.iter().filter(|g| !g.text.trim().is_empty());
+        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
         let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
         if down * 2 > all {
             turn(page);
+        } else {
+            page.glyphs.retain(|g| !g.turned);
         }
     }
     Ok((doc, out.pages))
@@ -788,6 +793,7 @@ fn turn(page: &mut Page) {
     for g in std::mem::take(&mut page.glyphs) {
         if let Some(r) = &mut run
             && !g.vertical
+            && !g.turned
             && (g.y - r.y).abs() < 0.3 * r.size
             && (g.x - r.end).abs() < 0.5 * r.size
         {
@@ -796,7 +802,7 @@ fn turn(page: &mut Page) {
             continue;
         }
         turned.extend(run.take().map(sideways));
-        if g.vertical {
+        if g.vertical || g.turned {
             turned.push(Glyph { x: g.y, end: g.y + (g.end - g.x), y: width - g.x, ..g });
         } else {
             run = Some(g);
@@ -987,11 +993,18 @@ impl OutputDev for Glyphs {
     }
 
     fn output_character(&mut self, trm: &Transform, width: f64, _: f64, font_size: f64, text: &str) -> Result<(), OutputError> {
-        // Rotated or mirrored text is a margin stamp (arXiv's) or a figure label, not prose.
+        // Rotated or mirrored text is a margin stamp (arXiv's) or a figure label, not prose, unless it runs down a column
+        // of a page in vertical writing; which pages are is known once they are done.
         let upright = trm.m11 > 0. && trm.m22 > 0. && trm.m12.abs() < 1e-3 * trm.m11 && trm.m21.abs() < 1e-3 * trm.m22;
-        let size = font_size.abs() * (trm.m11 * trm.m22).sqrt();
+        let turned = trm.m12 < 0. && trm.m21 > 0. && trm.m11.abs() < 1e-3 * trm.m21 && trm.m22.abs() < 1e-3 * trm.m21;
+        let scale = if turned {
+            -trm.m12 * trm.m21
+        } else {
+            trm.m11 * trm.m22
+        };
+        let size = font_size.abs() * scale.sqrt();
         let index = self.pages.len().wrapping_sub(1);
-        let Some(page) = self.pages.last_mut().filter(|_| upright && size > 0.5) else {
+        let Some(page) = self.pages.last_mut().filter(|_| (upright || turned) && size > 0.5) else {
             return Ok(());
         };
         let style = self.styles.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
@@ -1015,7 +1028,13 @@ impl OutputDev for Glyphs {
         places.entry((sx, sy)).or_insert((x, y));
         let Style { face, vertical, top } = style;
         let y = page.height - (y - self.origin.1) + top * size;
-        page.glyphs.push(Glyph { x, y, end: x + width * size, size, text: text.to_string(), face, vertical });
+        // A turned glyph's baseline runs down the column's left, and its em box rises to the right.
+        let x = if turned {
+            x + (ASCENT - 0.5) * size
+        } else {
+            x
+        };
+        page.glyphs.push(Glyph { x, y, end: x + width * size, size, text: text.to_string(), face, vertical, turned });
         Ok(())
     }
 
@@ -2269,7 +2288,7 @@ pub(crate) mod tests {
             } else {
                 Face::Body
             };
-            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face, vertical: false });
+            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face, vertical: false, turned: false });
             x += 5.;
         }
         out
@@ -3421,6 +3440,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn latin_turned_to_run_down_a_column_is_read_in_its_place() {
+        // Two kana, whose em boxes end at 688.8; "If it" in Helvetica from there, 13.3pt long, turned a quarter clockwise
+        // with its baseline 3.8pt left of the column's middle; two kana more.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D> Tj ET BT /F1 10 Tf 0 -1 1 0 496.2 688.8 Tm (If it) Tj ET \
+            BT /F3 10 Tf 1 0 0 1 500 666.6 Tm <034F0351> Tj ET";
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()), ["あいIf itうえ"]);
+    }
+
+    #[test]
     fn a_number_set_sideways_in_a_column_is_read_in_its_place() {
         // Kana by CID at 10pt steps down a column, and "25" across in Helvetica where the third would be.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B> Tj 1 0 0 1 500 690 Tm <034D> Tj ET BT /F1 10 Tf 1 0 0 1 494.4 680 Tm (25) Tj ET \
@@ -3448,7 +3476,7 @@ pub(crate) mod tests {
             let glyphs: Vec<Glyph> = text
                 .chars()
                 .enumerate()
-                .map(|(i, c)| Glyph { x: at(i), y: 100., end: at(i) + 10., size: 10., text: c.to_string(), face: Face::Body, vertical: false })
+                .map(|(i, c)| Glyph { x: at(i), y: 100., end: at(i) + 10., size: 10., text: c.to_string(), face: Face::Body, vertical: false, turned: false })
                 .collect();
             line(0, &glyphs.iter().collect::<Vec<_>>()).unwrap().text
         };
