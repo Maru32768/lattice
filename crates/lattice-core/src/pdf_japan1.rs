@@ -141,6 +141,10 @@ mod tests {
     fn the_table_gives_the_text_of_each_cid() {
         // Proportional Latin from CID 1, kana from 842, kanji in JIS order from 1125.
         assert_eq!([1, 34, 843, 887, 1125].map(text), [" ", "A", "あ", "の", "亜"]);
+        // Most CIDs are in records that step on from the entry before: `}` back from its neighbour, kanji forward.
+        assert_eq!([94, 1126, 1127, 1200].map(text), ["}", "唖", "娃", "一"]);
+        // A character past U+FFFF, and a CID for two characters.
+        assert_eq!([14282, 9886].map(text), ["𤋮", "02"]);
         assert!(TABLE.len() > 20_000, "{}", TABLE.len());
     }
 }
