@@ -3611,6 +3611,27 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_gap_in_a_tj_does_not_end_its_column() {
+        // A TJ number of an em, which pdf-extract takes back along the line it believes the string runs on.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D034F03510353> 1000 <0354035603580359>] TJ 1 0 0 1 488 700 Tm <035A035C> Tj ET";
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()), ["あいうえおかきくぐけこ"]);
+    }
+
+    #[test]
+    fn a_string_put_beside_a_column_at_its_top_starts_its_own() {
+        // The left column drawn first, then the right one from the same height. The layout reads a page in the order it
+        // is drawn, so the text is the same either way: on the turned page the right column is a line of its own, 12pt
+        // above the left one and starting as far in, where joined it would go on along the left one's line.
+        let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <034B> Tj 1 0 0 1 500 700 Tm <034D034F> Tj ET";
+        let (_, pages) = glyphs(&japanese(&[vec![]], "Identity-V", ops), true).unwrap();
+        let [a, i, u] = &pages[0].glyphs[..] else {
+            panic!("{} glyphs", pages[0].glyphs.len());
+        };
+        let from_a = [a, i, u].map(|g| (g.text.as_str(), (g.x - a.x).round(), (g.y - a.y).round()));
+        assert_eq!(from_a, [("あ", 0., 0.), ("い", 0., -12.), ("う", 10., -12.)]);
+    }
+
+    #[test]
     fn latin_turned_to_run_down_a_column_is_read_in_its_place() {
         // Two kana, whose em boxes end at 688.8; "If it" in Helvetica from there, 13.3pt long, turned a quarter clockwise
         // with its baseline 3.8pt left of the column's middle; two kana more. An arXiv stamp, turned the other way, stays out.
