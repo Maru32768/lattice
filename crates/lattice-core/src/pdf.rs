@@ -771,9 +771,11 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         // pdf-extract passes over a quote, but may panic at the Tj it is spelt out to: one shown with no font set, for one.
         // A page it panics at is read again as written, which loses what its quotes show rather than the PDF.
         Err(_) => {
-            out.pages.clear();
+            // The last page begun is the one it panicked in.
+            let read = out.pages.len().saturating_sub(1);
+            out.pages.truncate(read);
             let mut written = None;
-            for &number in doc.get_pages().keys() {
+            for &number in doc.get_pages().keys().skip(read) {
                 let index = out.pages.len();
                 let spelt = catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc_page(&doc, &mut out, number)));
                 let read = spelt.or_else(|_| {
@@ -3476,13 +3478,13 @@ pub(crate) mod tests {
 
     #[test]
     fn the_pages_around_one_read_again_as_written_keep_their_quotes() {
-        // The middle page panics once spelt out, after its first line: its quote is in the no font a Q took back.
+        // The middle page panics once spelt out, between its two lines: its quote is in the no font a Q took back.
         let quoted = |line: &str, quote: &str| format!("BT /F1 10 Tf 12 TL 72 700 Td ({line}) Tj ({quote}) ' ET");
-        let middle = "q BT /F1 10 Tf 72 700 Td (It saw a dog.) Tj ET Q BT 12 TL 72 600 Td (by the door.) ' ET";
+        let middle = "q BT /F1 10 Tf 72 700 Td (It saw a dog.) Tj ET Q BT 12 TL 72 600 Td (by the door.) ' ET BT /F1 10 Tf 72 500 Td (It ran.) Tj ET";
         let (first, last) = (quoted("The cat sat", "on the mat."), quoted("Then it slept", "by the fire."));
         let bytes = with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &first), (1, middle), (2, &last)]);
         assert_eq!(glyphs(&bytes, true).unwrap().1.len(), 3);
-        assert_eq!(texts(&to_ir(&bytes, None).unwrap()).join(" "), "The cat sat on the mat. It saw a dog. Then it slept by the fire.");
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()).join(" "), "The cat sat on the mat. It saw a dog. It ran. Then it slept by the fire.");
     }
 
     #[test]
