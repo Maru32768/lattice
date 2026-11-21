@@ -949,7 +949,8 @@ struct Glyphs {
     /// The styles `walk` found on each page, and how many of the current page's strings have begun.
     styles: Vec<Vec<Style>>,
     shown: usize,
-    /// Where the current string began, when it is set in vertical writing.
+    /// Where vertical writing began since the pen was last put down, which pdf-extract tells by `end_line`. A string does
+    /// not start afresh: a TJ shows its strings one after another.
     start: Option<(f64, f64)>,
     /// Where each text has been drawn on the current page.
     drawn: HashMap<String, Spots>,
@@ -964,7 +965,7 @@ type Spots = HashMap<(i64, i64), (f64, f64)>;
 impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
         self.origin = (b.llx, b.lly);
-        self.shown = 0;
+        (self.shown, self.start) = (0, None);
         self.drawn.clear();
         self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, left: b.llx, top: b.ury, ..Default::default() });
         Ok(())
@@ -990,8 +991,8 @@ impl OutputDev for Glyphs {
             return Ok(());
         };
         let style = self.styles.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
-        // pdf-extract moves along every string as if it ran across the page; one in vertical writing runs down from
-        // where it starts. Its advances are the glyphs' widths, which in a Japanese font match their heights.
+        // pdf-extract moves along every string as if it ran across the page; vertical writing runs down from where it
+        // starts. Its advances are the glyphs' widths, which in a Japanese font match their heights.
         let (mut x, mut y) = (trm.m31 - self.origin.0, trm.m32);
         if style.vertical {
             let (sx, sy) = *self.start.get_or_insert((x, y));
@@ -1016,7 +1017,6 @@ impl OutputDev for Glyphs {
 
     fn begin_word(&mut self) -> Result<(), OutputError> {
         self.shown += 1;
-        self.start = None;
         Ok(())
     }
 
@@ -1025,6 +1025,7 @@ impl OutputDev for Glyphs {
     }
 
     fn end_line(&mut self) -> Result<(), OutputError> {
+        self.start = None;
         Ok(())
     }
 }
@@ -3399,6 +3400,14 @@ pub(crate) mod tests {
             1 0 0 1 476 690 Tm <0358035A035C> Tj ET";
         let ir = to_ir(&japanese(vec![(300., 760., 10., "12")], "Identity-V", ops), None).unwrap();
         assert_eq!(texts(&ir), ["あいうえおかき", "くけこ"]);
+    }
+
+    #[test]
+    fn strings_shown_one_after_another_go_on_down_their_column() {
+        // One column as a TJ of two strings, the next as two Tj after one Tm.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
+        let ir = to_ir(&japanese(vec![], "Identity-V", ops), None).unwrap();
+        assert_eq!(texts(&ir), ["あいうえおか"]);
     }
 
     #[test]
