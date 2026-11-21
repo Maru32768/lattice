@@ -872,9 +872,11 @@ fn give_japan1_text(doc: &mut Document) {
     let mut shown: HashMap<ObjectId, BTreeSet<u32>> = HashMap::new();
     for (content, resources) in pages.chain(forms) {
         let names = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
-        let mut font = None;
+        let (mut font, mut saved) = (None, Vec::new());
         for op in Content::decode(&content).map(|c| c.operations).unwrap_or_default() {
             match (op.operator.as_str(), op.operands.first()) {
+                ("q", _) => saved.push(font),
+                ("Q", _) => font = saved.pop().unwrap_or(font),
                 ("Tf", Some(name)) => {
                     let named = name.as_name().ok().and_then(|n| names?.get(n).ok()?.as_reference().ok());
                     font = named.filter(|id| fonts.contains(id));
@@ -3391,9 +3393,11 @@ pub(crate) mod tests {
 
     #[test]
     fn text_from_a_japanese_font_with_no_tounicode_is_read() {
-        // Two kana by their CIDs, 843 and 887.
-        let ir = to_ir(&japanese(vec![(72., 100., 10., "Cats")], "Identity-H", "BT /F3 10 Tf 72 600 Td <034B0377> Tj ET"), None).unwrap();
-        assert_eq!(texts(&ir), ["Cats", "あの"]);
+        // Two kana by their CIDs, 843 and 887: in F3 as it is set, and as a Q brings it back.
+        for ops in ["BT /F3 10 Tf 72 600 Td <034B0377> Tj ET", "BT /F3 10 Tf ET q BT /F1 10 Tf ET Q BT 72 600 Td <034B0377> Tj ET"] {
+            let ir = to_ir(&japanese(vec![(72., 100., 10., "Cats")], "Identity-H", ops), None).unwrap();
+            assert_eq!(texts(&ir), ["Cats", "あの"], "{ops}");
+        }
     }
 
     #[test]
