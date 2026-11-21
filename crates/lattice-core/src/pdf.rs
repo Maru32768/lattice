@@ -3462,6 +3462,33 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_cid_font_that_gives_its_own_text_or_is_not_japan1_is_left_as_it_is() {
+        let read = |change: &dyn Fn(&mut Document, ObjectId)| {
+            let mut doc = Document::load_mem(&japanese(&[vec![(72., 100., 10., "Cats")]], "Identity-H", "BT /F3 10 Tf 72 600 Td <034B0377> Tj ET")).unwrap();
+            let is_type0 = |o: &Object| o.as_dict().is_ok_and(|d| d.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Type0"));
+            let font = doc.objects.iter().find(|(_, o)| is_type0(o)).map(|(&id, _)| id).unwrap();
+            change(&mut doc, font);
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            texts(&to_ir(&bytes, None).unwrap()).join("|")
+        };
+        // A ToUnicode of its own, which reads the two CIDs as X and Y.
+        let own = |doc: &mut Document, font: ObjectId| {
+            let cmap = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <0000> <FFFF> endcodespacerange\n\
+                2 beginbfchar\n<034B> <0058>\n<0377> <0059>\nendbfchar\nendcmap end end\n";
+            let id = doc.add_object(Stream::new(Dictionary::new(), cmap.as_bytes().to_vec()));
+            doc.get_dictionary_mut(font).unwrap().set("ToUnicode", Object::Reference(id));
+        };
+        // Adobe-Identity, whose CIDs are the font's own glyph numbers.
+        let identity = |doc: &mut Document, font: ObjectId| {
+            let cid_font = doc.get_dictionary(font).unwrap().get(b"DescendantFonts").and_then(Object::as_array).unwrap()[0].as_reference().unwrap();
+            let info = doc.get_dictionary_mut(cid_font).unwrap().get_mut(b"CIDSystemInfo").and_then(Object::as_dict_mut).unwrap();
+            info.set("Ordering", Object::string_literal("Identity"));
+        };
+        assert_eq!([read(&own), read(&identity)], ["Cats|XY", "Cats"]);
+    }
+
+    #[test]
     fn strings_shown_one_after_another_go_on_down_their_column() {
         // One column as a TJ of two strings, the next as two Tj after one Tm.
         let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
