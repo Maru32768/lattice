@@ -238,16 +238,19 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
 const PAGE_EDGE: f64 = 0.05;
 
 /// A region as far up or down as the document's text goes has only the margin beyond it, and what is
-/// printed there (a running header) stops it. One that ends short of that has a figure or the like
+/// printed there (a running header, a table) stops it. One that ends short of that has a figure or the like
 /// beyond it, which is not in the glyphs: figures are skipped.
 fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
     let across = |g: &&Glyph| g.x < r.x1 && g.end > r.x0;
+    let tables = || page.tables.iter().map(|t| t.at).filter(|&[x0, _, x1, _]| x0 < r.x1 && x1 > r.x0);
     if r.y0 <= top + r.size {
         let above = page.glyphs.iter().filter(across).filter(|g| g.y < r.y0).map(|g| g.y + 0.3 * g.size);
+        let above = above.chain(tables().map(|t| t[3]).filter(|&y| y <= r.y0));
         r.room_up = (r.y0 - above.fold(PAGE_EDGE * page.height, f64::max)).max(0.);
     }
     if r.y1 >= bottom - r.size {
         let below = page.glyphs.iter().filter(across).filter(|g| g.y > r.y1).map(|g| g.y - g.size);
+        let below = below.chain(tables().map(|t| t[1]).filter(|&y| y >= r.y1));
         r.room_down = (below.fold((1. - PAGE_EDGE) * page.height, f64::min) - r.y1).max(0.);
     }
     // Only a single line has room at its sides (`region`), so the box's bottom gives its baseline.
@@ -3083,6 +3086,19 @@ pub(crate) mod tests {
         let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + turned + &cells;
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "\tValue one\nRow two\tValue two")]);
+    }
+
+    #[test]
+    fn a_translation_has_no_room_over_the_tables_above_and_below_it() {
+        let table = |top: f64| {
+            let cells =
+                shown(78., top + 25., "Strong") + &shown(178., top + 25., "Lasting") + &shown(78., top + 70., "Costly") + &shown(178., top + 70., "Easy");
+            ruled(&[72., 172., 540.], &[top, top + 45., top + 90.], "strokes") + &cells
+        };
+        let ops = table(110.) + &shown(72., 300., "Body text runs on as a sentence of prose between the tables.") + &table(400.);
+        let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
+        // The text's box runs from 290 to 303.
+        assert_eq!(r.iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>(), [(90., 97.)]);
     }
 
     #[test]
