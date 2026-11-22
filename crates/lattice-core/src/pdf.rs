@@ -698,38 +698,39 @@ fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
         return Vec::new();
     }
     let meet = |a: &Rule, d: &Rule| d.0 > a.1 - RULE_SLACK && d.0 < a.2 + RULE_SLACK && a.0 > d.1 - RULE_SLACK && a.0 < d.2 + RULE_SLACK;
-    let (mut group_across, mut group_down) = (vec![None; across.len()], vec![None; down.len()]);
-    let mut groups = 0;
+    let (mut reached_across, mut reached_down) = (vec![false; across.len()], vec![false; down.len()]);
+    let mut groups = Vec::new();
     for first in 0..across.len() {
-        if group_across[first].is_some() {
+        if reached_across[first] {
             continue;
         }
-        group_across[first] = Some(groups);
+        reached_across[first] = true;
+        let (mut group_across, mut group_down) = (vec![across[first]], Vec::new());
         let mut reached = vec![(true, first)];
         while let Some((is_across, i)) = reached.pop() {
             if is_across {
                 for (j, d) in down.iter().enumerate() {
-                    if group_down[j].is_none() && meet(&across[i], d) {
-                        group_down[j] = Some(groups);
+                    if !reached_down[j] && meet(&across[i], d) {
+                        reached_down[j] = true;
+                        group_down.push(*d);
                         reached.push((false, j));
                     }
                 }
             } else {
                 for (j, a) in across.iter().enumerate() {
-                    if group_across[j].is_none() && meet(a, &down[i]) {
-                        group_across[j] = Some(groups);
+                    if !reached_across[j] && meet(a, &down[i]) {
+                        reached_across[j] = true;
+                        group_across.push(*a);
                         reached.push((true, j));
                     }
                 }
             }
         }
-        groups += 1;
+        groups.push((group_across, group_down));
     }
-    let of =
-        |rules: &[Rule], group: &[Option<usize>], g: usize| -> Vec<Rule> { rules.iter().zip(group).filter(|&(_, &k)| k == Some(g)).map(|(r, _)| *r).collect() };
-    (0..groups)
-        .filter_map(|g| {
-            let (across, down) = (of(&across, &group_across, g), of(&down, &group_down, g));
+    groups
+        .into_iter()
+        .filter_map(|(across, down)| {
             let edges = |rules: &[Rule]| {
                 let mut at: Vec<f64> = rules.iter().map(|r| r.0).collect();
                 at.sort_by(f64::total_cmp);
