@@ -1505,6 +1505,8 @@ export const en = {
   "be.tailscale.allowHttps": "HTTPS is not allowed on this tailnet yet. Open {link}, allow it, then press the button again.",
   "be.tailscale.timedOut": "Tailscale did not answer. Check that it is running.",
   "be.tailscale.failed": "Could not change Tailscale Serve: {error}",
+  "be.tailscale.taken": "Tailscale Serve on this PC already forwards the root of port {port} to {target}. Nothing was changed, so that is not overwritten.",
+  "be.tailscale.funnel": "Port {port} on this PC is open to the internet through Tailscale Funnel. Nothing was changed, so Lattice is not exposed with it.",
   "be.mobile.bind": "Could not start serving on port {port}: {error}",
   "be.mobile.fellBack": "The original library could not be opened, so serving to a phone is off",
   "be.mobile.badOp": "Lattice cannot accept this operation",

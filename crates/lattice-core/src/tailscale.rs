@@ -96,17 +96,37 @@ fn address_of(status: &Value, https: u16) -> Option<String> {
     (!name.is_empty()).then(|| format!("https://{name}{port}/"))
 }
 
-/// Whether `tailscale serve status --json` forwards the root of port `https` to `port` on this PC.
+/// The root handler of each site Serve has on port `https`, from `tailscale serve status --json`.
+fn roots(serve: &Value, https: u16) -> impl Iterator<Item = &Value> {
+    let at = format!(":{https}");
+    serve["Web"].as_object().into_iter().flatten().filter(move |(host, _)| host.ends_with(&at)).map(|(_, site)| &site["Handlers"]["/"])
+}
+
+fn proxies_to(root: &Value, port: u16) -> bool {
+    root["Proxy"].as_str().is_some_and(|proxy| {
+        let proxy = proxy.trim_end_matches('/');
+        ["http://127.0.0.1", "http://localhost", "127.0.0.1", "localhost"].iter().any(|h| proxy == format!("{h}:{port}")) || proxy == port.to_string()
+    })
+}
+
+/// Whether Serve forwards the root of port `https` to `port` on this PC.
 fn serves(serve: &Value, https: u16, port: u16) -> bool {
-    let Some(sites) = serve["Web"].as_object() else {
-        return false;
-    };
-    sites.iter().any(|(host, site)| {
-        host.ends_with(&format!(":{https}"))
-            && site["Handlers"]["/"]["Proxy"].as_str().is_some_and(|proxy| {
-                let proxy = proxy.trim_end_matches('/');
-                ["http://127.0.0.1", "http://localhost", "127.0.0.1", "localhost"].iter().any(|h| proxy == format!("{h}:{port}")) || proxy == port.to_string()
-            })
+    roots(serve, https).any(|root| proxies_to(root, port))
+}
+
+/// Why forwarding the root of port `https` to `port` would take over what the reader already has there. Serve keeps one
+/// root per port, and Funnel opens a whole port to the internet, Lattice included once it is on it.
+fn refusal(serve: &Value, https: u16, port: u16) -> Option<String> {
+    let at = format!(":{https}");
+    if serve["AllowFunnel"].as_object().is_some_and(|f| f.iter().any(|(host, on)| host.ends_with(&at) && on == true)) {
+        return Some(msg!("tailscale.funnel", port = https.to_string()));
+    }
+    if let Some(forward) = serve["TCP"][https.to_string()]["TCPForward"].as_str() {
+        return Some(msg!("tailscale.taken", port = https.to_string(), target = forward));
+    }
+    roots(serve, https).find(|root| !root.is_null() && !proxies_to(root, port)).map(|root| {
+        let target = root["Proxy"].as_str().or(root["Path"].as_str()).map_or_else(|| root.to_string(), str::to_string);
+        msg!("tailscale.taken", port = https.to_string(), target = target)
     })
 }
 
@@ -130,8 +150,19 @@ fn link_in(output: &str) -> Option<&str> {
 }
 
 /// Forwards the root of this PC's `.ts.net` address to `port`, or stops that. Only the root, which `serves` checks: other
-/// paths the reader serves on that port are theirs.
+/// paths the reader serves on that port are theirs, and a root they set up is left alone.
 pub async fn serve(port: u16, on: bool) -> Result<(), String> {
+    let ran = run(&["serve", "status", "--json"]).await.map_err(|e| msg!("tailscale.notFound", error = e))?;
+    let current: Value = match serde_json::from_str(&ran.stdout) {
+        Ok(current) if ran.ok => current,
+        _ => return Err(msg!("tailscale.failed", error = format!("{}{}", ran.stdout, ran.stderr).trim())),
+    };
+    if on && let Some(refused) = refusal(&current, HTTPS_PORT, port) {
+        return Err(refused);
+    }
+    if !on && !serves(&current, HTTPS_PORT, port) {
+        return Ok(());
+    }
     let (port, https) = (port.to_string(), format!("--https={HTTPS_PORT}"));
     let args: &[&str] = if on {
         &["serve", "--bg", &https, &port]
@@ -180,6 +211,23 @@ mod tests {
         assert!(!serves(&on_8443, 443, 8787));
         assert!(serves(&on_8443, 8443, 8787));
         assert!(!serves(&json!({}), 443, 8787));
+    }
+
+    #[test]
+    fn serve_refuses_to_take_over_what_the_reader_has_on_the_port() {
+        let host = "desktop.tail1234.ts.net:443";
+        let root = |handler: Value| json!({ "Web": { host: { "Handlers": { "/": handler } } } });
+        assert_eq!(refusal(&json!({}), 443, 8787), None);
+        assert_eq!(refusal(&root(json!({ "Proxy": "http://127.0.0.1:8787" })), 443, 8787), None, "already Lattice's");
+        let mine = json!({ "Web": { host: { "Handlers": { "/blog": { "Path": r"C:\blog" } } } } });
+        assert_eq!(refusal(&mine, 443, 8787), None, "another path stays beside it");
+        let theirs = refusal(&root(json!({ "Proxy": "http://127.0.0.1:3000" })), 443, 8787).unwrap();
+        assert!(theirs.contains("tailscale.taken") && theirs.contains("http://127.0.0.1:3000"), "{theirs}");
+        assert!(refusal(&root(json!({ "Text": "hi" })), 443, 8787).unwrap().contains("tailscale.taken"));
+        assert!(refusal(&json!({ "TCP": { "443": { "TCPForward": "127.0.0.1:22" } } }), 443, 8787).unwrap().contains("127.0.0.1:22"));
+        let funnel = json!({ "Web": mine["Web"].clone(), "AllowFunnel": { host: true } });
+        assert!(refusal(&funnel, 443, 8787).unwrap().contains("tailscale.funnel"));
+        assert_eq!(refusal(&root(json!({ "Proxy": "http://127.0.0.1:3000" })), 8443, 8787), None, "another port's");
     }
 
     #[test]

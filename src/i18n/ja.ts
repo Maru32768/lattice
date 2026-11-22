@@ -1486,6 +1486,8 @@ export const ja = {
   "be.tailscale.allowHttps": "このtailnetではまだHTTPSが許可されていません。{link}を開いて許可してから、もう一度押してください。",
   "be.tailscale.timedOut": "Tailscaleが答えませんでした。Tailscaleが動いているか確かめてください。",
   "be.tailscale.failed": "Tailscale Serveを変えられませんでした: {error}",
+  "be.tailscale.taken": "このPCのTailscale Serveは、ポート{port}のルートを既に{target}に中継しています。上書きしないように、何も変えていません。",
+  "be.tailscale.funnel": "このPCのポート{port}は、Tailscale Funnelでインターネットに公開されています。Latticeまで公開しないように、何も変えていません。",
   "be.mobile.bind": "ポート{port}で配信を始められませんでした: {error}",
   "be.mobile.fellBack": "元のライブラリを開けなかったので、スマホへの配信は止めています",
   "be.mobile.badOp": "Latticeが受け取れない操作です",
