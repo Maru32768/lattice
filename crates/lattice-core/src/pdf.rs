@@ -96,7 +96,8 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
 fn ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
     let (lines, body, front) = lay_out(&doc);
-    let blocks = to_blocks(&lines, body, &figures(&doc), &figure_prefix(bytes));
+    let tables: Vec<(usize, &Table)> = doc.pages.iter().enumerate().flat_map(|(i, p)| p.tables.iter().map(move |t| (i, t))).collect();
+    let blocks = to_blocks(&lines, body, &figures(&doc), &tables, &figure_prefix(bytes));
     let Some(first) = blocks.iter().find(|b| b.kind != BlockKind::Image) else {
         return Err(msg!("pdf.noText"));
     };
@@ -381,7 +382,7 @@ fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Opt
 fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
     let mut lines = Vec::new();
     for (i, page) in doc.pages.iter().enumerate() {
-        lines.push(page_lines(i, page));
+        lines.push(page_lines(i, &page.glyphs.iter().collect::<Vec<_>>(), page.width));
     }
     drop_running_lines(&mut lines, &doc.pages);
     let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p.width)).collect();
@@ -389,6 +390,50 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
     let half = doc.pages.first().map_or(0., |p| p.height / 2.);
     let front = take_front_matter(&mut lines, body, half);
     (lines, body, front)
+}
+
+/// A table read from a `Grid`: its box, in points from the page's top left, and the text of its cells row by row.
+struct Table {
+    at: Bounds,
+    rows: Vec<Vec<String>>,
+}
+
+/// The tables of the page's grids that hold text in half their cells or more, their glyphs taken off the page. A glyph is
+/// in the cell its middle is in. They are read before the page is turned or not, and take no part in that: a table set
+/// across on a page of vertical writing can hold more glyphs than its columns.
+fn take_tables(page: usize, p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
+    let mut tables = Vec::new();
+    for Grid { xs, ys } in grids {
+        let (&[left, .., right], &[top, .., bottom]) = (&xs[..], &ys[..]) else {
+            continue;
+        };
+        let between = |edges: &[f64], at: f64| edges.windows(2).position(|w| w[0] < at && at < w[1]);
+        let cell = |g: &Glyph| Some((between(&ys, g.y - 0.3 * g.size)?, between(&xs, (g.x + g.end) / 2.)?));
+        let mut cells = vec![vec![Vec::new(); xs.len() - 1]; ys.len() - 1];
+        for g in &p.glyphs {
+            if let Some((row, column)) = cell(g) {
+                cells[row][column].push(g);
+            }
+        }
+        let rows: Vec<Vec<String>> = cells.iter().map(|row| row.iter().map(|glyphs| cell_text(page, glyphs, p.width)).collect()).collect();
+        let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
+        if filled > 0 && filled * 2 >= (xs.len() - 1) * (ys.len() - 1) {
+            p.glyphs.retain(|g| cell(g).is_none());
+            tables.push(Table { at: [left, top, right, bottom], rows });
+        }
+    }
+    tables
+}
+
+/// A cell's lines, joined as a paragraph's are.
+fn cell_text(page: usize, glyphs: &[&Glyph], width: f64) -> String {
+    let lines = page_lines(page, glyphs, width);
+    let vocab = vocabulary(&lines);
+    let mut text = String::new();
+    for l in &lines {
+        join(&mut text, &l.text, &vocab);
+    }
+    collapse(&text).trim().to_string()
 }
 
 struct Glyph {
@@ -470,18 +515,19 @@ struct Drawn {
     y1: f64,
 }
 
-/// The styles and the images `walk` finds on a page.
-type Walked = (Vec<Style>, Vec<Drawn>);
+/// The styles, the images and the rules `walk` finds on a page.
+type Walked = (Vec<Style>, Vec<Drawn>, Vec<Bounds>);
 
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
-/// style of each string, in the order pdf-extract shows them, and the images, in the PDF's own coordinates. pdf-extract
-/// calls `begin_word` once per string, so the styles line up with what it reports. Images inside forms, and inline
-/// images, are not followed. A clip counts by the box around its path.
+/// style of each string, in the order pdf-extract shows them, and the images and the rules (each line stroked, and each
+/// bar filled thinner than `RULE_SLACK`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
+/// so the styles line up with what it reports. Images inside forms, and inline images, are not followed. A clip counts
+/// by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
 // pixels when a figure's hidden part turns out to matter.
 fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walked {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     };
     let fonts = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
     let style_named = |name: &[u8]| {
@@ -496,6 +542,8 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
     let images = page_images(doc, resources);
     let (mut style, mut ctm, mut saved, mut styles, mut drawn) = (Style::default(), Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
+    // The path's current point and the start of its subpath, as the content gives them, and its lines and rectangles.
+    let (mut at, mut start, mut sides, mut boxes, mut rules) = ((0., 0.), (0., 0.), Vec::new(), Vec::<Bounds>::new(), Vec::new());
     // Whether the pen is where the last string left it.
     let mut goes_on = false;
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
@@ -513,17 +561,47 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
             }
             "re" => {
                 if let [x, y, w, h] = numbers(op)[..] {
-                    path = union(path, bounds(&ctm, &[(x, y), (x + w, y), (x, y + h), (x + w, y + h)]));
+                    let rect = bounds(&ctm, &[(x, y), (x + w, y), (x, y + h), (x + w, y + h)]);
+                    path = union(path, rect);
+                    boxes.push(rect);
+                    (at, start) = ((x, y), (x, y));
                 }
             }
-            "m" | "l" | "c" | "v" | "y" => path = union(path, bounds(&ctm, &numbers(op).as_chunks::<2>().0.iter().map(|&[x, y]| (x, y)).collect::<Vec<_>>())),
+            "m" | "l" | "c" | "v" | "y" => {
+                let points: Vec<(f64, f64)> = numbers(op).as_chunks::<2>().0.iter().map(|&[x, y]| (x, y)).collect();
+                path = union(path, bounds(&ctm, &points));
+                if let Some(&end) = points.last() {
+                    match op.operator.as_str() {
+                        "m" => start = end,
+                        "l" => sides.push(bounds(&ctm, &[at, end])),
+                        _ => {}
+                    }
+                    at = end;
+                }
+            }
+            "h" => {
+                sides.push(bounds(&ctm, &[at, start]));
+                at = start;
+            }
             "W" | "W*" => clipping = true,
             // The path ends here, and a clip it was marked for starts. pdf.js clips nothing for an empty path.
             "n" | "f" | "F" | "f*" | "S" | "s" | "B" | "B*" | "b" | "b*" => {
                 if clipping && path != NOTHING {
                     clip = Some(clip.map_or(path, |c| intersect(c, path)));
                 }
+                let paint = op.operator.as_str();
+                if matches!(paint, "s" | "b" | "b*") {
+                    sides.push(bounds(&ctm, &[at, start]));
+                }
+                if matches!(paint, "S" | "s" | "B" | "B*" | "b" | "b*") {
+                    rules.append(&mut sides);
+                    rules.extend(boxes.iter().flat_map(|&[x0, y0, x1, y1]| [[x0, y0, x1, y0], [x0, y1, x1, y1], [x0, y0, x0, y1], [x1, y0, x1, y1]]));
+                } else if paint != "n" {
+                    rules.extend(boxes.iter().filter(|&&[x0, y0, x1, y1]| (x1 - x0).min(y1 - y0) <= RULE_SLACK));
+                }
                 (path, clipping) = (NOTHING, false);
+                sides.clear();
+                boxes.clear();
             }
             "Do" => {
                 // The Reader shows the pixels as stored, so an image the page mirrors, turns over or turns 45 degrees
@@ -565,7 +643,7 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
     if invisible {
         drawn.clear();
     }
-    (styles, drawn)
+    (styles, drawn, rules)
 }
 
 /// A box as x0, y0, x1 and y1, in the PDF's own coordinates.
@@ -585,6 +663,106 @@ fn union(a: Bounds, b: Bounds) -> Bounds {
 
 fn intersect(a: Bounds, b: Bounds) -> Bounds {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
+}
+
+/// A table ruled round every one of its cells: the x of its column edges, left to right, and the y of its row edges, top
+/// to bottom, in points from the page's top left.
+struct Grid {
+    xs: Vec<f64>,
+    ys: Vec<f64>,
+}
+
+/// How far apart rules may be and still meet or run on: more than a rule is thick, and than the gap a book leaves between
+/// the strokes it draws a cell's side at a time.
+const RULE_SLACK: f64 = 2.;
+
+/// A rule across or down the page: where it lies, and where it runs from and to.
+type Rule = (f64, f64, f64);
+
+/// The grids rules make: rules across and down that meet, at least two columns and two rows, each rule running the whole
+/// width or height. A chart's grid lines make one too, which `take_tables` passes over when its cells hold little text.
+// shortcut: a table with merged cells, or one ruled only across as LaTeX's booktabs rules it, stays text; read those
+// when such tables turn up.
+fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
+    let (mut across, mut down) = (Vec::new(), Vec::new());
+    for [x0, y0, x1, y1] in rules {
+        if y1 - y0 <= RULE_SLACK && x1 - x0 > y1 - y0 {
+            across.push(((y0 + y1) / 2., x0, x1));
+        } else if x1 - x0 <= RULE_SLACK && y1 - y0 > x1 - x0 {
+            down.push(((x0 + x1) / 2., y0, y1));
+        }
+    }
+    let (across, down) = (joined(across), joined(down));
+    // Every rule across is tried against every rule down: a drawing of thousands of each would take seconds.
+    if across.len() * down.len() > 1_000_000 {
+        return Vec::new();
+    }
+    let meet = |a: &Rule, d: &Rule| d.0 > a.1 - RULE_SLACK && d.0 < a.2 + RULE_SLACK && a.0 > d.1 - RULE_SLACK && a.0 < d.2 + RULE_SLACK;
+    let (mut group_across, mut group_down) = (vec![None; across.len()], vec![None; down.len()]);
+    let mut groups = 0;
+    for first in 0..across.len() {
+        if group_across[first].is_some() {
+            continue;
+        }
+        group_across[first] = Some(groups);
+        let mut reached = vec![(true, first)];
+        while let Some((is_across, i)) = reached.pop() {
+            if is_across {
+                for (j, d) in down.iter().enumerate() {
+                    if group_down[j].is_none() && meet(&across[i], d) {
+                        group_down[j] = Some(groups);
+                        reached.push((false, j));
+                    }
+                }
+            } else {
+                for (j, a) in across.iter().enumerate() {
+                    if group_across[j].is_none() && meet(a, &down[i]) {
+                        group_across[j] = Some(groups);
+                        reached.push((true, j));
+                    }
+                }
+            }
+        }
+        groups += 1;
+    }
+    let of =
+        |rules: &[Rule], group: &[Option<usize>], g: usize| -> Vec<Rule> { rules.iter().zip(group).filter(|&(_, &k)| k == Some(g)).map(|(r, _)| *r).collect() };
+    (0..groups)
+        .filter_map(|g| {
+            let (across, down) = (of(&across, &group_across, g), of(&down, &group_down, g));
+            let edges = |rules: &[Rule]| {
+                let mut at: Vec<f64> = rules.iter().map(|r| r.0).collect();
+                at.sort_by(f64::total_cmp);
+                at
+            };
+            let (xs, ys) = (edges(&down), edges(&across));
+            let (&[left, .., right], &[top, .., bottom]) = (&xs[..], &ys[..]) else {
+                return None;
+            };
+            let whole = |r: &Rule, from: f64, to: f64| r.1 < from + RULE_SLACK && r.2 > to - RULE_SLACK;
+            let ruled = across.iter().all(|r| whole(r, left, right)) && down.iter().all(|r| whole(r, top, bottom));
+            (ruled && xs.len() >= 3 && ys.len() >= 3).then_some(Grid { xs, ys })
+        })
+        .collect()
+}
+
+/// Rules on one line joined where they touch or overlap: a book strokes a cell's side at a time.
+fn joined(mut rules: Vec<Rule>) -> Vec<Rule> {
+    rules.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out: Vec<Rule> = Vec::new();
+    for line in rules.chunk_by(|a, b| b.0 - a.0 <= RULE_SLACK) {
+        let at = line.iter().map(|r| r.0).sum::<f64>() / line.len() as f64;
+        let mut line = line.to_vec();
+        line.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let start = out.len();
+        for (_, from, to) in line {
+            match out[start..].last_mut() {
+                Some(last) if from <= last.2 + RULE_SLACK => last.2 = last.2.max(to),
+                _ => out.push((at, from, to)),
+            }
+        }
+    }
+    out
 }
 
 /// The image XObjects in a `Format` the Reader shows, by the names a page with these resources draws them with.
@@ -729,6 +907,7 @@ struct Page {
     glyphs: Vec<Glyph>,
     /// The images in a `Format` the Reader shows.
     drawn: Vec<Drawn>,
+    tables: Vec<Table>,
     /// Set mostly in vertical writing, and turned by `turn`.
     vertical: bool,
 }
@@ -765,7 +944,7 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let (doc, walked) = prepared(bytes, skip_forms, true)?;
-    let (styles, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
+    let (styles, drawn, rules): (Vec<_>, Vec<_>, Vec<_>) = walked.into_iter().collect();
     let mut out = Glyphs { styles, ..Default::default() };
     match catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc(&doc, &mut out))) {
         Ok(read) => read.map_err(|e| unreadable(&e))?,
@@ -785,7 +964,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
                         Some(written) => written,
                         none => none.insert(prepared(bytes, skip_forms, false)?),
                     };
-                    if let (Some(spelt), Some((written, _))) = (out.styles.get_mut(index), walked.get_mut(index)) {
+                    if let (Some(spelt), Some((written, _, _))) = (out.styles.get_mut(index), walked.get_mut(index)) {
                         *spelt = std::mem::take(written);
                     }
                     let read = catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc_page(written, &mut out, number)));
@@ -795,8 +974,10 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             }
         }
     }
-    for (page, drawn) in out.pages.iter_mut().zip(drawn) {
+    for (i, ((page, drawn), rules)) in out.pages.iter_mut().zip(drawn).zip(rules).enumerate() {
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
+        let grids = grids(rules.into_iter().map(|[x0, y0, x1, y1]| [x0 - page.left, page.top - y1, x1 - page.left, page.top - y0]));
+        page.tables = take_tables(i, page, grids);
         let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
         let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
         if down * 2 > all {
@@ -867,6 +1048,10 @@ fn turn(page: &mut Page) {
     turned.extend(run.map(sideways));
     page.glyphs = turned;
     page.drawn = std::mem::take(&mut page.drawn).into_iter().map(|d| Drawn { x0: d.y0, y0: width - d.x1, x1: d.y1, y1: width - d.x0, ..d }).collect();
+    for t in &mut page.tables {
+        let [x0, y0, x1, y1] = t.at;
+        t.at = [y0, width - x1, y1, width - x0];
+    }
     (page.width, page.height, page.vertical) = (page.height, page.width, true);
 }
 
@@ -1166,10 +1351,10 @@ impl Line {
 /// left, or it jumps the gutter in the middle of the page (columns written row by row). A script
 /// is measured from the letter it belongs to: `e` with both a superscript and a subscript moves
 /// further up and down than a line break would, and returns left to set the second under the first.
-fn page_lines(page: usize, p: &Page) -> Vec<Line> {
-    let mid = p.width / 2.;
+fn page_lines(page: usize, glyphs: &[&Glyph], width: f64) -> Vec<Line> {
+    let mid = width / 2.;
     let mut groups: Vec<Vec<&Glyph>> = Vec::new();
-    for g in &p.glyphs {
+    for &g in glyphs {
         let new_line = match groups.last().and_then(|l| Some((l.last()?, *l.iter().rev().find(|x| !is_script(x, l))?))) {
             None => true,
             Some((prev, letter)) => {
@@ -1565,21 +1750,26 @@ struct Draft<'a> {
     lines: Vec<&'a Line>,
 }
 
-/// The drafts' blocks with the figures' among them, each before the draft `place` puts it at, in drawing order. Their
-/// `src` starts with `prefix`.
-fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], prefix: &str) -> Vec<Block> {
+/// The drafts' blocks with the figures' and then the tables' among them, each before the draft `place` puts it at, in
+/// drawing order. The figures' `src` starts with `prefix`.
+fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[(usize, &Table)], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
     let drafts = drafts(lines, body);
     let mut out: Vec<(usize, Block)> = figures
         .iter()
         .map(|&(page, f)| {
-            let at = place(&drafts, page, f);
+            let at = place(&drafts, page, [f.x0, f.y0, f.x1, f.y1]);
             let label = drafts.get(at).filter(|d| d.kind == Kind::Caption).and_then(|d| caption_label(&d.lines[0].text));
             let src = format!("{prefix}{}.{}", f.id.0, f.id.1);
             let attrs = BlockAttrs { src: Some(src), ..Default::default() };
             (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
         })
         .collect();
+    out.extend(tables.iter().map(|&(page, t)| {
+        let text = t.rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
+        let attrs = BlockAttrs { rows: Some(t.rows.clone()), ..Default::default() };
+        (place(&drafts, page, t.at), Block { kind: BlockKind::Table, text, inlines: Vec::new(), attrs })
+    }));
     // After the figures: the stable sort keeps each figure before the draft it goes before.
     out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some((i, block(d, &vocab)?))));
     out.sort_by_key(|(at, _)| *at);
@@ -1676,12 +1866,13 @@ fn figures(doc: &Parsed) -> Vec<(usize, &Drawn)> {
         .collect()
 }
 
-/// The draft a figure goes before: the first that starts under it on its page and across from it (its caption, and in a
-/// right-hand column that column's next draft), else the first of a later page, else none.
-fn place(drafts: &[Draft], page: usize, f: &Drawn) -> usize {
+/// The draft a figure or a table with the box `[x0, _, x1, y1]` goes before: the first that starts under it on its page and
+/// across from it (its caption, and in a right-hand column that column's next draft), else the first of a later page,
+/// else none.
+fn place(drafts: &[Draft], page: usize, [x0, _, x1, y1]: Bounds) -> usize {
     let under = |d: &Draft| {
         let l = d.lines[0];
-        l.page == page && l.y >= f.y1 && l.x0 < f.x1 && l.x1 > f.x0
+        l.page == page && l.y >= y1 && l.x0 < x1 && l.x1 > x0
     };
     drafts.iter().position(under).or_else(|| drafts.iter().position(|d| d.lines[0].page > page)).unwrap_or(drafts.len())
 }
@@ -3821,6 +4012,18 @@ pub(crate) mod tests {
         for ops in [td.to_string(), td.replace("Td", "TD"), quotes] {
             assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["ああうえおかき", "くけこ"], "{ops}");
         }
+    }
+
+    #[test]
+    fn a_table_set_across_on_a_page_of_vertical_writing_leaves_the_page_to_turn() {
+        // The table holds more glyphs than the columns: counted with them, the page would stay upright and its columns
+        // come apart a character at a time.
+        let columns = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj ET\n";
+        let cells = shown(78., 625., "Pros") + &shown(178., 625., "It lasts long.") + &shown(78., 665., "Cons") + &shown(178., 665., "It costs time.");
+        let bytes = japanese(&[vec![]], "Identity-V", &(columns.to_string() + &ruled(&[72., 172., 300.], &[600., 640., 680.], "strokes") + &cells));
+        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかき"), ("table", "Pros\tIt lasts long.\nCons\tIt costs time.")]);
     }
 
     #[test]
