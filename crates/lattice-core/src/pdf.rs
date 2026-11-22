@@ -412,14 +412,47 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
                 cells[row][column].push(g);
             }
         }
-        let rows: Vec<Vec<String>> = cells.iter().map(|row| row.iter().map(|glyphs| cell_text(glyphs, p.width)).collect()).collect();
+        let rows: Vec<Vec<String>> = cells.iter().flat_map(|band| band_rows(band, &xs, p.width)).collect();
         let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
-        if filled * 2 >= (xs.len() - 1) * (ys.len() - 1) {
+        if filled * 2 >= (xs.len() - 1) * rows.len() {
             p.glyphs.retain(|g| cell(g).is_none());
             tables.push(Table { at, rows });
         }
     }
     tables
+}
+
+/// The rows of the band between two rules across, each a text per column: one, unless the band holds rows no rule parts,
+/// as a table ruled only round its body does. Those rows are told from a cell's lines by where they break: every cell
+/// with text starts its first line on the band's first baseline, and starts a line on each later row's baseline after a
+/// line that ends with room for that line's first word, which a line that wraps does not.
+// shortcut: cells that each break their text at the same baselines read as rows, so a row of cells holding lists is cut
+// up; tell them apart if such tables turn up.
+fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
+    let mut cells: Vec<(usize, Vec<Line>)> = band.iter().map(|glyphs| page_lines(0, glyphs, width)).enumerate().filter(|(_, l)| !l.is_empty()).collect();
+    for (_, lines) in &mut cells {
+        lines.sort_by(|a, b| a.y.total_cmp(&b.y));
+    }
+    let on = |l: &Line, y: f64| (l.y - y).abs() < 0.3 * l.size;
+    let has_room = |column: usize, lines: &[Line], next: usize| {
+        let (before, after) = (&lines[next - 1], &lines[next]);
+        let padding = lines.iter().map(|l| l.x0).fold(f64::MAX, f64::min) - xs[column];
+        let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
+        let word = after.text.split_whitespace().next().unwrap_or_default().chars().count() as f64;
+        before.x1 + (word + 1.) * letter <= xs[column + 1] - padding
+    };
+    let starts_row = |y: f64| cells.iter().all(|(column, lines)| lines.iter().position(|l| on(l, y)).is_some_and(|i| i > 0 && has_room(*column, lines, i)));
+    let mut breaks = Vec::new();
+    if let [(_, first), _, ..] = &cells[..]
+        && cells.iter().all(|(_, lines)| on(&lines[0], first[0].y))
+        && !band.iter().flatten().any(|g| g.vertical)
+    {
+        breaks.extend(first[1..].iter().map(|l| l.y).filter(|&y| starts_row(y)));
+    }
+    let row_of = |g: &Glyph| breaks.iter().filter(|&&y| g.y > y - 0.6 * g.size).count();
+    (0..=breaks.len())
+        .map(|row| band.iter().map(|glyphs| cell_text(&glyphs.iter().copied().filter(|g| row_of(g) == row).collect::<Vec<_>>(), width)).collect())
+        .collect()
 }
 
 /// A cell's text, built as a paragraph's is. `block` reads only the lines' text, so their page is left 0.
@@ -2962,6 +2995,25 @@ pub(crate) mod tests {
         {
             assert_eq!(read(&(rules + &text)), plain, "{shape}");
         }
+    }
+
+    #[test]
+    fn rows_no_rule_parts_are_read_by_their_lines() {
+        // Ruled round the box, under the header and between the columns only. The second table's cells wrap.
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert"));
+        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
+        ops += &(shown(78., 166., "Nested Sets") + &shown(206., 166., "Hard"));
+        ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
+        ops += &ruled(&[72., 160., 400.], &[300., 320., 360.], "strokes");
+        ops += &(shown(78., 314., "Design") + &shown(166., 314., "Queries"));
+        ops += &(shown(78., 336., "A tree kept as") + &shown(166., 336., "Easy to insert, but"));
+        ops += &(shown(78., 348., "references") + &shown(166., 348., "hard to query"));
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        let rows = |rows: &[[&str; 2]]| Some(rows.iter().map(|r| r.map(String::from).to_vec()).collect::<Vec<_>>());
+        let unruled = [["Design", "Insert"], ["Adjacency List", "Easy"], ["Nested Sets", "Hard"], ["Closure Table", "Easy"]];
+        let wrapped = [["Design", "Queries"], ["A tree kept as references", "Easy to insert, but hard to query"]];
+        assert_eq!(ir.blocks.iter().map(|b| b.attrs.rows.clone()).collect::<Vec<_>>(), [rows(&unruled), rows(&wrapped)]);
     }
 
     #[test]
