@@ -4208,10 +4208,6 @@ pub(crate) mod tests {
         bytes
     }
 
-    fn showing(text: &str) -> String {
-        format!("BT /F1 10 Tf 72 100 Td ({text}) Tj ET")
-    }
-
     /// `depth` forms, each drawing the next, the last showing `text`.
     fn nested(depth: usize, text: &str) -> Vec<(bool, String, bool)> {
         (0..depth)
@@ -4221,7 +4217,7 @@ pub(crate) mod tests {
                     if i + 1 < depth {
                         format!("/X{} Do", i + 1)
                     } else {
-                        showing(text)
+                        shown(72., 692., text)
                     },
                     true,
                 )
@@ -4289,7 +4285,7 @@ pub(crate) mod tests {
                         if i + 1 < depth {
                             next(i)
                         } else {
-                            showing("Over and over")
+                            shown(72., 692., "Over and over")
                         },
                         true,
                     )
