@@ -405,7 +405,15 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
     let mut tables = Vec::new();
     for Grid { at, xs, ys } in grids {
         let between = |edges: &[f64], at: f64| edges.windows(2).position(|w| w[0] < at && at < w[1]);
-        let cell = |g: &Glyph| Some((between(&ys, g.y - 0.3 * g.size)?, between(&xs, (g.x + g.end) / 2.)?));
+        // A glyph set across is placed by its baseline, a vertical one by the middle of its column and the top of its em box.
+        let cell = |g: &Glyph| {
+            let (x, y) = if g.vertical {
+                (g.x, g.y + 0.5 * g.size)
+            } else {
+                ((g.x + g.end) / 2., g.y - 0.3 * g.size)
+            };
+            Some((between(&ys, y)?, between(&xs, x)?))
+        };
         let mut cells = vec![vec![Vec::new(); xs.len() - 1]; ys.len() - 1];
         for g in &p.glyphs {
             if let Some((row, column)) = cell(g) {
@@ -4094,6 +4102,17 @@ pub(crate) mod tests {
         assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
         let ir = to_ir(&bytes, None).unwrap();
         assert_eq!(kinds(&ir), [("paragraph", "あいうえおかき"), ("table", "Pros\tIt lasts long.\nCons\tIt costs time.")]);
+    }
+
+    #[test]
+    fn vertical_writing_in_a_table_goes_to_the_cells_its_columns_are_in() {
+        // Two columns of body text, then a table whose columns start just under the rules above them.
+        let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
+        let body = column(580., 100., "034B034D034F035103530354035603580359035A") + &column(566., 100., "034B034D034F035103530354035603580359035A");
+        let cells = column(490., 102., "034B034D034F") + &column(430., 102., "03510353") + &column(490., 162., "03540356") + &column(430., 162., "034B034D");
+        let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう\nあい\tかき")]);
     }
 
     #[test]
