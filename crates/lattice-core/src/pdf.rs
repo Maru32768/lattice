@@ -771,6 +771,8 @@ fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
             let edges = |rules: &[Rule]| {
                 let mut at: Vec<f64> = rules.iter().map(|r| r.0).collect();
                 at.sort_by(f64::total_cmp);
+                // A double rule parts two cells, not three.
+                at.dedup_by(|next, kept| *next - *kept < 2. * RULE_SLACK);
                 at
             };
             let (xs, ys) = (edges(&down), edges(&across));
@@ -3081,6 +3083,15 @@ pub(crate) mod tests {
         let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + turned + &cells;
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "\tValue one\nRow two\tValue two")]);
+    }
+
+    #[test]
+    fn a_double_rule_parts_two_columns() {
+        let mut ops = ruled(&[72., 200., 202.4, 400.], &[110., 130., 150.], "strokes");
+        ops += &(shown(78., 124., "Method") + &shown(208., 124., "Returns"));
+        ops += &(shown(78., 144., "TT.now()") + &shown(208., 144., "an interval"));
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Method\tReturns\nTT.now()\tan interval")]);
     }
 
     #[test]
