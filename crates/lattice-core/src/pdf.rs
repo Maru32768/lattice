@@ -6,9 +6,12 @@
 //! lines, two-column reading order, running headers and page numbers, title, headings,
 //! paragraphs (with hyphenated line breaks joined), captions and the reference list.
 
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 use pdf_extract::content::{Content, Operation};
 use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
@@ -20,8 +23,9 @@ use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
 use crate::msg;
 use crate::pdf_image::Format;
+use crate::pdf_japan1;
 use crate::pdf_worker::{self, Request, Session};
-use crate::store::{NewSnapshot, Store, sha256_hex};
+use crate::store::{NewSnapshot, Store, hex, sha256_hex};
 
 /// `original_url` and `normalized_url` of every PDF imported from a file.
 pub const URL_PREFIX: &str = "local:pdf/";
@@ -204,6 +208,9 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let vocab = vocabulary(&lines);
     let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
     let mut out = Vec::new();
+    // shortcut: a turned page has no regions, as a box over a column would need turning back and a translation set
+    // down it; give them one when vertical text turns up for the Page view to translate.
+    let on_upright_page = |piece: &[&Line]| doc.pages.get(piece[0].page).is_some_and(|p| !p.vertical);
     for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
@@ -211,10 +218,13 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
             None
         };
         let pieces: Vec<&[&Line]> = d.lines.chunk_by(run_on).collect();
-        out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level, block)));
+        let texts = pieces.iter().zip(piece_texts(&pieces, &vocab)).filter(|(piece, _)| on_upright_page(piece));
+        out.extend(texts.filter_map(|(piece, text)| region(piece, text, level, block)));
     }
-    let top = lines.iter().map(|l| l.y - l.size).fold(f64::MAX, f64::min);
-    let bottom = lines.iter().map(|l| l.y + 0.3 * l.size).fold(f64::MIN, f64::max);
+    // A turned page's lines lie across its height, not down it.
+    let upright: Vec<&Line> = lines.iter().filter(|l| doc.pages.get(l.page).is_some_and(|p| !p.vertical)).collect();
+    let top = upright.iter().map(|l| l.y - l.size).fold(f64::MAX, f64::min);
+    let bottom = upright.iter().map(|l| l.y + 0.3 * l.size).fold(f64::MIN, f64::max);
     for r in &mut out {
         if let Some(page) = doc.pages.get(r.page) {
             give_room(r, page, top, bottom);
@@ -389,6 +399,27 @@ struct Glyph {
     size: f64,
     text: String,
     face: Face,
+    /// Set in vertical writing, where `x` is the middle of the column and `y` the top of the glyph's em box.
+    vertical: bool,
+    /// Turned a quarter clockwise to run down the page, and placed as in vertical writing: Latin set down a column on a
+    /// page that is `turn`ed. On any other page it is a label, and dropped.
+    turned: bool,
+}
+
+/// How far a Japanese font's em box rises above its baseline, in ems.
+const ASCENT: f64 = 0.88;
+
+/// What `walk` learns of a string from its font.
+#[derive(Clone, Copy, Default)]
+struct Style {
+    face: Face,
+    vertical: bool,
+    /// In vertical writing, how far below where a glyph is placed its em box starts, in ems. The glyph's place is its
+    /// vertical origin, which the font's `DW2` puts so far above the baseline: 0.88 em unless it says otherwise.
+    top: f64,
+    /// Shown where the string before it on the page left the pen: a string of a TJ after its first, or one that nothing
+    /// placed since the last.
+    goes_on: bool,
 }
 
 /// What a glyph's font says about it.
@@ -439,30 +470,42 @@ struct Drawn {
     y1: f64,
 }
 
+/// The styles and the images `walk` finds on a page.
+type Walked = (Vec<Style>, Vec<Drawn>);
+
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
-/// face of each string, in the order pdf-extract shows them, and the images, in the PDF's own coordinates. pdf-extract
-/// calls `begin_word` once per string, so the faces line up with what it reports. Images inside forms, and inline
+/// style of each string, in the order pdf-extract shows them, and the images, in the PDF's own coordinates. pdf-extract
+/// calls `begin_word` once per string, so the styles line up with what it reports. Images inside forms, and inline
 /// images, are not followed. A clip counts by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
 // pixels when a figure's hidden part turns out to matter.
-fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<Face>, Vec<Drawn>) {
+fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walked {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
     };
     let fonts = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
-    let face_named = |name: &[u8]| {
+    let style_named = |name: &[u8]| {
         let font = fonts.and_then(|f| f.get_deref(name, doc).and_then(Object::as_dict).ok());
         let base = font.and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
-        base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
+        let vertical = font.filter(|f| writes_down(doc, f));
+        let vy = vertical.and_then(|f| cid_font(doc, f)?.get_deref(b"DW2", doc).and_then(Object::as_array).ok()?.first()?.as_float().ok());
+        let top = vy.map_or(0., |v| f64::from(v) / 1000. - ASCENT);
+        let vertical = vertical.is_some();
+        Style { face: base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b))), vertical, top, goes_on: false }
     };
     let images = page_images(doc, resources);
-    let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
+    let (mut style, mut ctm, mut saved, mut styles, mut drawn) = (Style::default(), Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
+    // Whether the pen is where the last string left it.
+    let mut goes_on = false;
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
     for op in &content.operations {
+        if matches!(op.operator.as_str(), "BT" | "Td" | "TD" | "Tm" | "T*" | "cm" | "q" | "Q") {
+            goes_on = false;
+        }
         match op.operator.as_str() {
-            "q" => saved.push((face, ctm, clip, mode)),
-            "Q" => (face, ctm, clip, mode) = saved.pop().unwrap_or((face, ctm, clip, mode)),
+            "q" => saved.push((style, ctm, clip, mode)),
+            "Q" => (style, ctm, clip, mode) = saved.pop().unwrap_or((style, ctm, clip, mode)),
             "cm" => {
                 if let [a, b, c, d, e, f] = numbers(op)[..] {
                     ctm = ctm.pre_transform(&Transform::row_major(a, b, c, d, e, f));
@@ -496,17 +539,21 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<
             }
             "Tf" => {
                 if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
-                    face = face_named(name);
+                    style = style_named(name);
                 }
             }
             "Tr" => mode = op.operands.first().and_then(|o| o.as_i64().ok()).unwrap_or(0),
             "Tj" => {
-                faces.push(face);
+                styles.push(Style { goes_on, ..style });
+                goes_on = true;
                 invisible |= mode == 3;
             }
             "TJ" => {
                 if let Some(Ok(items)) = op.operands.first().map(Object::as_array) {
-                    faces.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
+                    for _ in items.iter().filter(|o| matches!(o, Object::String(..))) {
+                        styles.push(Style { goes_on, ..style });
+                        goes_on = true;
+                    }
                 }
                 invisible |= mode == 3;
             }
@@ -518,7 +565,7 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<
     if invisible {
         drawn.clear();
     }
-    (faces, drawn)
+    (styles, drawn)
 }
 
 /// A box as x0, y0, x1 and y1, in the PDF's own coordinates.
@@ -614,7 +661,7 @@ fn drawable(doc: &Document) -> Result<(), String> {
                 let (len, inner, again) = match streams.entry(id) {
                     Entry::Occupied(seen) => (seen.get().0, seen.get().1.clone(), times),
                     Entry::Vacant(first) => {
-                        let content = stream.decompressed_content().unwrap_or_else(|_| stream.content.clone());
+                        let content = plain(stream);
                         let (len, inner) = &*first.insert((content.len(), draws(doc, &content, own)?));
                         (*len, inner.clone(), times - 1)
                     }
@@ -658,6 +705,20 @@ fn is_image(s: &Stream) -> bool {
     s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image")
 }
 
+fn is_form(s: &Stream) -> bool {
+    s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Form")
+}
+
+fn blank(doc: &mut Document, which: fn(&Stream) -> bool) {
+    for s in doc.objects.values_mut().filter_map(|o| o.as_stream_mut().ok()).filter(|s| which(s)) {
+        s.set_plain_content(Vec::new());
+    }
+}
+
+fn plain(s: &Stream) -> Vec<u8> {
+    s.decompressed_content().unwrap_or_else(|_| s.content.clone())
+}
+
 #[derive(Default)]
 struct Page {
     width: f64,
@@ -668,6 +729,8 @@ struct Page {
     glyphs: Vec<Glyph>,
     /// The images in a `Format` the Reader shows.
     drawn: Vec<Drawn>,
+    /// Set mostly in vertical writing, and turned by `turn`.
+    vertical: bool,
 }
 
 struct Parsed {
@@ -701,7 +764,63 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// `skip_forms`: figures are form XObjects, whose labels are noise, and pdf-extract places text
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
+    let (doc, walked) = prepared(bytes, skip_forms, true)?;
+    let (styles, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
+    let mut out = Glyphs { styles, ..Default::default() };
+    match catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc(&doc, &mut out))) {
+        Ok(read) => read.map_err(|e| unreadable(&e))?,
+        // pdf-extract passes over a quote, but may panic at the Tj it is spelt out to: one shown with no font set, for one.
+        // A page it panics at is read again as written, which loses what its quotes show rather than the PDF.
+        Err(_) => {
+            // The last page begun is the one it panicked in.
+            let read = out.pages.len().saturating_sub(1);
+            out.pages.truncate(read);
+            let mut written = None;
+            for &number in doc.get_pages().keys().skip(read) {
+                let index = out.pages.len();
+                let spelt = catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc_page(&doc, &mut out, number)));
+                let read = spelt.or_else(|_| {
+                    out.pages.truncate(index);
+                    let (written, walked) = match &mut written {
+                        Some(written) => written,
+                        none => none.insert(prepared(bytes, skip_forms, false)?),
+                    };
+                    if let (Some(spelt), Some((written, _))) = (out.styles.get_mut(index), walked.get_mut(index)) {
+                        *spelt = std::mem::take(written);
+                    }
+                    let read = catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc_page(written, &mut out, number)));
+                    Ok::<_, String>(read.unwrap_or_else(|panic| resume_unwind(panic)))
+                })?;
+                read.map_err(|e| unreadable(&e))?;
+            }
+        }
+    }
+    for (page, drawn) in out.pages.iter_mut().zip(drawn) {
+        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
+        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
+        let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
+        if down * 2 > all {
+            turn(page);
+        } else {
+            page.glyphs.retain(|g| !g.turned);
+        }
+    }
+    Ok((doc, out.pages))
+}
+
+/// The document as pdf-extract is given it, with what `walk` finds on each of its pages. `quotes`: with `'` and `"`
+/// spelt out.
+fn prepared(bytes: &[u8], skip_forms: bool, quotes: bool) -> Result<(Document, Vec<Walked>), String> {
     let mut doc = load(bytes)?;
+    // Before `spell_out_quotes` and `give_japan1_text`, which would otherwise decode forms that pdf-extract is not given.
+    if skip_forms {
+        blank(&mut doc, is_form);
+    }
+    mend_to_unicode(&mut doc);
+    if quotes {
+        spell_out_quotes(&mut doc);
+    }
+    give_japan1_text(&mut doc);
     let mut walked = Vec::new();
     for &page in doc.get_pages().values() {
         // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
@@ -709,23 +828,182 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         // Before the blanking below takes the images' filters, which `Format::of` reads.
         walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
     }
-    let (faces, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
-    for o in doc.objects.values_mut() {
-        if let Object::Stream(s) = o
-            && s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image" || (skip_forms && n == b"Form"))
+    blank(&mut doc, is_image);
+    drawable(&doc)?;
+    Ok((doc, walked))
+}
+
+/// A page set mostly in vertical writing, turned a quarter so that its columns, right to left, read as lines down the
+/// page, each from its left: what the layout reads. Text set across on it, a number set sideways in a column (縦中横)
+/// or a page number, goes in as one glyph at the middle of its run.
+fn turn(page: &mut Page) {
+    let width = page.width;
+    let sideways = |run: Glyph| Glyph { x: run.y - ASCENT * run.size, end: run.y + (1. - ASCENT) * run.size, y: width - (run.x + run.end) / 2., ..run };
+    let mut turned = Vec::with_capacity(page.glyphs.len());
+    let mut run: Option<Glyph> = None;
+    for g in std::mem::take(&mut page.glyphs) {
+        if let Some(r) = &mut run
+            && !g.vertical
+            && !g.turned
+            && (g.y - r.y).abs() < 0.3 * r.size
+            && (g.x - r.end).abs() < 0.5 * r.size
         {
-            s.set_plain_content(Vec::new());
+            if g.x > r.end + 0.15 * r.size.min(g.size) && !r.text.ends_with(' ') && !between_japanese(&r.text, &g.text) {
+                r.text.push(' ');
+            }
+            r.text.push_str(&g.text);
+            r.end = g.end;
+            continue;
+        }
+        turned.extend(run.take().map(sideways));
+        if g.vertical || g.turned {
+            turned.push(Glyph { x: g.y, end: g.y + (g.end - g.x), y: width - g.x, ..g });
+        } else {
+            run = Some(g);
         }
     }
-    drawable(&doc)?;
-    let mut out = Glyphs { faces, ..Default::default() };
-    pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
-    for (page, drawn) in out.pages.iter_mut().zip(drawn) {
-        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
+    turned.extend(run.map(sideways));
+    page.glyphs = turned;
+    page.drawn = std::mem::take(&mut page.drawn).into_iter().map(|d| Drawn { x0: d.y0, y0: width - d.x1, x1: d.y1, y1: width - d.x0, ..d }).collect();
+    (page.width, page.height, page.vertical) = (page.height, page.width, true);
+}
+
+/// PDF::API2 writes a character past U+FFFF in a ToUnicode CMap as its code point (`<26951>`) where UTF-16 is due.
+/// pdf-extract's CMap parser stops at a hex string of odd length and then panics, which loses the whole PDF.
+fn mend_to_unicode(doc: &mut Document) {
+    static CODE_POINT: LazyLock<regex::bytes::Regex> = LazyLock::new(|| regex::bytes::Regex::new("<([0-9A-Fa-f]{5})>").expect("static regex"));
+    let utf16 = |c: &regex::bytes::Captures| {
+        let ch = std::str::from_utf8(&c[1]).ok().and_then(|h| u32::from_str_radix(h, 16).ok()).and_then(char::from_u32);
+        ch.map_or_else(|| c[0].to_vec(), |ch| format!("<{}>", ch.encode_utf16(&mut [0; 2]).iter().map(|u| format!("{u:04X}")).collect::<String>()).into_bytes())
+    };
+    let cmaps: HashSet<ObjectId> = doc.objects.values().filter_map(|o| o.as_dict().ok()?.get(b"ToUnicode").ok()?.as_reference().ok()).collect();
+    for id in cmaps {
+        let Some(Object::Stream(s)) = doc.objects.get_mut(&id) else {
+            continue;
+        };
+        let content = plain(s);
+        if let Cow::Owned(mended) = CODE_POINT.replace_all(&content, utf16) {
+            s.set_plain_content(mended);
+        }
     }
-    Ok((doc, out.pages))
+}
+
+/// pdf-extract shows nothing for `'` and `"`, which some books set every line with: it reads the `T*` and `Tj` they stand
+/// for. Before `walk`, so that the faces it counts line up with what pdf-extract shows. A page's streams may part anywhere,
+/// even between a string and its quote, so a page is spelt out as a whole, into one stream.
+fn spell_out_quotes(doc: &mut Document) {
+    for page in doc.get_pages().into_values() {
+        if let Some(spelt) = doc.get_page_content(page).ok().and_then(|c| spelt_out(&c)) {
+            let id = doc.add_object(Stream::new(Dictionary::new(), spelt));
+            if let Ok(page) = doc.get_dictionary_mut(page) {
+                page.set("Contents", Object::Reference(id));
+            }
+        }
+    }
+    for s in doc.objects.values_mut().filter_map(|o| o.as_stream_mut().ok()).filter(|s| is_form(s)) {
+        if let Some(spelt) = spelt_out(&plain(s)) {
+            s.set_plain_content(spelt);
+        }
+    }
+}
+
+/// `content` with its quotes spelt out, if it has any. Inline images are left out: lopdf cannot write one back, and
+/// neither pdf-extract nor `walk` reads them.
+fn spelt_out(content: &[u8]) -> Option<Vec<u8>> {
+    if !content.iter().any(|&b| b == b'\'' || b == b'"') {
+        return None;
+    }
+    let content = Content::decode(content).ok()?;
+    if !content.operations.iter().any(|op| op.operator == "'" || op.operator == "\"") {
+        return None;
+    }
+    let op = |name: &str, operand: Option<&Object>| Operation::new(name, operand.into_iter().cloned().collect());
+    let operations = content.operations.into_iter().flat_map(|o| match (o.operator.as_str(), &o.operands[..]) {
+        ("'", [text @ Object::String(..)]) => vec![op("T*", None), op("Tj", Some(text))],
+        ("\"", [aw @ (Object::Integer(_) | Object::Real(_)), ac @ (Object::Integer(_) | Object::Real(_)), text @ Object::String(..)]) => {
+            vec![op("Tw", Some(aw)), op("Tc", Some(ac)), op("T*", None), op("Tj", Some(text))]
+        }
+        ("BI", _) => vec![],
+        _ => vec![o],
+    });
+    Content { operations: operations.collect::<Vec<_>>() }.encode().ok()
+}
+
+/// A Japanese font that shows the CIDs of Adobe-Japan1 as they are, with no ToUnicode, gives pdf-extract no text. It gets a
+/// ToUnicode of the CIDs it shows, not of the whole collection: pdf-extract parses a font's ToUnicode again on each page.
+/// A form without Resources of its own is not looked in.
+fn give_japan1_text(doc: &mut Document) {
+    let fonts: HashSet<ObjectId> = doc.objects.iter().filter(|(_, o)| o.as_dict().is_ok_and(|f| shows_japan1(doc, f))).map(|(&id, _)| id).collect();
+    if fonts.is_empty() {
+        return;
+    }
+    let pages =
+        doc.get_pages().into_values().map(|p| (doc.get_page_content(p).unwrap_or_default(), inherited(doc, p, b"Resources", Object::as_dict).ok().flatten()));
+    let forms = doc.objects.values().filter_map(|o| o.as_stream().ok()).filter(|s| is_form(s));
+    let forms = forms.map(|s| (plain(s), s.dict.get_deref(b"Resources", doc).and_then(Object::as_dict).ok()));
+    let mut shown: HashMap<ObjectId, BTreeSet<u32>> = HashMap::new();
+    for (content, resources) in pages.chain(forms) {
+        let names = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
+        let (mut font, mut saved) = (None, Vec::new());
+        for op in Content::decode(&content).map(|c| c.operations).unwrap_or_default() {
+            match (op.operator.as_str(), op.operands.first()) {
+                ("q", _) => saved.push(font),
+                ("Q", _) => font = saved.pop().unwrap_or(font),
+                ("Tf", Some(name)) => {
+                    let named = name.as_name().ok().and_then(|n| names?.get(n).ok()?.as_reference().ok());
+                    font = named.filter(|id| fonts.contains(id));
+                }
+                ("Tj" | "TJ", Some(shown_text)) if let Some(id) = font => {
+                    let strings = shown_text.as_array().map_or(std::slice::from_ref(shown_text), Vec::as_slice);
+                    let cids =
+                        strings.iter().filter_map(|o| o.as_str().ok()).flat_map(|s| s.as_chunks::<2>().0.iter().map(|&c| u32::from(u16::from_be_bytes(c))));
+                    shown.entry(id).or_default().extend(cids);
+                }
+                _ => {}
+            }
+        }
+    }
+    for (font, cids) in shown {
+        let entries: Vec<String> = cids.into_iter().filter_map(|cid| Some(format!("<{cid:04X}> <{}>", hex(pdf_japan1::utf16(cid)?)))).collect();
+        let cmap = format!(
+            "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <0000> <FFFF> endcodespacerange\n{} beginbfchar\n{}\nendbfchar\nendcmap end end\n",
+            entries.len(),
+            entries.join("\n")
+        );
+        let cmap = doc.add_object(Stream::new(Dictionary::new(), cmap.into_bytes()));
+        if let Ok(f) = doc.get_dictionary_mut(font) {
+            f.set("ToUnicode", Object::Reference(cmap));
+        }
+    }
+}
+
+/// A font set in vertical writing: by a CMap named for it (`Identity-V`, `UniJIS-UCS2-V`), or one with `/WMode 1`.
+fn writes_down(doc: &Document, font: &Dictionary) -> bool {
+    match font.get_deref(b"Encoding", doc) {
+        Ok(Object::Name(name)) => name.ends_with(b"-V"),
+        Ok(Object::Stream(cmap)) => cmap.dict.get(b"WMode").and_then(Object::as_i64).is_ok_and(|m| m == 1),
+        _ => false,
+    }
+}
+
+/// The CIDFont a Type0 font draws with.
+fn cid_font<'a>(doc: &'a Document, font: &'a Dictionary) -> Option<&'a Dictionary> {
+    let first = font.get_deref(b"DescendantFonts", doc).and_then(Object::as_array).ok()?.first()?;
+    doc.dereference(first).ok()?.1.as_dict().ok()
+}
+
+/// A Type0 font without a ToUnicode whose codes are the CIDs of Adobe-Japan1.
+fn shows_japan1(doc: &Document, font: &Dictionary) -> bool {
+    let name = |key: &[u8]| font.get(key).and_then(Object::as_name).ok();
+    let info = cid_font(doc, font).and_then(|f| f.get_deref(b"CIDSystemInfo", doc).and_then(Object::as_dict).ok());
+    let says = |key: &[u8], value: &[u8]| info.is_some_and(|i| i.get_deref(key, doc).and_then(Object::as_str).is_ok_and(|s| s == value));
+    matches!(name(b"Subtype"), Some(b"Type0"))
+        && matches!(name(b"Encoding"), Some(b"Identity-H" | b"Identity-V"))
+        && !font.has(b"ToUnicode")
+        && says(b"Registry", b"Adobe")
+        && says(b"Ordering", b"Japan1")
 }
 
 fn load(bytes: &[u8]) -> Result<Document, String> {
@@ -744,9 +1022,12 @@ fn unreadable(e: &dyn std::fmt::Debug) -> String {
 struct Glyphs {
     pages: Vec<Page>,
     origin: (f64, f64),
-    /// The faces `walk` found on each page, and how many of the current page's strings have begun.
-    faces: Vec<Vec<Face>>,
+    /// The styles `walk` found on each page, and how many of the current page's strings have begun.
+    styles: Vec<Vec<Style>>,
     shown: usize,
+    /// Where the column of vertical writing began, as pdf-extract placed its first glyph: of the strings since one that
+    /// did not go on from the string before it.
+    column: Option<(f64, f64)>,
     /// Where each text has been drawn on the current page.
     drawn: HashMap<String, Spots>,
 }
@@ -756,6 +1037,14 @@ const SAME_SPOT: f64 = 0.05;
 
 /// The places a text was drawn, by the `SAME_SPOT` square each lies in.
 type Spots = HashMap<(i64, i64), (f64, f64)>;
+
+impl Glyphs {
+    /// The style of the string being shown.
+    fn style(&self) -> Style {
+        let page = self.styles.get(self.pages.len().wrapping_sub(1));
+        page.and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default()
+    }
+}
 
 impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
@@ -767,43 +1056,66 @@ impl OutputDev for Glyphs {
     }
 
     fn end_page(&mut self) -> Result<(), OutputError> {
-        // Strings inside forms, which `walk` does not follow: the faces would be off by those.
+        // Strings inside forms, which `walk` does not follow: the styles would be off by those.
         let index = self.pages.len().wrapping_sub(1);
-        if self.faces.get(index).is_none_or(|f| f.len() != self.shown)
+        if self.styles.get(index).is_none_or(|f| f.len() != self.shown)
             && let Some(page) = self.pages.last_mut()
         {
-            page.glyphs.iter_mut().for_each(|g| g.face = Face::Body);
+            page.glyphs.iter_mut().for_each(|g| (g.face, g.vertical) = (Face::Body, false));
         }
         Ok(())
     }
 
     fn output_character(&mut self, trm: &Transform, width: f64, _: f64, font_size: f64, text: &str) -> Result<(), OutputError> {
-        // Rotated or mirrored text is a margin stamp (arXiv's) or a figure label, not prose.
+        // Rotated or mirrored text is a margin stamp (arXiv's) or a figure label, not prose, unless it runs down a column
+        // of a page in vertical writing; which pages are is known once they are done.
         let upright = trm.m11 > 0. && trm.m22 > 0. && trm.m12.abs() < 1e-3 * trm.m11 && trm.m21.abs() < 1e-3 * trm.m22;
-        let size = font_size.abs() * (trm.m11 * trm.m22).sqrt();
-        let index = self.pages.len().wrapping_sub(1);
-        let Some(page) = self.pages.last_mut().filter(|_| upright && size > 0.5) else {
+        let turned = trm.m12 < 0. && trm.m21 > 0. && trm.m11.abs() < 1e-3 * trm.m21 && trm.m22.abs() < 1e-3 * trm.m21;
+        let scale = if turned {
+            -trm.m12 * trm.m21
+        } else {
+            trm.m11 * trm.m22
+        };
+        let size = font_size.abs() * scale.sqrt();
+        let style = self.style();
+        let Some(page) = self.pages.last_mut().filter(|_| (upright || turned) && size > 0.5) else {
             return Ok(());
         };
-        let x = trm.m31 - self.origin.0;
+        // pdf-extract moves along every string as if it ran across the page; vertical writing runs down from where it
+        // starts. Its advances are the glyphs' widths, which in a Japanese font match their heights.
+        let (mut x, mut y) = (trm.m31 - self.origin.0, trm.m32);
+        if style.vertical {
+            let (sx, sy) = *self.column.get_or_insert((x, y));
+            (x, y) = (sx, sy - (x - sx));
+        }
         // A glyph drawn again where it already is adds no ink: a book draws an item's bullet once for each of the
         // item's lines, and the pen's return to it would start a line. The repeats lie within 0.01pt of each other.
         // Looked up by square, not by scanning: a page can draw one glyph a million times.
         let places = self.drawn.entry(text.to_string()).or_default();
         let square = |v: f64| (v / SAME_SPOT).floor() as i64;
-        let (sx, sy) = (square(x), square(trm.m32));
-        let near = |&(px, py): &(f64, f64)| (px - x).abs() < SAME_SPOT && (py - trm.m32).abs() < SAME_SPOT;
+        let (sx, sy) = (square(x), square(y));
+        let near = |&(px, py): &(f64, f64)| (px - x).abs() < SAME_SPOT && (py - y).abs() < SAME_SPOT;
         if (-1..=1).any(|i| (-1..=1).any(|j| places.get(&(sx.saturating_add(i), sy.saturating_add(j))).is_some_and(near))) {
             return Ok(());
         }
-        places.entry((sx, sy)).or_insert((x, trm.m32));
-        let face = self.faces.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
-        page.glyphs.push(Glyph { x, y: page.height - (trm.m32 - self.origin.1), end: x + width * size, size, text: text.to_string(), face });
+        places.entry((sx, sy)).or_insert((x, y));
+        let Style { face, vertical, top, .. } = style;
+        let y = page.height - (y - self.origin.1) + top * size;
+        // A turned glyph's baseline runs down the column's left, and its em box rises to the right.
+        let x = if turned {
+            x + (ASCENT - 0.5) * size
+        } else {
+            x
+        };
+        page.glyphs.push(Glyph { x, y, end: x + width * size, size, text: text.to_string(), face, vertical, turned });
         Ok(())
     }
 
     fn begin_word(&mut self) -> Result<(), OutputError> {
         self.shown += 1;
+        if !self.style().goes_on {
+            self.column = None;
+        }
         Ok(())
     }
 
@@ -881,6 +1193,11 @@ fn is_script(g: &Glyph, line: &[&Glyph]) -> bool {
     g.size < SCRIPT * line.iter().map(|x| x.size).fold(0., f64::max)
 }
 
+/// Whether two texts meet between Japanese characters.
+fn between_japanese(before: &str, after: &str) -> bool {
+    before.chars().last().is_some_and(joins_without_space) && after.chars().next().is_some_and(joins_without_space)
+}
+
 fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     let ink: Vec<&&Glyph> = glyphs.iter().filter(|g| !g.text.trim().is_empty()).collect();
     // The size most of the line is set in: superscripts and inline symbols don't count.
@@ -922,8 +1239,12 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
             marked.push(MATH_END);
         }
         if let Some(p) = prev {
-            gaps.push(g.x - reach);
-            if space || g.x > p.end + 0.15 * p.size.min(g.size) {
+            let gap = g.x - reach;
+            gaps.push(gap);
+            // Japanese has no spaces between words: a gap between its characters is a heading's spacing, or a line set
+            // out to its full width. Only a gap as wide as between a table's cells parts them.
+            let wide = gap > 1.8 * base.size;
+            if space || g.x > p.end + 0.15 * p.size.min(g.size) && (!between_japanese(&p.text, &g.text) || wide) {
                 text.push(' ');
                 marked.push(' ');
             }
@@ -1089,9 +1410,10 @@ fn push_clean(out: &mut String, s: &str) {
 /// section repeats on few, but its number goes up with the page: those are the lines whose number
 /// is as far from the page's index on at least a third of the pages.
 fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
+    // A turned page has the top and the bottom of the page at its sides.
     let margin = |l: &Line| {
-        let h = pages[l.page].height;
-        l.y < h * 0.08 || l.y > h * 0.92
+        let p = &pages[l.page];
+        l.y < p.height * 0.08 || l.y > p.height * 0.92 || p.vertical && (l.x1 < p.width * 0.08 || l.x0 > p.width * 0.92)
     };
     let key = |l: &Line| {
         margin(l).then(|| {
@@ -2045,7 +2367,7 @@ pub(crate) mod tests {
             } else {
                 Face::Body
             };
-            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face });
+            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face, vertical: false, turned: false });
             x += 5.;
         }
         out
@@ -3096,6 +3418,399 @@ pub(crate) mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn a_character_past_u_ffff_written_as_its_code_point_in_a_cmap_is_read() {
+        let mut doc = Document::load_mem(&pdf(&[vec![(72., 100., 10., "A cat sat on the mat.")]], None)).unwrap();
+        let cmap = b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <00> <ff> endcodespacerange\n\
+            2 beginbfchar\n<41> <26951>\n<63> <0063>\nendbfchar\nendcmap end end\n";
+        let cmap = doc.add_object(Stream::new(Dictionary::new(), cmap.to_vec()));
+        let helvetica = |o: &Object| o.as_dict().is_ok_and(|d| d.get(b"BaseFont").and_then(Object::as_name).is_ok_and(|n| n == b"Helvetica"));
+        let font = doc.objects.values_mut().find(|o| helvetica(o)).and_then(|o| o.as_dict_mut().ok()).unwrap();
+        font.set("ToUnicode", Object::Reference(cmap));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(to_ir(&bytes, None).unwrap().blocks[0].text, "\u{26951} cat sat on the mat.");
+    }
+
+    #[test]
+    fn lines_set_with_quote_operators_are_read() {
+        // The page's content in as many streams as `parts`.
+        let read = |parts: &[&[u8]]| {
+            let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
+            let page = *doc.get_pages().values().next().unwrap();
+            let streams: Vec<Object> = parts.iter().map(|p| Object::Reference(doc.add_object(Stream::new(Dictionary::new(), p.to_vec())))).collect();
+            doc.get_dictionary_mut(page).unwrap().set("Contents", streams);
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            to_ir(&bytes, None).unwrap().blocks[0].text.clone()
+        };
+        let lines: &[u8] = b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat) ' 0 0 (by the door.) \" ET";
+        assert_eq!(read(&[lines]), "The cat sat on the mat by the door.");
+        // Quotes with no string to show, or no spacing, which pdf-extract passes over: as a Tj, Tw or Tc they would panic,
+        // and the page would be read again with none of its quotes.
+        for bad in ["5 '", "/N 0 (by the door.) \"", "0 /N (by the door.) \"", "0 0 5 \""] {
+            let content = format!("BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat.) ' {bad} ET");
+            assert_eq!(read(&[content.as_bytes()]), "The cat sat on the mat.", "{bad}");
+        }
+        // Spacing given as real numbers.
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj 0.1 0.0 (on the mat.) \" ET"]), "The cat sat on the mat.");
+        // An inline image, which lopdf cannot write back.
+        assert_eq!(read(&[&[lines, b" q 10 0 0 10 300 300 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \x80 EI Q"].concat()]), "The cat sat on the mat by the door.");
+        // Streams split between a quote and its string.
+        assert_eq!(read(&[b"BT /F1 10 Tf 12 TL 72 692 Td (The cat sat) Tj (on the mat.)", b"' ET"]), "The cat sat on the mat.");
+    }
+
+    /// `bytes` with the content of each page given, by its index, in place of its own.
+    fn with_contents(bytes: &[u8], contents: &[(usize, &str)]) -> Vec<u8> {
+        let mut doc = Document::load_mem(bytes).unwrap();
+        let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+        for &(page, ops) in contents {
+            let content = doc.add_object(Stream::new(Dictionary::new(), ops.as_bytes().to_vec()));
+            doc.get_dictionary_mut(pages[page]).unwrap().set("Contents", Object::Reference(content));
+        }
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_quote_shown_before_any_font_is_set_does_not_lose_the_pdf() {
+        // pdf-extract panics at a Tj with no font, and passes over a quote: spelt out, the quote would lose the PDF.
+        let sentence = "The cat sat on the mat by the door, as it does every day.";
+        let content = format!("BT 12 TL 72 692 Td (by the door.) ' ET BT /F1 10 Tf 72 600 Td ({sentence}) Tj ET");
+        let bytes = with_contents(&pdf(&[vec![]], None), &[(0, &content)]);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), [sentence]);
+    }
+
+    #[test]
+    fn the_pages_around_one_read_again_as_written_keep_their_quotes() {
+        // The middle page panics once spelt out, between its two lines: its quote is in the no font a Q took back.
+        let quoted = |line: &str, quote: &str| format!("BT /F1 10 Tf 12 TL 72 700 Td ({line}) Tj ({quote}) ' ET");
+        let middle = "q BT /F1 10 Tf 72 700 Td (It saw a dog.) Tj ET Q BT 12 TL 72 600 Td (by the door.) ' ET BT /F1 10 Tf 72 500 Td (It ran.) Tj ET";
+        let (first, last) = (quoted("The cat sat", "on the mat."), quoted("Then it slept", "by the fire."));
+        let bytes = with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &first), (1, middle), (2, &last)]);
+        assert_eq!(glyphs(&bytes, true).unwrap().1.len(), 3);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()).join(" "), "The cat sat on the mat. It saw a dog. It ran. Then it slept by the fire.");
+    }
+
+    #[test]
+    fn a_page_pdf_extract_cannot_read_as_written_still_fails_the_pdf() {
+        // A Tj with no font set, which pdf-extract panics at whether or not quotes are spelt out.
+        let bytes = with_contents(&pdf(&[vec![(72., 100., 10., "The cat sat on the mat.")], vec![]], None), &[(1, "BT 72 692 Td (by the door.) Tj ET")]);
+        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
+    }
+
+    #[test]
+    fn a_quote_in_a_form_that_sets_no_font_does_not_lose_the_other_pages() {
+        // The second page is drawn by a form, which shows its text with a quote in the font the page set. pdf-extract
+        // starts a form with no font, so the page has no text; the first page keeps its own.
+        let sentence = "The cat sat on the mat by the door, as it does every day.";
+        let mut doc = Document::load_mem(&pdf(&[vec![(72., 100., 10., sentence)], vec![]], None)).unwrap();
+        let mut form = Dictionary::new();
+        form.set("Type", name("XObject"));
+        form.set("Subtype", name("Form"));
+        form.set("BBox", vec![0.into(), 0.into(), 612.into(), 792.into()]);
+        let form = doc.add_object(Stream::new(form, b"BT 12 TL 72 692 Td (Then it slept.) ' ET".to_vec()));
+        let page = *doc.get_pages().values().next_back().unwrap();
+        let content = doc.add_object(Stream::new(Dictionary::new(), b"BT /F1 10 Tf ET /X1 Do".to_vec()));
+        let page = doc.get_dictionary_mut(page).unwrap();
+        page.set("Contents", Object::Reference(content));
+        let mut xobjects = Dictionary::new();
+        xobjects.set("X1", Object::Reference(form));
+        page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), [sentence]);
+    }
+
+    /// `pages`, then `ops` drawn on the last in F3: a Japanese font that shows the CIDs of Adobe-Japan1 by `encoding`
+    /// and has no ToUnicode, as typeset Japanese books embed one.
+    fn japanese(pages: &[Vec<Run>], encoding: &str, ops: &str) -> Vec<u8> {
+        let mut doc = Document::load_mem(&pdf(pages, None)).unwrap();
+        let mut info = Dictionary::new();
+        info.set("Registry", Object::string_literal("Adobe"));
+        info.set("Ordering", Object::string_literal("Japan1"));
+        info.set("Supplement", Object::Integer(6));
+        let mut descriptor = Dictionary::new();
+        descriptor.set("Type", name("FontDescriptor"));
+        descriptor.set("FontName", name("Mincho"));
+        let mut cid_font = Dictionary::new();
+        cid_font.set("Type", name("Font"));
+        cid_font.set("Subtype", name("CIDFontType0"));
+        cid_font.set("BaseFont", name("Mincho"));
+        cid_font.set("CIDSystemInfo", Object::Dictionary(info));
+        cid_font.set("FontDescriptor", Object::Reference(doc.add_object(descriptor)));
+        // The vertical origin on the baseline, as in the book that set its columns with `'`.
+        cid_font.set("DW2", vec![Object::Integer(0), Object::Integer(-1000)]);
+        let mut font = Dictionary::new();
+        font.set("Type", name("Font"));
+        font.set("Subtype", name("Type0"));
+        font.set("BaseFont", name("Mincho"));
+        font.set("Encoding", name(encoding));
+        font.set("DescendantFonts", vec![Object::Reference(doc.add_object(cid_font))]);
+        let font = doc.add_object(font);
+        let page = *doc.get_pages().values().next_back().unwrap();
+        let resources = doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
+        resources.get_mut(b"Font").and_then(Object::as_dict_mut).unwrap().set("F3", Object::Reference(font));
+        let content = doc.get_page_contents(page)[0];
+        let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+        stream.set_plain_content([&stream.content[..], b"\n", ops.as_bytes()].concat());
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn texts(ir: &ArticleIr) -> Vec<&str> {
+        ir.blocks.iter().map(|b| b.text.as_str()).collect()
+    }
+
+    #[test]
+    fn text_from_a_japanese_font_with_no_tounicode_is_read() {
+        // Two kana by their CIDs, 843 and 887: in F3 as it is set, as a Q brings it back, and shown by a quote.
+        let quoted = "BT /F3 10 Tf 12 TL 72 612 Td <034B0377> ' ET";
+        for ops in ["BT /F3 10 Tf 72 600 Td <034B0377> Tj ET", "BT /F3 10 Tf ET q BT /F1 10 Tf ET Q BT 72 600 Td <034B0377> Tj ET", quoted] {
+            let ir = to_ir(&japanese(&[vec![(72., 100., 10., "Cats")]], "Identity-H", ops), None).unwrap();
+            assert_eq!(texts(&ir), ["Cats", "あの"], "{ops}");
+        }
+    }
+
+    #[test]
+    fn vertical_writing_is_read_as_paragraphs_down_the_columns() {
+        // Kana down three columns from the right, each column one string: a paragraph that ends short in the second, and
+        // one that starts a character down in the third. Page numbers are set across, at the foot and at the head.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj \
+            1 0 0 1 476 690 Tm <0358035A035C> Tj ET";
+        let bytes = japanese(&[vec![(300., 760., 10., "12"), (300., 20., 10., "13")]], "Identity-V", ops);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), ["あいうえおかき", "くけこ"]);
+        assert!(regions(&bytes).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_paragraph_that_runs_on_to_a_turned_page_keeps_its_region_on_the_page_set_across() {
+        // One line at the foot of a page set across, read on into the column of the next page, which is turned.
+        let line = vec![(72., 740., 10., "The cat sat on the mat by the door, as it does every day, and then it")];
+        let bytes = japanese(&[line, vec![]], "Identity-V", "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj ET");
+        assert_eq!(regions(&bytes).unwrap().iter().map(|r| r.page).collect::<Vec<_>>(), [0]);
+    }
+
+    #[test]
+    fn a_paragraph_that_runs_on_from_a_turned_page_gives_the_page_set_across_its_own_text() {
+        let sentence = "the cat sat on the mat by the door, as it does every day.";
+        let bytes = japanese(&[vec![(72., 100., 10., sentence)], vec![]], "Identity-V", "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj ET");
+        // The turned page first.
+        let mut doc = Document::load_mem(&bytes).unwrap();
+        let pages = doc.catalog().unwrap().get(b"Pages").and_then(Object::as_reference).unwrap();
+        doc.get_dictionary_mut(pages).unwrap().get_mut(b"Kids").and_then(Object::as_array_mut).unwrap().reverse();
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()).len(), 1, "one paragraph across the two pages");
+        assert_eq!(regions(&bytes).unwrap().iter().map(|r| (r.page, r.text.as_str())).collect::<Vec<_>>(), [(1, sentence)]);
+    }
+
+    #[test]
+    fn latin_set_across_on_a_turned_page_keeps_the_spaces_its_pen_moves_make() {
+        // Three columns of ten kana: most of the page is set down it, so it is turned. A word loosened by a tenth of an
+        // em, under the 0.15 em that parts words, stays whole.
+        let column = |x: f64| format!("1 0 0 1 {x} 700 Tm <034B034D034F035103530354035603580359035A> Tj ");
+        let columns = format!("BT /F3 10 Tf {}{}{}ET", column(500.), column(488.), column(476.));
+        let across = [
+            "BT /F1 10 Tf 1 0 0 1 100 400 Tm [(Hello) -300 (world)] TJ ET",
+            "BT /F1 10 Tf 100 400 Td (Hello) Tj 26 0 Td (world) Tj ET",
+            "BT /F1 10 Tf 1 0 0 1 100 400 Tm [(Hel) -100 (lo) -300 (world)] TJ ET",
+        ];
+        for across in across {
+            let bytes = japanese(&[vec![]], "Identity-V", &format!("{columns} {across}"));
+            assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+            let ir = to_ir(&bytes, None).unwrap();
+            assert!(texts(&ir).iter().any(|t| t.contains("Hello world")), "{across}: {:?}", texts(&ir));
+        }
+    }
+
+    #[test]
+    fn japanese_set_across_on_a_turned_page_takes_no_space_for_a_gap() {
+        // Kana set across, 0.3 em apart: one run, with no space between Japanese, as `line` reads it.
+        let g = |x: f64, text: &str| Glyph { x, y: 400., end: x + 10., size: 10., text: text.into(), face: Face::Body, vertical: false, turned: false };
+        let mut page = Page { width: 612., height: 792., glyphs: vec![g(100., "目"), g(113., "次")], ..Default::default() };
+        turn(&mut page);
+        assert_eq!(page.glyphs.iter().map(|g| g.text.as_str()).collect::<Vec<_>>(), ["目次"]);
+    }
+
+    #[test]
+    fn a_page_mostly_across_is_not_turned_for_a_label_set_down_it() {
+        let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
+        let label = "BT /F3 10 Tf 1 0 0 1 500 300 Tm <034B034D> Tj ET";
+        let (_, pages) = glyphs(&japanese(&[paragraph], "Identity-V", label), true).unwrap();
+        assert!(!pages[0].vertical);
+    }
+
+    #[test]
+    fn text_turned_on_a_page_set_across_is_left_out() {
+        // A figure's label turned a quarter clockwise, beside a paragraph.
+        let paragraph = vec![(72., 100., 10., "The cat sat on the mat by the door, as it does every day."), (72., 112., 10., "Then it slept.")];
+        let label = "BT /F1 10 Tf 0 -1 1 0 500 400 Tm (Figure label) Tj ET";
+        let ir = to_ir(&japanese(&[paragraph], "Identity-H", label), None).unwrap();
+        assert_eq!(texts(&ir), ["The cat sat on the mat by the door, as it does every day. Then it slept."]);
+    }
+
+    #[test]
+    fn a_turned_page_keeps_its_glyphs_and_images_on_it() {
+        // On a page 612 wide: a glyph down the column at 500, and an image.
+        let glyph = Glyph { x: 500., y: 100., end: 510., size: 10., text: "あ".into(), face: Face::Body, vertical: true, turned: false };
+        let image = Drawn { id: (1, 0), x0: 100., y0: 200., x1: 300., y1: 400. };
+        let mut page = Page { width: 612., height: 792., glyphs: vec![glyph], drawn: vec![image], ..Default::default() };
+        turn(&mut page);
+        assert_eq!((page.width, page.height, page.vertical), (792., 612., true));
+        assert_eq!(page.glyphs.iter().map(|g| (g.x, g.end, g.y)).collect::<Vec<_>>(), [(100., 110., 112.)]);
+        assert_eq!(page.drawn.iter().map(|d| (d.x0, d.y0, d.x1, d.y1)).collect::<Vec<_>>(), [(200., 312., 400., 512.)]);
+    }
+
+    #[test]
+    fn a_japan1_font_gets_a_tounicode_of_only_the_cids_it_shows() {
+        let mut doc = Document::load_mem(&japanese(&[vec![]], "Identity-H", "BT /F3 10 Tf 72 600 Td <034B0377034B> Tj ET")).unwrap();
+        give_japan1_text(&mut doc);
+        let font = doc.objects.values().filter_map(|o| o.as_dict().ok()).find(|d| d.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Type0"));
+        let cmap = doc.get_object(font.unwrap().get(b"ToUnicode").and_then(Object::as_reference).unwrap()).and_then(Object::as_stream).unwrap();
+        assert!(String::from_utf8_lossy(&cmap.content).contains("2 beginbfchar\n<034B> <3042>\n<0377> <306e>\nendbfchar"));
+    }
+
+    #[test]
+    fn a_cid_font_that_gives_its_own_text_or_is_not_japan1_is_left_as_it_is() {
+        let read = |change: &dyn Fn(&mut Document, ObjectId)| {
+            let mut doc = Document::load_mem(&japanese(&[vec![(72., 100., 10., "Cats")]], "Identity-H", "BT /F3 10 Tf 72 600 Td <034B0377> Tj ET")).unwrap();
+            let is_type0 = |o: &Object| o.as_dict().is_ok_and(|d| d.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Type0"));
+            let font = doc.objects.iter().find(|(_, o)| is_type0(o)).map(|(&id, _)| id).unwrap();
+            change(&mut doc, font);
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            texts(&to_ir(&bytes, None).unwrap()).join("|")
+        };
+        // A ToUnicode of its own, which reads the two CIDs as X and Y.
+        let own = |doc: &mut Document, font: ObjectId| {
+            let cmap = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n1 begincodespacerange <0000> <FFFF> endcodespacerange\n\
+                2 beginbfchar\n<034B> <0058>\n<0377> <0059>\nendbfchar\nendcmap end end\n";
+            let id = doc.add_object(Stream::new(Dictionary::new(), cmap.as_bytes().to_vec()));
+            doc.get_dictionary_mut(font).unwrap().set("ToUnicode", Object::Reference(id));
+        };
+        // Adobe-Identity, whose CIDs are the font's own glyph numbers.
+        let identity = |doc: &mut Document, font: ObjectId| {
+            let cid_font = doc.get_dictionary(font).unwrap().get(b"DescendantFonts").and_then(Object::as_array).unwrap()[0].as_reference().unwrap();
+            let info = doc.get_dictionary_mut(cid_font).unwrap().get_mut(b"CIDSystemInfo").and_then(Object::as_dict_mut).unwrap();
+            info.set("Ordering", Object::string_literal("Identity"));
+        };
+        assert_eq!([read(&own), read(&identity)], ["Cats|XY", "Cats"]);
+    }
+
+    #[test]
+    fn columns_put_in_place_by_cm_are_read_as_columns() {
+        // The columns of `vertical_writing_is_read_as_paragraphs_down_the_columns`, each moved into place by a cm, which
+        // pdf-extract does not tell as it does a Tm.
+        let column = |x: f64, y: f64, cids: &str| format!("q 1 0 0 1 {x} {y} cm BT /F3 10 Tf <{cids}> Tj ET Q ");
+        let ops = [column(500., 700., "034B034D034F03510353"), column(488., 700., "03540356"), column(476., 690., "0358035A035C")].concat();
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["あいうえおかき", "くけこ"]);
+    }
+
+    #[test]
+    fn columns_moved_to_by_td_or_set_a_quote_a_character_are_read_as_columns() {
+        // The columns of `vertical_writing_is_read_as_paragraphs_down_the_columns`, with the first kana twice: moved to by
+        // Td or TD, and set as the book sets them, each character by a quote, which goes down a line first. Kept at the top
+        // of its column, the second あ would be drawn where the first is, and dropped.
+        let td = "BT /F3 10 Tf 500 700 Td <034B034B034F03510353> Tj -12 0 Td <03540356> Tj -12 -10 Td <0358035A035C> Tj ET";
+        let quoted = |x: f64, y: f64, cids: &[&str]| format!("1 0 0 1 {x} {y} Tm {}", cids.iter().map(|c| format!("<{c}> ' ")).collect::<String>());
+        let columns = [
+            quoted(500., 710., &["034B", "034B", "034F", "0351", "0353"]),
+            quoted(488., 710., &["0354", "0356"]),
+            quoted(476., 700., &["0358", "035A", "035C"]),
+        ];
+        let quotes = format!("BT /F3 10 Tf 10 TL {}ET", columns.concat());
+        for ops in [td.to_string(), td.replace("Td", "TD"), quotes] {
+            assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap()), ["ああうえおかき", "くけこ"], "{ops}");
+        }
+    }
+
+    #[test]
+    fn a_vertical_page_read_again_as_written_keeps_its_columns() {
+        // A quote shown before any font is set, then two columns: read again without the quote, the page is still turned.
+        let ops = "BT 12 TL 72 692 Td (x) ' ET BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj ET";
+        let bytes = japanese(&[vec![]], "Identity-V", ops);
+        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        assert_eq!(texts(&to_ir(&bytes, None).unwrap()), ["あいうえおかき"]);
+    }
+
+    #[test]
+    fn strings_shown_one_after_another_go_on_down_their_column() {
+        // One column as a TJ of two strings, the next as two Tj after one Tm.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D> <034F0351>] TJ 1 0 0 1 488 700 Tm <0353> Tj <0354> Tj ET";
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap();
+        assert_eq!(texts(&ir), ["あいうえおか"]);
+    }
+
+    #[test]
+    fn a_gap_in_a_tj_does_not_end_its_column() {
+        // A TJ number of an em, which pdf-extract takes back along the line it believes the string runs on.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm [<034B034D034F03510353> 1000 <0354035603580359>] TJ 1 0 0 1 488 700 Tm <035A035C> Tj ET";
+        assert_eq!(texts(&to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap()), ["あいうえおかきくぐけこ"]);
+    }
+
+    #[test]
+    fn a_string_put_beside_a_column_at_its_top_starts_its_own() {
+        // The left column drawn first, then the right one from the same height. The layout reads a page in the order it
+        // is drawn, so the text is the same either way: on the turned page the right column is a line of its own, 12pt
+        // above the left one and starting as far in, where joined it would go on along the left one's line.
+        let ops = "BT /F3 10 Tf 1 0 0 1 488 700 Tm <034B> Tj 1 0 0 1 500 700 Tm <034D034F> Tj ET";
+        let (_, pages) = glyphs(&japanese(&[vec![]], "Identity-V", ops), true).unwrap();
+        let [a, i, u] = &pages[0].glyphs[..] else {
+            panic!("{} glyphs", pages[0].glyphs.len());
+        };
+        let from_a = [a, i, u].map(|g| (g.text.as_str(), (g.x - a.x).round(), (g.y - a.y).round()));
+        assert_eq!(from_a, [("あ", 0., 0.), ("い", 0., -12.), ("う", 10., -12.)]);
+    }
+
+    #[test]
+    fn latin_turned_to_run_down_a_column_is_read_in_its_place() {
+        // Two kana, whose em boxes end at 688.8; "If it" in Helvetica from there, 13.3pt long, turned a quarter clockwise
+        // with its baseline 3.8pt left of the column's middle; two kana more. An arXiv stamp, turned the other way, stays out.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D> Tj ET BT /F1 10 Tf 0 -1 1 0 496.2 688.8 Tm (If it) Tj ET \
+            BT /F3 10 Tf 1 0 0 1 500 666.6 Tm <034F0351> Tj ET";
+        let stamp = vec![(30., 400., 10., "arXiv:2401.00001")];
+        assert_eq!(texts(&to_ir(&japanese(&[stamp], "Identity-V", ops), None).unwrap()), ["あいIf itうえ"]);
+    }
+
+    #[test]
+    fn a_number_set_sideways_in_a_column_is_read_in_its_place() {
+        // Kana by CID at 10pt steps down a column, and "25" across in Helvetica where the third would be.
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B> Tj 1 0 0 1 500 690 Tm <034D> Tj ET BT /F1 10 Tf 1 0 0 1 494.4 680 Tm (25) Tj ET \
+            BT /F3 10 Tf 1 0 0 1 500 670 Tm <034F> Tj 1 0 0 1 500 660 Tm <0351> Tj ET";
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", ops), None).unwrap();
+        assert_eq!(texts(&ir), ["あい25うえ"]);
+    }
+
+    #[test]
+    fn a_turned_page_leaves_the_room_of_the_other_pages_regions_as_it_was() {
+        // A paragraph halfway down a page, then a page of columns, whose lines once turned start higher up and, from a
+        // column at the left edge, end lower down.
+        let paragraph = vec![(72., 400., 10., "The cat sat on the mat by the door, as it does every day."), (72., 412., 10., "Then it slept.")];
+        let ops = "BT /F3 10 Tf 1 0 0 1 500 760 Tm <034B034D034F03510353> Tj 1 0 0 1 488 760 Tm <03540356> Tj 1 0 0 1 60 760 Tm <0358> Tj ET";
+        let room = |bytes: &[u8]| regions(bytes).unwrap().iter().filter(|r| r.page == 0).map(|r| (r.room_up, r.room_down)).collect::<Vec<_>>();
+        let alone = room(&pdf(std::slice::from_ref(&paragraph), None));
+        assert!(alone[0].0 > 0., "{alone:?}");
+        assert_eq!(room(&japanese(&[paragraph, vec![]], "Identity-V", ops)), alone);
+    }
+
+    #[test]
+    fn a_gap_between_japanese_characters_is_no_space() {
+        // 10pt glyphs, 10pt apart: a heading's spacing. 25pt apart: a table's cells.
+        let spaced = |text: &str, step: f64| {
+            let at = |i: usize| i as f64 * step;
+            let glyphs: Vec<Glyph> = text
+                .chars()
+                .enumerate()
+                .map(|(i, c)| Glyph { x: at(i), y: 100., end: at(i) + 10., size: 10., text: c.to_string(), face: Face::Body, vertical: false, turned: false })
+                .collect();
+            line(0, &glyphs.iter().collect::<Vec<_>>()).unwrap().text
+        };
+        assert_eq!([spaced("目次", 20.), spaced("ab", 20.), spaced("第1", 20.), spaced("名前", 35.)], ["目次", "a b", "第 1", "名 前"]);
     }
 
     #[test]
