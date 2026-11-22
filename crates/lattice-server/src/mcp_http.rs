@@ -63,15 +63,15 @@ const TOO_MANY: &str = "Too many deletions are waiting for the user's answer in 
 const CHANGED: &str = "What this would delete changed while the user decided in Lattice. Nothing was deleted: look it up again.";
 
 /// What the settings screen copies for a registration. One name in every scope, so a project's own takes the place of the
-/// user-wide one there, and an agent's tools are `mcp__lattice__*` whichever it holds.
+/// user-wide one there, and an agent's tools are `mcp__<name>__*` whichever it holds.
 pub fn add_command(token: &str, scope: Scope) -> String {
     let scope = scope.as_str();
-    format!("claude mcp add --transport http --scope {scope} lattice http://{ADDR}{ENDPOINT} --header \"Authorization: Bearer {token}\"")
+    format!("claude mcp add --transport http --scope {scope} {} http://{ADDR}{ENDPOINT} --header \"Authorization: Bearer {token}\"", mcp::CLIENT_NAME)
 }
 
 /// What takes a registration out of Claude Code again: Claude Code refuses a second `add` under the same name.
 pub fn remove_command(scope: Scope) -> String {
-    format!("claude mcp remove lattice -s {}", scope.as_str())
+    format!("claude mcp remove {} -s {}", mcp::CLIENT_NAME, scope.as_str())
 }
 
 #[derive(Clone)]
@@ -706,17 +706,18 @@ mod tests {
 
     #[test]
     fn it_listens_on_this_pc_only() {
-        assert!(ADDR.ip().is_loopback() && ADDR.port() == 8788);
+        // Tests run the development build's port and name; the release build's are 8788 and lattice.
+        assert!(ADDR.ip().is_loopback() && ADDR.port() == 8789);
         assert_eq!(
             add_command("t0k", Scope::User),
-            r#"claude mcp add --transport http --scope user lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t0k""#
+            r#"claude mcp add --transport http --scope user lattice-dev http://127.0.0.1:8789/mcp --header "Authorization: Bearer t0k""#
         );
         assert_eq!(
             add_command("t0k", Scope::Local),
-            r#"claude mcp add --transport http --scope local lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t0k""#
+            r#"claude mcp add --transport http --scope local lattice-dev http://127.0.0.1:8789/mcp --header "Authorization: Bearer t0k""#
         );
-        assert_eq!(remove_command(Scope::User), "claude mcp remove lattice -s user");
-        assert_eq!(remove_command(Scope::Local), "claude mcp remove lattice -s local");
+        assert_eq!(remove_command(Scope::User), "claude mcp remove lattice-dev -s user");
+        assert_eq!(remove_command(Scope::Local), "claude mcp remove lattice-dev -s local");
     }
 
     #[tokio::test]

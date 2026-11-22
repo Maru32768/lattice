@@ -45,8 +45,19 @@ const ENABLED: &str = "mcp.enabled";
 /// Every registration, token included, as one list: a backup drops it whole rather than keeping names whose tokens are gone.
 const REGISTRATIONS: &str = "secret.mcp_registrations";
 const MAX_NAME_CHARS: usize = 64;
-/// On loopback only. Fixed, so the command a registration copies stays right.
-pub const PORT: u16 = 8788;
+/// On loopback only. Fixed, so the command a registration copies stays right; the development build has its own, so both
+/// apps serve agents at once.
+pub const PORT: u16 = if cfg!(debug_assertions) {
+    8789
+} else {
+    8788
+};
+/// The name a registration takes in Claude Code, apart for the same reason.
+pub const CLIENT_NAME: &str = if cfg!(debug_assertions) {
+    "lattice-dev"
+} else {
+    "lattice"
+};
 
 /// Two edits at once would each write back the list they read, and one change would be lost.
 static EDITING: Mutex<()> = Mutex::new(());
