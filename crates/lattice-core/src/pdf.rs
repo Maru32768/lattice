@@ -406,7 +406,11 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
     for Grid { at, xs, ys } in grids {
         let between = |edges: &[f64], at: f64| edges.windows(2).position(|w| w[0] < at && at < w[1]);
         // A glyph set across is placed by its baseline, a vertical one by the middle of its column and the top of its em box.
+        // A turned one is left to the page, which drops it as a label unless the page turns.
         let cell = |g: &Glyph| {
+            if g.turned {
+                return None;
+            }
             let (x, y) = if g.vertical {
                 (g.x, g.y + 0.5 * g.size)
             } else {
@@ -3050,6 +3054,15 @@ pub(crate) mod tests {
         let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
         let bytes = with_form(&(ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells), "Form label");
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), [("table", "Strong\tLasting\nCostly\tEasy")]);
+    }
+
+    #[test]
+    fn a_header_turned_on_its_side_in_a_table_is_dropped_as_a_label_is() {
+        let turned = "BT /F1 10 Tf 0 -1 1 0 120 672 Tm (Name) Tj ET\n";
+        let cells = shown(178., 130., "Value one") + &shown(78., 182., "Row two") + &shown(178., 182., "Value two");
+        let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + turned + &cells;
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "\tValue one\nRow two\tValue two")]);
     }
 
     #[test]
