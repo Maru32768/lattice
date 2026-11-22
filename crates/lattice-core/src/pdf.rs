@@ -1765,11 +1765,7 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[(
             (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
         })
         .collect();
-    out.extend(tables.iter().map(|&(page, t)| {
-        let text = t.rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
-        let attrs = BlockAttrs { rows: Some(t.rows.clone()), ..Default::default() };
-        (place(&drafts, page, t.at), Block { kind: BlockKind::Table, text, inlines: Vec::new(), attrs })
-    }));
+    out.extend(tables.iter().map(|&(page, t)| (place(&drafts, page, t.at), Block::table(t.rows.clone()))));
     // After the figures: the stable sort keeps each figure before the draft it goes before.
     out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some((i, block(d, &vocab)?))));
     out.sort_by_key(|(at, _)| *at);

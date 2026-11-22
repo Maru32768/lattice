@@ -83,6 +83,14 @@ pub struct Block {
     pub attrs: BlockAttrs,
 }
 
+impl Block {
+    /// A table whose text is its cells, a tab between cells and a line break between rows.
+    pub fn table(rows: Vec<Vec<String>>) -> Block {
+        let text = rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
+        Block { kind: BlockKind::Table, text, inlines: Vec::new(), attrs: BlockAttrs { rows: Some(rows), ..Default::default() } }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ArticleIr {
     pub meta: ArticleMeta,

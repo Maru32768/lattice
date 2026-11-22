@@ -223,8 +223,7 @@ impl Walker {
         if rows.is_empty() {
             return;
         }
-        let text = rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
-        self.blocks.push(Block { kind: BlockKind::Table, text, inlines: Vec::new(), attrs: BlockAttrs { rows: Some(rows), ..Default::default() } });
+        self.blocks.push(Block::table(rows));
     }
 
     fn image(&mut self, img: &NodeRef) {
