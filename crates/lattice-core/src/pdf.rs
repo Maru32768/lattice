@@ -2689,6 +2689,100 @@ pub(crate) mod tests {
         assert!(to_ir(&bytes, None).unwrap().blocks.iter().any(|b| b.text.contains("Snapshot Read")), "the Reader keeps the table text");
     }
 
+    /// Helvetica at `x` and the baseline `y` from the top of a US Letter page.
+    fn shown(x: f64, y: f64, text: &str) -> String {
+        format!("BT /F1 10 Tf {x} {} Td ({text}) Tj ET\n", 792. - y)
+    }
+
+    /// Rules round every cell of the grid with column edges `xs` and row edges `ys` (from the top of the page), as a book,
+    /// a word processor and LaTeX draw them: a stroke along each side of each cell, a rectangle stroked round each cell,
+    /// or thin filled bars.
+    fn ruled(xs: &[f64], ys: &[f64], how: &str) -> String {
+        let up = |y: f64| 792. - y;
+        let mut ops = String::new();
+        match how {
+            "strokes" => {
+                for &y in ys {
+                    for x in xs.windows(2) {
+                        ops += &format!("{} {} m {} {} l S\n", x[0], up(y), x[1], up(y));
+                    }
+                }
+                for &x in xs {
+                    for y in ys.windows(2) {
+                        ops += &format!("{x} {} m {x} {} l S\n", up(y[0]) - 0.2, up(y[1]) + 0.2);
+                    }
+                }
+            }
+            "boxes" => {
+                for x in xs.windows(2) {
+                    for y in ys.windows(2) {
+                        ops += &format!("{} {} {} {} re S\n", x[0], up(y[1]), x[1] - x[0], y[1] - y[0]);
+                    }
+                }
+            }
+            _ => {
+                let (left, right, top, bottom) = (xs[0], xs[xs.len() - 1], ys[0], ys[ys.len() - 1]);
+                for &y in ys {
+                    ops += &format!("{left} {} {} 0.4 re f\n", up(y) - 0.2, right - left);
+                }
+                for &x in xs {
+                    ops += &format!("{} {} 0.4 {} re f\n", x - 0.2, up(bottom), bottom - top);
+                }
+            }
+        }
+        ops
+    }
+
+    /// Two tables, each under its caption, drawn as the book that set them does: both captions first, then each table's
+    /// rules and the text of its cells, one of which runs over two lines.
+    fn tables_page(how: &str) -> Vec<u8> {
+        let xs = [72., 172., 540.];
+        let mut ops = shown(72., 100., "Pros of passion") + &shown(72., 300., "Cons of passion");
+        ops += &ruled(&xs, &[110., 160., 200.], how);
+        ops += &(shown(78., 130., "Strong") + &shown(178., 128., "You care a lot about it") + &shown(178., 140., "and keep at it."));
+        ops += &(shown(78., 182., "Lasting") + &shown(178., 182., "It holds over the years."));
+        ops += &ruled(&xs, &[310., 350., 390.], how);
+        ops += &(shown(78., 330., "Costly") + &shown(178., 330., "It takes time from other duties."));
+        ops += &(shown(78., 372., "Easy") + &shown(178., 366., "You stay where it") + &shown(178., 378., "comes easily."));
+        with_contents(&pdf(&[vec![]], None), &[(0, &ops)])
+    }
+
+    #[test]
+    fn a_table_ruled_round_every_cell_is_read_as_a_table_after_its_caption() {
+        let first = [["Strong", "You care a lot about it and keep at it."], ["Lasting", "It holds over the years."]];
+        let second = [["Costly", "It takes time from other duties."], ["Easy", "You stay where it comes easily."]];
+        let text = |rows: &[[&str; 2]]| rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
+        let rows = |rows: &[[&str; 2]]| Some(rows.iter().map(|r| r.map(String::from).to_vec()).collect::<Vec<_>>());
+        let (first_text, second_text) = (text(&first), text(&second));
+        for how in ["strokes", "boxes", "bars"] {
+            let bytes = tables_page(how);
+            let ir = to_ir(&bytes, None).unwrap();
+            let want = [("paragraph", "Pros of passion"), ("table", first_text.as_str()), ("paragraph", "Cons of passion"), ("table", second_text.as_str())];
+            assert_eq!(kinds(&ir), want, "{how}");
+            assert_eq!((ir.blocks[1].attrs.rows.clone(), ir.blocks[3].attrs.rows.clone()), (rows(&first), rows(&second)), "{how}");
+            let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
+            assert!(!texts.iter().any(|t| t.contains("keep at it") || t.contains("over the years") || t.contains("comes easily")), "{how}: {texts:?}");
+        }
+    }
+
+    #[test]
+    fn rules_that_do_not_box_every_cell_with_text_leave_the_text_as_it_was() {
+        let cells = shown(78., 130., "Cell one") + &shown(178., 130., "Cell two") + &shown(78., 180., "Cell three") + &shown(178., 180., "Cell four");
+        let text = shown(72., 100., "Some prose above the cells.") + &cells;
+        let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
+        let plain = read(&text);
+        let across: String = [110., 160., 200.].iter().map(|&y| format!("72 {y} m 540 {y} l S\n", y = 792. - y)).collect();
+        let boxed = format!("70 {} 472 100 re S\n", 792. - 205.);
+        let chart = ruled(&[72., 172., 272., 372., 540.], &[110., 160., 200., 250.], "strokes");
+        let one_column = ruled(&[72., 540.], &[110., 160., 200.], "strokes");
+        let empty = ruled(&[72., 172., 540.], &[300., 350., 400.], "strokes");
+        for (shape, rules) in
+            [("rules across", across), ("a box round it all", boxed), ("a chart's grid", chart), ("one column", one_column), ("no text", empty)]
+        {
+            assert_eq!(read(&(rules + &text)), plain, "{shape}");
+        }
+    }
+
     #[test]
     fn a_heading_set_in_a_paragraphs_first_line_is_not_a_table_row() {
         let page: Vec<Run> = vec![
