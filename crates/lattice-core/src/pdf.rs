@@ -952,11 +952,12 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
     std::panic::catch_unwind(|| {
         let (doc, mut pages) = glyphs(bytes, true)?;
         // A page drawn entirely inside forms (an included PDF) is read with them after all, unless they cannot be drawn.
-        if pages.iter().any(|p| p.glyphs.is_empty())
+        let unread = |p: &Page| p.glyphs.is_empty() && p.tables.is_empty();
+        if pages.iter().any(unread)
             && let Ok((_, all)) = glyphs(bytes, false)
         {
             for (p, a) in pages.iter_mut().zip(all) {
-                if p.glyphs.is_empty() {
+                if unread(p) {
                     *p = a;
                 }
             }
@@ -3014,6 +3015,33 @@ pub(crate) mod tests {
         let unruled = [["Design", "Insert"], ["Adjacency List", "Easy"], ["Nested Sets", "Hard"], ["Closure Table", "Easy"]];
         let wrapped = [["Design", "Queries"], ["A tree kept as references", "Easy to insert, but hard to query"]];
         assert_eq!(ir.blocks.iter().map(|b| b.attrs.rows.clone()).collect::<Vec<_>>(), [rows(&unruled), rows(&wrapped)]);
+    }
+
+    /// A page that draws `ops`, then a form that shows `label` at its top.
+    fn with_form(ops: &str, label: &str) -> Vec<u8> {
+        let mut doc = Document::load_mem(&pdf(&[vec![]], None)).unwrap();
+        let mut form = Dictionary::new();
+        form.set("Type", name("XObject"));
+        form.set("Subtype", name("Form"));
+        form.set("BBox", vec![0.into(), 0.into(), 612.into(), 792.into()]);
+        let form = doc.add_object(Stream::new(form, format!("BT /F1 10 Tf 72 50 Td ({label}) Tj ET").into_bytes()));
+        let page = *doc.get_pages().values().next_back().unwrap();
+        let content = doc.add_object(Stream::new(Dictionary::new(), format!("{ops}\n/X1 Do").into_bytes()));
+        let page = doc.get_dictionary_mut(page).unwrap();
+        page.set("Contents", Object::Reference(content));
+        let mut xobjects = Dictionary::new();
+        xobjects.set("X1", Object::Reference(form));
+        page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_page_whose_text_is_all_in_a_table_is_not_read_again_with_its_forms() {
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let bytes = with_form(&(ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells), "Form label");
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), [("table", "Strong\tLasting\nCostly\tEasy")]);
     }
 
     #[test]
