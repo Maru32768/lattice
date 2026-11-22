@@ -401,12 +401,9 @@ struct Table {
 /// The tables of the page's grids that hold text in half their cells or more, their glyphs taken off the page. A glyph is
 /// in the cell its middle is in. They are read before the page is turned or not, and take no part in that: a table set
 /// across on a page of vertical writing can hold more glyphs than its columns.
-fn take_tables(page: usize, p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
+fn take_tables(p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
     let mut tables = Vec::new();
-    for Grid { xs, ys } in grids {
-        let (&[left, .., right], &[top, .., bottom]) = (&xs[..], &ys[..]) else {
-            continue;
-        };
+    for Grid { at, xs, ys } in grids {
         let between = |edges: &[f64], at: f64| edges.windows(2).position(|w| w[0] < at && at < w[1]);
         let cell = |g: &Glyph| Some((between(&ys, g.y - 0.3 * g.size)?, between(&xs, (g.x + g.end) / 2.)?));
         let mut cells = vec![vec![Vec::new(); xs.len() - 1]; ys.len() - 1];
@@ -415,25 +412,20 @@ fn take_tables(page: usize, p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
                 cells[row][column].push(g);
             }
         }
-        let rows: Vec<Vec<String>> = cells.iter().map(|row| row.iter().map(|glyphs| cell_text(page, glyphs, p.width)).collect()).collect();
+        let rows: Vec<Vec<String>> = cells.iter().map(|row| row.iter().map(|glyphs| cell_text(glyphs, p.width)).collect()).collect();
         let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
-        if filled > 0 && filled * 2 >= (xs.len() - 1) * (ys.len() - 1) {
+        if filled * 2 >= (xs.len() - 1) * (ys.len() - 1) {
             p.glyphs.retain(|g| cell(g).is_none());
-            tables.push(Table { at: [left, top, right, bottom], rows });
+            tables.push(Table { at, rows });
         }
     }
     tables
 }
 
-/// A cell's lines, joined as a paragraph's are.
-fn cell_text(page: usize, glyphs: &[&Glyph], width: f64) -> String {
-    let lines = page_lines(page, glyphs, width);
-    let vocab = vocabulary(&lines);
-    let mut text = String::new();
-    for l in &lines {
-        join(&mut text, &l.text, &vocab);
-    }
-    collapse(&text).trim().to_string()
+/// A cell's text, built as a paragraph's is. `block` reads only the lines' text, so their page is left 0.
+fn cell_text(glyphs: &[&Glyph], width: f64) -> String {
+    let lines = page_lines(0, glyphs, width);
+    block(Draft { kind: Kind::Paragraph, lines: lines.iter().collect() }, &vocabulary(&lines)).map(|b| b.text).unwrap_or_default()
 }
 
 struct Glyph {
@@ -665,9 +657,10 @@ fn intersect(a: Bounds, b: Bounds) -> Bounds {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 
-/// A table ruled round every one of its cells: the x of its column edges, left to right, and the y of its row edges, top
-/// to bottom, in points from the page's top left.
+/// A table ruled round every one of its cells: its box, the x of its column edges, left to right, and the y of its row
+/// edges, top to bottom, in points from the page's top left.
 struct Grid {
+    at: Bounds,
     xs: Vec<f64>,
     ys: Vec<f64>,
 }
@@ -742,7 +735,7 @@ fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
             };
             let whole = |r: &Rule, from: f64, to: f64| r.1 < from + RULE_SLACK && r.2 > to - RULE_SLACK;
             let ruled = across.iter().all(|r| whole(r, left, right)) && down.iter().all(|r| whole(r, top, bottom));
-            (ruled && xs.len() >= 3 && ys.len() >= 3).then_some(Grid { xs, ys })
+            (ruled && xs.len() >= 3 && ys.len() >= 3).then_some(Grid { at: [left, top, right, bottom], xs, ys })
         })
         .collect()
 }
@@ -975,10 +968,10 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             }
         }
     }
-    for (i, ((page, drawn), rules)) in out.pages.iter_mut().zip(drawn).zip(rules).enumerate() {
+    for ((page, drawn), rules) in out.pages.iter_mut().zip(drawn).zip(rules) {
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
         let grids = grids(rules.into_iter().map(|[x0, y0, x1, y1]| [x0 - page.left, page.top - y1, x1 - page.left, page.top - y0]));
-        page.tables = take_tables(i, page, grids);
+        page.tables = take_tables(page, grids);
         let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
         let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
         if down * 2 > all {
