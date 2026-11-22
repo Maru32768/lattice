@@ -1630,7 +1630,16 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        // The Run entry is keyed by this name, which would otherwise be the product name both builds share.
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name(if cfg!(debug_assertions) {
+                    "Lattice Dev"
+                } else {
+                    "Lattice"
+                })
+                .build(),
+        )
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
