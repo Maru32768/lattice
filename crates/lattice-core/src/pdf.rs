@@ -601,9 +601,12 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
             }
             "re" => {
                 if let [x, y, w, h] = numbers(op)[..] {
-                    let rect = bounds(&ctm, &[(x, y), (x + w, y), (x, y + h), (x + w, y + h)]);
+                    let corners = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)];
+                    let rect = bounds(&ctm, &corners);
                     path = union(path, rect);
                     boxes.push(rect);
+                    // Each side apart: the box round a turned rectangle is not where its sides are stroked.
+                    sides.extend((0..4).map(|i| bounds(&ctm, &[corners[i], corners[(i + 1) % 4]])));
                     (at, start) = ((x, y), (x, y));
                 }
             }
@@ -635,7 +638,6 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
                 }
                 if matches!(paint, "S" | "s" | "B" | "B*" | "b" | "b*") {
                     rules.append(&mut sides);
-                    rules.extend(boxes.iter().flat_map(|&[x0, y0, x1, y1]| [[x0, y0, x1, y0], [x0, y1, x1, y1], [x0, y0, x0, y1], [x1, y0, x1, y1]]));
                 } else if paint != "n" {
                     rules.extend(boxes.iter().filter(|&&[x0, y0, x1, y1]| (x1 - x0).min(y1 - y0) <= RULE_SLACK));
                 }
@@ -3108,6 +3110,19 @@ pub(crate) mod tests {
         let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells + &shown(72., 300., "Then a paragraph of prose follows the table.");
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(ir.meta.title.as_deref(), Some("Strong Lasting Costly Easy"));
+    }
+
+    #[test]
+    fn squares_turned_on_their_corners_are_not_a_table() {
+        // Four squares stroked turned 45 degrees, whose boxes would tile two by two, each with a label inside.
+        let diamond = |cx: f64, cy: f64| {
+            let s = 50. / 2f64.sqrt();
+            format!("q 0.7071 0.7071 -0.7071 0.7071 {cx} {} cm {} {} {s} {s} re S Q\n", 792. - cy, -s / 2., -s / 2.)
+        };
+        let diamonds = diamond(122., 135.) + &diamond(172., 135.) + &diamond(122., 185.) + &diamond(172., 185.);
+        let labels = shown(110., 138., "Yes") + &shown(162., 138., "No") + &shown(108., 188., "Wait") + &shown(160., 188., "Stop");
+        let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
+        assert_eq!(read(&(diamonds + &labels)), read(&labels));
     }
 
     #[test]
