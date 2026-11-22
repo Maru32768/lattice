@@ -96,8 +96,7 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
 fn ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
     let (lines, body, front) = lay_out(&doc);
-    let tables: Vec<(usize, &Table)> = doc.pages.iter().enumerate().flat_map(|(i, p)| p.tables.iter().map(move |t| (i, t))).collect();
-    let blocks = to_blocks(&lines, body, &figures(&doc), &tables, &figure_prefix(bytes));
+    let blocks = to_blocks(&lines, body, &figures(&doc), &body_tables(&doc.pages), &figure_prefix(bytes));
     let Some(first) = blocks.iter().find(|b| b.kind != BlockKind::Image) else {
         return Err(msg!("pdf.noText"));
     };
@@ -1640,19 +1639,7 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
         let p = &pages[l.page];
         l.y < p.height * 0.08 || l.y > p.height * 0.92 || p.vertical && (l.x1 < p.width * 0.08 || l.x0 > p.width * 0.92)
     };
-    let key = |l: &Line| {
-        margin(l).then(|| {
-            let mut k = String::new();
-            for c in l.text.to_lowercase().chars() {
-                match c {
-                    '0'..='9' if k.ends_with('#') => {}
-                    '0'..='9' => k.push('#'),
-                    c => k.push(c),
-                }
-            }
-            k
-        })
-    };
+    let key = |l: &Line| margin(l).then(|| running_key(&l.text));
     // The number a margin line starts or ends with, less the page's index. A heading starts with its
     // number too ("2 Related Work"), so at the start it counts only when no word follows it.
     let folio = |l: &Line| {
@@ -1685,6 +1672,37 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     for page in lines.iter_mut() {
         page.retain(|l| key(l).is_none_or(|k| !running(&k)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))));
     }
+}
+
+/// A running line's text as it repeats from page to page: lowercased, each number as `#`.
+fn running_key(text: &str) -> String {
+    let mut k = String::new();
+    for c in text.to_lowercase().chars() {
+        match c {
+            '0'..='9' if k.ends_with('#') => {}
+            '0'..='9' => k.push('#'),
+            c => k.push(c),
+        }
+    }
+    k
+}
+
+/// The tables with their pages, less those in the top or bottom margin that repeat (digits aside) on at least a third of
+/// the pages, as `drop_running_lines` drops a running header: one ruled round.
+fn body_tables(pages: &[Page]) -> Vec<(usize, &Table)> {
+    let all = || pages.iter().enumerate().flat_map(|(i, p)| p.tables.iter().map(move |t| (i, t)));
+    let key = |&(i, t): &(usize, &Table)| {
+        let height = pages[i].height;
+        (t.at[1] < height * 0.08 || t.at[3] > height * 0.92).then(|| running_key(&t.rows.concat().join("	")))
+    };
+    let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
+    for t in all() {
+        if let Some(k) = key(&t) {
+            seen.entry(k).or_default().insert(t.0);
+        }
+    }
+    let running = |k: &String| seen.get(k).is_some_and(|on| on.len() >= 2 && on.len() * 3 >= pages.len());
+    all().filter(|t| key(t).is_none_or(|k| !running(&k))).collect()
 }
 
 /// Reading order of one page. Two columns when each half holds a fifth of the text: lines across
@@ -3063,6 +3081,19 @@ pub(crate) mod tests {
         let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + turned + &cells;
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "\tValue one\nRow two\tValue two")]);
+    }
+
+    #[test]
+    fn a_running_header_ruled_round_is_dropped_as_one_that_is_not() {
+        let page = |n: usize, rules: &str| {
+            let head = shown(78., 30., "Spec 42") + &shown(300., 30., "Rev 3") + &shown(78., 52., &format!("Page {n}")) + &shown(300., 52., "Confidential");
+            rules.to_string() + &head + &shown(72., 120., &format!("Body text of page {n} runs on as a sentence of prose."))
+        };
+        let read = |rules: &str| {
+            let ops: Vec<String> = (1..=3).map(|n| page(n, rules)).collect();
+            to_ir(&with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &ops[0]), (1, &ops[1]), (2, &ops[2])]), None).unwrap()
+        };
+        assert_eq!(read(&ruled(&[72., 294., 540.], &[18., 40., 60.], "strokes")).blocks, read("").blocks);
     }
 
     #[test]
