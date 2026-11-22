@@ -101,7 +101,8 @@ fn ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
         return Err(msg!("pdf.noText"));
     };
     let non_empty = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
-    let first_line = || Some(first.text.chars().take(80).collect::<String>());
+    // A table's text has its cells apart by tabs and its rows by line breaks.
+    let first_line = || Some(collapse(&first.text).chars().take(80).collect::<String>());
     let title = front.title.or(doc.title.filter(|t| reads_like_title(t))).or_else(|| fallback.and_then(non_empty)).or_else(first_line);
     let author = front.author.or(doc.author.filter(|a| a.contains(' ')));
     Ok(ArticleIr { meta: ArticleMeta { title, author, published_at: doc.created, ..Default::default() }, blocks })
@@ -3099,6 +3100,14 @@ pub(crate) mod tests {
         let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
         // The text's box runs from 290 to 303.
         assert_eq!(r.iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>(), [(90., 97.)]);
+    }
+
+    #[test]
+    fn a_pdf_that_opens_with_a_table_takes_its_title_from_it_on_one_line() {
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells + &shown(72., 300., "Then a paragraph of prose follows the table.");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(ir.meta.title.as_deref(), Some("Strong Lasting Costly Easy"));
     }
 
     #[test]
