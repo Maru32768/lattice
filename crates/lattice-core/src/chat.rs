@@ -426,21 +426,21 @@ pub(crate) fn sources_text(sources: &[Source], max_chars: usize, block_chars: us
     for (i, s) in sources.iter().enumerate() {
         let mut chunk = String::new();
         if article != Some(s.article_id) {
-            chunk.push_str(&format!("\n# 記事: {}\n", unclosable(&s.title)));
+            chunk.push_str(&format!("\n# 記事: {}\n", s.title));
             heading = None;
         }
         let text = cut(&s.text, block_chars);
-        let text = unclosable(&text);
         if s.is_heading {
             chunk.push_str(&format!("[{}] ## {text}\n", i + 1));
             heading = Some(&s.text);
         } else {
             if s.heading.is_some() && s.heading.as_deref() != heading {
-                chunk.push_str(&format!("## {}\n", unclosable(s.heading.as_deref().unwrap_or_default())));
+                chunk.push_str(&format!("## {}\n", s.heading.as_deref().unwrap_or_default()));
                 heading = s.heading.as_deref();
             }
             chunk.push_str(&format!("[{}] {text}\n", i + 1));
         }
+        let chunk = unclosable(&chunk);
         let n = chunk.chars().count();
         if size + n > max_chars {
             out.push_str("[…truncated]\n");
