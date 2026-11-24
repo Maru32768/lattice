@@ -277,12 +277,13 @@ fn is_title(d: &Draft, body: f64) -> bool {
 }
 
 /// A line that starts with a capital, with little but letters and no full stop: set larger than the body, or three words
-/// of its size that end in one or lead to an equation. Code, a formula, a label and a table's row are none of those.
+/// of its size, alone on their row, that end in one or lead to an equation. Code, a formula, a label and a table's row
+/// are none of those.
 fn titles(l: &Line, body: f64) -> bool {
     let t = l.text.as_str();
     let larger = l.size > 1.03 * body && letters(t) >= 3;
     let closed = t.split_whitespace().last().is_some_and(|w| w == "=" || w.trim_start_matches(['(', '“', '‘']).starts_with(char::is_alphabetic));
-    let like_body = l.size > 0.97 * body && words(t) >= 3 && closed;
+    let like_body = l.size > 0.97 * body && words(t) >= 3 && closed && !l.beside;
     (larger || like_body) && t.starts_with(char::is_uppercase) && !t.ends_with('.') && mostly_letters(t)
 }
 
@@ -1210,6 +1211,8 @@ struct Line {
     /// Spaces too wide to be between words of prose: a justified line stretched those to 1.5 times
     /// the font size in the papers measured, a table's cells start at 2.1.
     wide_gaps: usize,
+    /// Another line of the column is on its row: a table's cell, a figure's label.
+    beside: bool,
 }
 
 impl Line {
@@ -1352,7 +1355,7 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     let x0 = ink.iter().map(|g| g.x).fold(f64::MAX, f64::min);
     let x1 = ink.iter().map(|g| g.end).fold(f64::MIN, f64::max);
     let wide_gaps = gaps.iter().filter(|&&gap| gap > 1.8 * main as f64 / 10.).count();
-    Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, marked, side: Side::Full, left: x0, right: x1, wide_gaps })
+    Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, marked, side: Side::Full, left: x0, right: x1, wide_gaps, beside: false })
 }
 
 /// Which of a line's glyphs make up a formula, which the page view then shows as printed: `t_abs(e)` or
@@ -1594,7 +1597,11 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
             })
             .map(|at| (at[0].size, at.iter().map(|l| l.x0).fold(f64::MAX, f64::min), at[at.len() - 1].x1))
             .collect();
+        let mut rows: Vec<f64> = of_side().map(|l| l.y).collect();
+        rows.sort_by(f64::total_cmp);
+        let above = |y: f64| rows.partition_point(|row| *row < y);
         for l in lines.iter_mut().filter(|l| l.side == s) {
+            l.beside = above(l.y + 0.5 * l.size) - above(l.y - 0.5 * l.size) > 1;
             let fits = |b: &&(f64, f64, f64)| b.0 == l.size && b.2 >= l.x1 - 0.25;
             // A paragraph's last line ends short of a quotation's edge too, but starts before it.
             let block = blocks.iter().find(|b| fits(b) && b.1 <= l.x0 + 0.25).or_else(|| blocks.iter().find(fits));
@@ -2565,6 +2572,10 @@ pub(crate) mod tests {
             (L, 350., 10., "Here is how to run the program from the shell:3"),
             (L, 380., 10.5, "Practice Problem 3 (page 36)"),
             (L, 400., 10.5, "II"),
+            (L, 490., 10., "Number of copies kept"),
+            (320., 490., 10., "Copies of the data"),
+            (L, 515., 10., "read the next block"),
+            (L, 540., 10., "The time that each of them takes ="),
             (L, 420., 10.5, "Interrupts"),
             (L, 440., 10., "Aside Moore's Law"),
             (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
@@ -2575,6 +2586,9 @@ pub(crate) mod tests {
         assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
         assert!(texts.contains(&"Here is how to run the program from the shell:3"), "a footnote's mark after the last word: {texts:?}");
         assert!(texts.contains(&"Aside Moore’s Law"), "a possessive is a word: {texts:?}");
+        assert!(texts.contains(&"The time that each of them takes ="), "leads to an equation: {texts:?}");
+        assert!(!texts.iter().any(|t| t.contains("copies kept") || t.contains("of the data")), "a table's cells: {texts:?}");
+        assert!(!texts.contains(&"read the next block"), "a figure's label: {texts:?}");
         assert!(
             texts.contains(&"Interrupts") && texts.contains(&"Practice Problem 3 (page 36)") && !texts.contains(&"II"),
             "set larger than the body: {texts:?}"
