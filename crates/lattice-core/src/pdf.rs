@@ -273,7 +273,11 @@ fn laid_out_text(d: &Draft, body: f64) -> bool {
 
 /// A line of words set like the body, with no full stop: a title that is no heading, as over a book's aside.
 fn is_title(d: &Draft, body: f64) -> bool {
-    matches!(d.lines.as_slice(), [l] if l.size > 0.97 * body && !l.text.ends_with('.') && reads_as_words(&l.text))
+    matches!(d.lines.as_slice(), [l] if titles(l, body))
+}
+
+fn titles(l: &Line, body: f64) -> bool {
+    l.size > 0.97 * body && !l.text.ends_with('.') && reads_as_words(&l.text)
 }
 
 /// Starts with a capital, has three words or more with little but letters, and ends in one of them or leads to an
@@ -1812,14 +1816,14 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             _ => None,
         };
         // Across a column or page: only a draft that ran to the column's edge, into a line of its size that stands where
-        // its next one would. An aside's title is indented, or sticks out of the body. A line that is mostly code is set
-        // a little smaller.
+        // its next one would, not into an aside's title. A line that is mostly code is set a little smaller.
         let across = drafts.last().is_some_and(|d| {
             let prev = d.lines[d.lines.len() - 1];
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
             let in_word = prev.text.ends_with('-') && l.text.starts_with(char::is_lowercase);
             let same = (prev.size - l.size).abs() < 0.5 || in_word;
-            across && same && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && aligned(d, l)
+            let cut = prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-');
+            across && same && cut && aligned(d, l) && !lines.get(i + 1).is_some_and(|below| heads(l, below, body))
         });
         let continues = start.is_none()
             && cur.is_some_and(|(kind, prev, first)| match kind {
@@ -1892,10 +1896,13 @@ fn aligned(d: &Draft, l: &Line) -> bool {
     match (d.kind, d.lines.as_slice()) {
         (Kind::Item, [first]) => (0.3 * l.size..3. * l.size).contains(&further_in(first, l)),
         (Kind::Item, [.., last]) => further_in(last, l).abs() <= 0.5 * l.size,
-        // An aside's title is indented by as little as 0.8, and starts with a capital.
-        _ if l.text.starts_with(char::is_lowercase) => (l.x0 - l.left).abs() <= 0.8 * l.size,
-        _ => (l.x0 - l.left).abs() <= 0.5 * l.size,
+        _ => (l.x0 - l.left).abs() <= 0.8 * l.size,
     }
+}
+
+/// Whether a line is the title of the aside below it: a page whose body is a few lines has the aside's edges.
+fn heads(l: &Line, below: &Line, body: f64) -> bool {
+    below.page == l.page && below.size < 0.97 * body && titles(l, body) && mostly_letters(&below.text)
 }
 
 /// A line that carries on a sentence (lowercase, where its next line would be) after a caption or a footnote, the stray
@@ -2534,13 +2541,14 @@ pub(crate) mod tests {
         const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
         const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let body = |from: f64, n: usize| (0..n).map(move |i| (150., from + 12. * i as f64, 10., BODY));
-        let first: Vec<Run> = body(100., 6).collect();
         let aside = [(L, 100., 10., "Aside The progress of machines")].into_iter().chain((0..25).map(|i| (L, 118. + 11.5 * i as f64, 9.5, ASIDE)));
-        let second: Vec<Run> = aside.chain(body(440., 5)).collect();
-        let bytes = pdf(&[first, second], None);
-        let ir = to_ir(&bytes, None).unwrap();
-        assert!(kinds(&ir).contains(&("paragraph", "Aside The progress of machines")), "the first page's text does not run on into it: {:?}", kinds(&ir));
-        let r = regions(&bytes).unwrap();
+        let bytes = |n: usize| pdf(&[body(100., 40).collect(), aside.clone().chain(body(440., n)).collect()], None);
+        // Three lines are too few to tell the body's edges from the aside's.
+        for n in [5, 3] {
+            let ir = to_ir(&bytes(n), None).unwrap();
+            assert!(kinds(&ir).contains(&("paragraph", "Aside The progress of machines")), "the first page's text does not run on into it: {:?}", kinds(&ir));
+        }
+        let r = regions(&bytes(5)).unwrap();
         assert!(r.iter().any(|x| x.page == 1 && x.y0 > 420.), "the body's lines reach its edges: {r:?}");
     }
 
