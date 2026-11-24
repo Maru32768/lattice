@@ -1,6 +1,6 @@
 import { Fragment, memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type SummaryItem, type VocabCapture } from "../api";
+import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type StickyKind, type SummaryItem, type VocabCapture } from "../api";
 import { citeNumbers, gapAfter, markNumbers, unverifiedNumbers } from "./summary";
 import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
@@ -11,15 +11,25 @@ import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
+import { STICKY_LABELS, StickyColumn } from "./StickyColumn";
+import { MAX_QUOTE, STICKY_KINDS } from "./stickies";
+import { openAsk, useStickies } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
 import { useLatest } from "../lib/useLatest";
 import { captureIn, isWord } from "../vocab/vocab";
-import { locale, useT } from "../i18n";
+import { locale, useT, type PlainKey } from "../i18n";
 import "../vocab/vocab.css";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "./BlockView";
 
 export { WordMarksContext } from "./BlockView";
+
+/** What can show a block of the article as its source, and how the block is then marked. */
+export const SOURCE_LABELS = {
+  summary: "reader.summarySource",
+  quiz: "reader.quizSource",
+  sticky: "stickies.source",
+} as const satisfies Record<string, PlainKey>;
 
 /** A block to scroll to and mark: a search hit or a chat citation. `seq` re-triggers the scroll. */
 export interface Focus {
@@ -244,6 +254,9 @@ export function LangSeg({
   );
 }
 
+/** What the bar over a selection takes below its end. */
+const BAR_HEIGHT = 44;
+
 /** Re-translating more blocks than this asks first. */
 const RETRANSLATE_CONFIRM_BLOCKS = 50;
 
@@ -286,8 +299,8 @@ export interface DocActions {
   onCopyUrl: () => void;
   /** Asks for confirmation, then removes the article from the Index. */
   onDelete: () => void;
-  /** Shows a block in the Reader, marked as the source of a summary item or a quiz answer. */
-  onFocusBlock: (block: number, from: "summary" | "quiz") => void;
+  /** Shows a block in the Reader, marked as the source of a summary item, a quiz answer or a sticky's. */
+  onFocusBlock: (block: number, from: keyof typeof SOURCE_LABELS) => void;
   /** Quiz cards were added to or removed from review. */
   onReviewChanged: () => void;
 }
@@ -858,8 +871,18 @@ export function Reader({
   const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
-  /** 単語を登録 over the selection, then what came of it. */
-  const [cap, setCap] = useState<{ capture: VocabCapture; x: number; y: number; status?: string; error?: string } | null>(null);
+  /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
+  const [cap, setCap] = useState<{
+    passage: { blockId: number; quote: string } | null;
+    capture: VocabCapture | null;
+    x: number;
+    y: number;
+    status?: string;
+    error?: string;
+  } | null>(null);
+  const stickies = useStickies(a.id);
+  /** The ask opened here last. */
+  const [opened, setOpened] = useState<number | null>(null);
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
   const pieces = new Map(blocks.map((b) => [b.id, blockPieces(b)]));
@@ -928,22 +951,54 @@ export function Reader({
     };
   }
 
-  async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
+  /** The passage selected in this article's blocks, by the block it starts in, and where to put the bar. */
+  function selectionPassage() {
+    const sel = window.getSelection();
+    const quote = sel?.toString().trim();
+    const root = blocksEl.current;
+    const view = scrollEl.current;
+    if (!sel || !quote || !root || !view) {
+      return null;
+    }
+    const range = sel.getRangeAt(0);
+    const start = range.startContainer;
+    const el = (start instanceof Element ? start : start.parentElement)?.closest<HTMLElement>(".blk");
+    const block = el && root.contains(el) ? blocks.find((b) => el.id === `b-${b.id}`) : undefined;
+    // Text after the article in the selection (a drag out of a sticky) is none of the passage. A triple click on the
+    // last paragraph ends there too, before any text.
+    const beyond = document.createRange();
+    beyond.setStartAfter(root);
+    beyond.setEnd(range.endContainer, range.endOffset);
+    if (!block || beyond.toString().trim()) {
+      return null;
+    }
+    const r = range.getBoundingClientRect();
+    return { passage: { blockId: block.id, quote }, x: r.left + r.width / 2, y: Math.min(r.bottom, view.getBoundingClientRect().bottom - BAR_HEIGHT) };
+  }
+
+  async function saveWord({ capture, x, y }: { capture: VocabCapture; x: number; y: number }) {
     clearTimeout(timers.current.cap);
+    const c = { passage: null, capture, x, y };
     await api
-      .vocabAdd(c.capture)
+      .vocabAdd(capture)
       .then((r) => {
-        setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
+        setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: capture.surface }) });
         onVocabChanged();
       })
       .catch((e: unknown) => setCap({ ...c, error: String(e) }));
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
 
-  const offerCapture = () => {
+  const offerBar = () => {
     clearTimeout(timers.current.cap);
-    setCap(selectionCapture());
+    const selected = selectionPassage();
+    setCap(selected && { ...selected, capture: selectionCapture()?.capture ?? null });
   };
+  function ask(kind: StickyKind, passage: { blockId: number; quote: string }) {
+    setCap(null);
+    window.getSelection()?.removeAllRanges();
+    setOpened(openAsk(a.id, { ...passage, kind }));
+  }
   useEffect(() => {
     const collapsed = () => {
       if (window.getSelection()?.isCollapsed) {
@@ -1016,6 +1071,10 @@ export function Reader({
   );
   const fetched = a.fetch_status === "ok";
   const local = isLocal(a.original_url);
+  const passage = cap?.passage;
+  const capture = cap?.capture;
+  // Characters as the backend counts them, not UTF-16 units.
+  const passageTooLong = !!passage && Array.from(passage.quote).length > MAX_QUOTE;
 
   return (
     <div className="doc">
@@ -1062,7 +1121,15 @@ export function Reader({
       )}
 
       <div className="doc-body">
-        <div className="doc-scroll" ref={scrollEl} tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
+        <div
+          className="doc-scroll"
+          ref={scrollEl}
+          tabIndex={-1}
+          data-pane-target
+          onScroll={cap && !cap.status ? () => setCap(null) : undefined}
+          // Not on the blocks alone: a drag over a passage often ends in the margin.
+          onMouseUp={offerBar}
+        >
           <article className="reader">
             <div className="art-meta">
               {a.feed_title && <span className="src">{a.feed_title}</span>}
@@ -1212,7 +1279,7 @@ export function Reader({
             )}
 
             <OpenLink.Provider value={onLink}>
-              <div className="prose blocks" ref={blocksEl} onMouseUp={offerCapture} onKeyUp={(e) => e.shiftKey && offerCapture()}>
+              <div className="prose blocks" ref={blocksEl} onKeyUp={(e) => e.shiftKey && offerBar()}>
                 {blocks.map((b, i) => (
                   <ReaderBlock
                     key={b.id}
@@ -1236,22 +1303,49 @@ export function Reader({
               </div>
             </OpenLink.Provider>
           </article>
+          <StickyColumn
+            article={a.id}
+            blocks={blocks}
+            saved={stickies.saved}
+            asks={stickies.asks}
+            error={stickies.error}
+            opened={opened}
+            onSource={(b) => act.onFocusBlock(b, "sticky")}
+          />
         </div>
         {panel === "quiz" && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, "quiz")} onReviewChanged={act.onReviewChanged} onClose={closePanel} />}
         {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}
       </div>
       {cap &&
         createPortal(
-          <div className="vw-cap" style={{ left: cap.x, top: cap.y }} role={cap.status || cap.error ? "status" : undefined}>
+          // Half the bar's width from the window's edges, at least.
+          <div className="vw-cap" style={{ left: `clamp(190px, ${cap.x}px, 100vw - 190px)`, top: cap.y }} role={cap.status || cap.error ? "status" : undefined}>
             {cap.status ? (
               <span className="msg">{cap.status}</span>
             ) : cap.error ? (
               <span className="msg error-text">{t.msg(cap.error)}</span>
             ) : (
-              <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord(cap)}>
-                {t("vocab.save")}
-                <ActionKey id="saveWord" />
-              </button>
+              <>
+                {passage &&
+                  STICKY_KINDS.map((kind) => (
+                    <button
+                      key={kind}
+                      className="btn sm"
+                      disabled={passageTooLong}
+                      title={passageTooLong ? t("be.stickies.badQuote", { max: MAX_QUOTE }) : undefined}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => ask(kind, passage)}
+                    >
+                      {t(STICKY_LABELS[kind])}
+                    </button>
+                  ))}
+                {capture && (
+                  <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord({ capture, x: cap.x, y: cap.y })}>
+                    {t("vocab.save")}
+                    <ActionKey id="saveWord" />
+                  </button>
+                )}
+              </>
             )}
           </div>,
           document.body,

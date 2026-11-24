@@ -1,0 +1,25 @@
+/* Stickies beside the Reader's text. Tokens from theme.css. */
+
+/* A scrollbar that comes with a long column must not narrow the text, which would move the cards again. */
+.doc-scroll:has(> .stickies) { scrollbar-gutter: stable; }
+/* The text and the column, centered together. The text's lines stay about as long as without the column. */
+.doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(200px, 30%, 300px); justify-content: center; }
+.doc-scroll:has(> .stickies[data-beside]) > .reader { align-self: start; width: 100%; max-width: none; margin: 0; padding-right: 28px; }
+.doc-scroll:has(> .stickies:not([data-beside])) > .reader { padding-bottom: 32px; }
+/* The browser keeps what it anchors on in place as heights above it change: the text, not a card. */
+.stickies { overflow-anchor: none; display: flex; flex-direction: column; gap: 10px; max-width: 680px; margin: 0 auto; padding: 0 48px 120px; }
+.stickies[data-beside] { position: relative; display: block; width: 100%; margin: 40px 0 0; padding: 0; }
+.stickies[data-beside] > * { position: absolute; left: 0; right: 20px; }
+
+.sticky { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 8px 12px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raise); box-shadow: 0 1px 4px var(--shadow2); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.sticky-h { display: flex; align-items: center; min-height: 22px; }
+.sticky-h .ib { width: 22px; height: 22px; margin: 0 -6px 0 auto; color: var(--ink3); }
+.sticky-kind { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--acc-ink); }
+.sticky-quote { margin: 0; padding-left: 8px; border-left: 2px solid var(--line2); font-size: 12px; line-height: 1.6; color: var(--ink3); white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.sticky-q { margin: 0 0 4px; font-weight: 600; color: var(--ink); white-space: pre-wrap; }
+.sticky .answer { font-size: 13px; line-height: 1.7; }
+.sticky textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--doc); font-size: 13px; line-height: 1.6; resize: vertical; }
+.sticky-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.sticky > .error-text { margin: 0; font-size: 12px; }
+
+@media print { .stickies { display: none !important; } }
