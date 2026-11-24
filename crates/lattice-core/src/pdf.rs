@@ -3872,8 +3872,7 @@ pub(crate) mod tests {
     fn figures_over_one_caption_keep_their_drawing_order() {
         let left = draw(&pdf(&[quorum_text()], None), rgb(30, 10, [1, 0, 0]), &[(0, L, 200., 140., 100.)]);
         let ir = to_ir(&draw(&left, rgb(30, 10, [2, 0, 0]), &[(0, L + 160., 200., 140., 100.)]), None).unwrap();
-        let object = |b: &Block| b.attrs.src.as_deref()?.rsplit_once('/')?.1.split_once('.')?.0.parse::<u32>().ok();
-        let objects: Vec<u32> = ir.blocks.iter().filter_map(object).collect();
+        let objects = figure_ids(&ir);
         assert!(objects.len() == 2 && objects[0] < objects[1], "the left one, drawn first, comes first: {objects:?}");
         assert_eq!(kinds(&ir)[1..4].iter().map(|k| k.0).collect::<Vec<_>>(), ["image", "image", "caption"], "both before the one caption");
     }
