@@ -9,10 +9,9 @@ const sticky = (id: number, block_id: number | null): Sticky => ({
   block_id,
   kind: "term",
   quote: "q",
-  created_at: "2026-10-20T03:00:00.000Z",
   messages: [],
 });
-const ask = (key: number, blockId: number | null): Ask => ({ key, blockId, kind: "detail", quote: "q", question: "", step: "pending" });
+const ask = (key: number, blockId: number): Ask => ({ key, blockId, kind: "detail", quote: "q", question: "", step: "pending" });
 
 test("cards go down the article, those without a block of it first", () => {
   // Block ids are not in reading order: a re-extraction keeps those of unchanged blocks.

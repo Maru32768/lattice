@@ -2,14 +2,14 @@
 //! kept beside the passage. A sticky's context is its own: the article, the passage and the question, with no chat, no
 //! other article and nothing the user wrote about themselves.
 
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::chat::{self, Citation, MAX_QUESTION_CHARS, Source};
 use crate::llm::LlmProvider;
 use crate::msg;
-use crate::store::Store;
+use crate::store::{Store, from_json_col};
 use crate::summarize::unclosable;
 use ts_rs::TS;
 
@@ -30,29 +30,7 @@ pub enum StickyKind {
     Term,
 }
 
-impl ToSql for StickyKind {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        Ok(match self {
-            Self::Question => "question",
-            Self::Detail => "detail",
-            Self::Term => "term",
-        }
-        .into())
-    }
-}
-
-impl FromSql for StickyKind {
-    fn column_result(v: ValueRef<'_>) -> FromSqlResult<Self> {
-        match v.as_str()? {
-            "question" => Ok(Self::Question),
-            "detail" => Ok(Self::Detail),
-            "term" => Ok(Self::Term),
-            _ => Err(FromSqlError::InvalidType),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StickyMessage {
     pub id: i64,
@@ -60,12 +38,9 @@ pub struct StickyMessage {
     pub question: String,
     pub answer: String,
     pub citations: Vec<Citation>,
-    pub provider: Option<String>,
-    pub model: Option<String>,
-    pub created_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Sticky {
     pub id: i64,
@@ -74,7 +49,6 @@ pub struct Sticky {
     pub block_id: Option<i64>,
     pub kind: StickyKind,
     pub quote: String,
-    pub created_at: String,
     pub messages: Vec<StickyMessage>,
 }
 
@@ -147,7 +121,7 @@ pub async fn ask<L: LlmProvider>(
     let c = llm.complete_json(&system, &input, &chat::schema()).await.map_err(|e| e.message())?;
     let answer = c.value["answer"].as_str().map(str::trim).filter(|a| !a.is_empty()).ok_or_else(|| msg!("stickies.malformed"))?;
     let citations = chat::citations(store, &c.value, answer, &sources[..sent]).map_err(err)?;
-    save(store, article_id, block_id, kind, quote, question, answer, citations, &c.provider, c.model).map_err(err)
+    save(store, article_id, block_id, kind, quote, question, answer, &citations, &c.provider, c.model.as_deref()).map_err(err)
 }
 
 /// How many of the article's sent blocks come before `block_id`, itself sent or not (an image); 0 without one.
@@ -167,19 +141,17 @@ fn around(sources: &[Source], anchor: usize, max_chars: usize, block_chars: usiz
     let anchor = anchor.min(sources.len() - 1);
     let (mut from, mut to) = (anchor, anchor + 1);
     let mut left = max_chars.saturating_sub(sources[anchor].title.chars().count() + size(&sources[anchor]) + 32);
-    let mut take = |s: Option<&Source>| {
-        let fits = s.is_some_and(|s| size(s) <= left);
-        if let Some(s) = s.filter(|_| fits) {
-            left -= size(s);
-        }
-        fits
-    };
     loop {
-        let before = take(from.checked_sub(1).map(|i| &sources[i]));
-        from -= usize::from(before);
-        let after = take(sources.get(to));
-        to += usize::from(after);
-        if !before && !after {
+        let taken = to - from;
+        if from > 0 && size(&sources[from - 1]) <= left {
+            from -= 1;
+            left -= size(&sources[from]);
+        }
+        if to < sources.len() && size(&sources[to]) <= left {
+            left -= size(&sources[to]);
+            to += 1;
+        }
+        if to - from == taken {
             return &sources[from..to];
         }
     }
@@ -195,83 +167,46 @@ fn save(
     quote: &str,
     question: &str,
     answer: &str,
-    citations: Vec<Citation>,
+    citations: &[Citation],
     provider: &str,
-    model: Option<String>,
+    model: Option<&str>,
 ) -> rusqlite::Result<Sticky> {
     let mut c = store.conn();
     let tx = c.transaction()?;
-    let mut sticky = tx.query_row(
+    let id: i64 = tx.query_row(
         "INSERT INTO stickies (article_id, block_id, kind, quote) VALUES (?1, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?3, ?4)
-         RETURNING id, block_id, created_at",
-        params![article_id, block_id, kind, quote],
-        |r| Ok(Sticky { id: r.get(0)?, article_id, block_id: r.get(1)?, kind, quote: quote.to_string(), created_at: r.get(2)?, messages: Vec::new() }),
+         RETURNING id",
+        params![article_id, block_id, json!(kind).as_str(), quote],
+        |r| r.get(0),
     )?;
-    let (id, created_at) = tx.query_row(
-        "INSERT INTO sticky_messages (sticky_id, question, answer, citations, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-         RETURNING id, created_at",
-        params![sticky.id, question, answer, chat::to_json(&citations), provider, model, PROMPT_VERSION],
-        |r| Ok((r.get(0)?, r.get(1)?)),
+    tx.execute(
+        "INSERT INTO sticky_messages (sticky_id, question, answer, citations, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, question, answer, chat::to_json(citations), provider, model, PROMPT_VERSION],
     )?;
+    let sticky = tx.query_row(&format!("{STICKY} WHERE s.id = ?1"), [id], |r| from_json_col(r, 0, str::to_string))?;
     tx.commit()?;
-    sticky.messages.push(StickyMessage {
-        id,
-        question: question.to_string(),
-        answer: answer.to_string(),
-        citations,
-        provider: Some(provider.to_string()),
-        model,
-        created_at,
-    });
     Ok(sticky)
 }
 
 /// The article's stickies, oldest first.
 pub fn list(store: &Store, article_id: i64) -> Result<Vec<Sticky>, String> {
     let c = store.conn();
-    let mut st = c
-        .prepare(
-            "SELECT s.id, s.block_id, s.kind, s.quote, s.created_at, m.id, m.question, m.answer, m.citations, m.provider, m.model, m.created_at
-             FROM stickies s JOIN sticky_messages m ON m.sticky_id = s.id WHERE s.article_id = ?1 ORDER BY s.id, m.id",
-        )
-        .map_err(err)?;
-    let mut rows = st.query([article_id]).map_err(err)?;
-    let mut out: Vec<Sticky> = Vec::new();
-    while let Some(r) = rows.next().map_err(err)? {
-        let row = || -> rusqlite::Result<(Sticky, StickyMessage)> {
-            let citations: String = r.get(8)?;
-            Ok((
-                Sticky { id: r.get(0)?, article_id, block_id: r.get(1)?, kind: r.get(2)?, quote: r.get(3)?, created_at: r.get(4)?, messages: Vec::new() },
-                StickyMessage {
-                    id: r.get(5)?,
-                    question: r.get(6)?,
-                    answer: r.get(7)?,
-                    citations: serde_json::from_str(&citations)
-                        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(e)))?,
-                    provider: r.get(9)?,
-                    model: r.get(10)?,
-                    created_at: r.get(11)?,
-                },
-            ))
-        };
-        let (sticky, message) = row().map_err(err)?;
-        match out.last_mut() {
-            Some(last) if last.id == sticky.id => last.messages.push(message),
-            _ => out.push(Sticky { messages: vec![message], ..sticky }),
-        }
-    }
-    Ok(out)
+    let mut st = c.prepare(&format!("{STICKY} WHERE s.article_id = ?1 ORDER BY s.id")).map_err(err)?;
+    let rows = st.query_map([article_id], |r| from_json_col(r, 0, str::to_string)).map_err(err)?;
+    rows.collect::<rusqlite::Result<_>>().map_err(err)
 }
+
+/// Stickies (`s`), each as the JSON of a `Sticky`.
+const STICKY: &str = "SELECT json_object(
+        'id', s.id, 'article_id', s.article_id, 'block_id', s.block_id, 'kind', s.kind, 'quote', s.quote,
+        'messages', json((SELECT json_group_array(json_object(
+            'id', m.id, 'question', m.question, 'answer', m.answer, 'citations', json(m.citations))
+            ORDER BY m.id) FROM sticky_messages m WHERE m.sticky_id = s.id)))
+    FROM stickies s";
 
 /// Returns the article it was on; None when it was gone already.
 pub fn delete(store: &Store, id: i64) -> Result<Option<i64>, String> {
     store.conn().query_row("DELETE FROM stickies WHERE id = ?1 RETURNING article_id", [id], |r| r.get(0)).optional().map_err(err)
-}
-
-/// The stickies of article `from`, which is about to be dropped in favour of `to`, go there. Their blocks go with `from`.
-pub(crate) fn move_to(tx: &rusqlite::Transaction, from: i64, to: i64) -> rusqlite::Result<()> {
-    tx.execute("UPDATE stickies SET article_id = ?2, block_id = NULL WHERE article_id = ?1", [from, to])?;
-    Ok(())
 }
 
 /// An article's (`?1`) stickies as a JSON array for the export: the block as its ordinal, as in the article's `blocks`.
@@ -467,7 +402,9 @@ mod tests {
         let question = ask(&s, &llm, a, Some(first), StickyKind::Question, " ログが先 ", " なぜ？ ").await.unwrap();
         assert_eq!((question.article_id, question.block_id, question.kind, question.quote.as_str()), (a, Some(first), StickyKind::Question, "ログが先"));
         let m = &question.messages[0];
-        assert_eq!((m.question.as_str(), m.answer.as_str(), m.provider.as_deref(), m.model.as_deref()), ("なぜ？", ANSWER, Some("fake"), Some("fake-1")));
+        assert_eq!((m.question.as_str(), m.answer.as_str()), ("なぜ？", ANSWER));
+        let by: (String, String) = s.conn().query_row("SELECT provider, model FROM sticky_messages", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(by, ("fake".into(), "fake-1".into()));
         // [99] was never sent; [2] comes from the list only.
         assert_eq!(m.citations.iter().map(|c| (c.n, c.text.as_str())).collect::<Vec<_>>(), [(1, "Durability"), (2, "The log goes first.")]);
         assert_eq!(m.citations[1].block_id, first);
@@ -486,6 +423,10 @@ mod tests {
         s.delete_article(a).unwrap();
         assert_eq!(list(&s, a).unwrap(), []);
         assert_eq!(rows(&s), (1, 1), "only the other article's is left, with its message");
+        for bad in ["{", "[1]"] {
+            s.conn().execute("UPDATE sticky_messages SET citations = ?1", [bad]).unwrap();
+            assert!(list(&s, other).is_err(), "{bad}");
+        }
     }
 
     #[tokio::test]

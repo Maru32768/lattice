@@ -5,4 +5,4 @@ export type StickyMessage = { id: number,
 /**
  * Empty where the kind alone is the question.
  */
-question: string, answer: string, citations: Array<Citation>, provider: string | null, model: string | null, created_at: string, };
+question: string, answer: string, citations: Array<Citation>, };

@@ -6,4 +6,4 @@ export type Sticky = { id: number, article_id: number,
 /**
  * The block the passage starts in; None once the article no longer has it.
  */
-block_id: number | null, kind: StickyKind, quote: string, created_at: string, messages: Array<StickyMessage>, };
+block_id: number | null, kind: StickyKind, quote: string, messages: Array<StickyMessage>, };

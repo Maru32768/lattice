@@ -2,6 +2,7 @@
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import { emit } from "@tauri-apps/api/event";
 import type {
+  api,
   ArticleFilter,
   ArticleRow,
   ArticleSort,
@@ -38,7 +39,6 @@ import type {
   R2Settings,
   SnapshotSettings,
   Sticky,
-  StickyKind,
   R2Status,
   RelevanceStatus,
   ReviewItem,
@@ -654,26 +654,10 @@ export const handlers = {
     return m;
   },
   chat_threads: () => threads,
-  sticky_ask: ({
-    articleId,
-    blockId,
-    kind,
-    quote,
-    question,
-  }: {
-    articleId: number;
-    blockId: number | null;
-    kind: StickyKind;
-    quote: string;
-    question: string;
-  }): Sticky => {
-    if (Array.from(quote).length > 2000) {
-      reject("stickies.badQuote", { max: 2000 });
-    }
+  sticky_ask: ({ articleId, blockId, kind, quote, question }: Parameters<typeof api.stickyAsk>[0]): Sticky => {
     if (question.includes("the model is down") && !(window as unknown as { __modelUp?: boolean }).__modelUp) {
       reject("stickies.malformed");
     }
-    const created_at = new Date(NOW).toISOString();
     const block = blocksOf(article(articleId)).find((b) => b.id === blockId);
     const citation = (n: number, block_id: number, text: string) => ({ n, block_id, article_id: articleId, url: "", title: "", heading: null, text });
     const sticky: Sticky = {
@@ -682,16 +666,12 @@ export const handlers = {
       block_id: block?.id ?? null,
       kind,
       quote,
-      created_at,
       messages: [
         {
           id: nextSticky,
           question,
           answer: "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います。出典のない番号 [7] と消えた出典 [2] はそのままです。",
           citations: [...(block ? [citation(1, block.id, block.text)] : []), citation(2, 999_999, "gone")],
-          provider: "claude-cli",
-          model: "opus",
-          created_at,
         },
       ],
     };
