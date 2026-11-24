@@ -1931,18 +1931,12 @@ fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     let small = |d: &Draft, than: f64| d.lines.iter().all(|x| x.size < body * than);
     let float = |d: &Draft| d.kind == Kind::Caption || d.kind == Kind::Paragraph && small(d, 0.95);
     // Code displayed within a sentence is set at an aside's size too, but that stands on the sentence's page.
-    let aside = |d: &Draft| matches!(d.kind, Kind::Paragraph | Kind::Item) && small(d, 0.97) && d.lines[0].page == l.page && !laid_out_text(d, body);
-    let (mut floats, mut asides) = (false, false);
-    let i = drafts.iter().rposition(|d| {
-        if float(d) {
-            floats = true;
-        } else if aside(d) {
-            asides = true;
-        } else {
-            return !(fragment(d) || asides && is_title(d, body));
-        }
-        false
-    })?;
+    let aside =
+        |d: &Draft| matches!(d.kind, Kind::Paragraph | Kind::Item) && small(d, 0.97) && d.lines[0].page == l.page && !laid_out_text(d, body) && !float(d);
+    let skipped = |d: &Draft| float(d) || aside(d) || fragment(d);
+    let asides = drafts.iter().rev().take_while(|d| skipped(d)).any(aside);
+    let i = drafts.iter().rposition(|d| !(skipped(d) || asides && is_title(d, body)))?;
+    let floats = drafts[i + 1..].iter().any(float);
     let last = drafts[i].lines.last()?;
     let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && in_body(last) && !last.text.ends_with(['.', '!', '?', ':']);
     (unfinished && (floats || asides) && (!asides || last.page < l.page) && aligned(&drafts[i], l)).then_some(i)
