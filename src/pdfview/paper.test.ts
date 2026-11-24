@@ -23,6 +23,15 @@ test("dark paper gives nothing, as the translation is set in dark type", () => {
   assert.equal(paperColor(pixels([80, [40, 40, 60]], [20, [255, 255, 255]])), null);
 });
 
+test("dark blue is dark and a mid grey is not: the eye weighs the channels", () => {
+  assert.equal(paperColor(pixels([10, [60, 120, 255]])), null);
+  assert.equal(paperColor(pixels([10, [170, 170, 170]])), "rgb(170, 170, 170)");
+});
+
+test("red type on white paper falls apart from it", () => {
+  assert.equal(paperColor(pixels([55, [255, 255, 255]], [45, [255, 0, 0]])), "rgb(255, 255, 255)");
+});
+
 test("no pixels give nothing", () => {
   assert.equal(paperColor(new Uint8ClampedArray()), null);
 });
