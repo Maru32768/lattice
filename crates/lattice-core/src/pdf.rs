@@ -1926,7 +1926,7 @@ fn aligned(d: &Draft, l: &Line) -> bool {
         (kind, [first, .., last]) if kind == Kind::Item || further_in(first, last) > 0.8 * l.size => further_in(last, l).abs() <= 0.5 * l.size,
         // An aside's title, or a label, is indented by as little as 0.8, and starts with a capital. Japanese is half a size
         // in from a line whose bracket hangs in the margin.
-        _ if l.text.starts_with(char::is_uppercase) => (l.x0 - l.left).abs() <= 0.5 * l.size,
+        _ if l.text.starts_with(char::is_uppercase) => (l.x0 - l.left).abs() <= 0.6 * l.size,
         _ => (l.x0 - l.left).abs() <= 0.8 * l.size,
     }
 }
@@ -2858,6 +2858,7 @@ pub(crate) mod tests {
             ("to answer with the same stored value, which is the one that is the mem", L + 7., 10., "300 of them have been given."),
             ("to answer with the same stored value, which is the one that is the mem", L, 9., "node_self_current_idx that it has given to them."),
             ("to answer with the same stored value, which is the one that is the log", L, 10., "Paxos keeps every one of the writes that it was given to send"),
+            ("to answer with the same stored value, which is the one that is the log", L + 4.96, 9.92, "Paxos keeps every one of the writes that it was given"),
         ] {
             let second = (0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY));
             let second = [(x, 100., size, next)].into_iter().chain(second).collect();
