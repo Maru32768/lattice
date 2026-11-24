@@ -405,37 +405,23 @@ struct Table {
 }
 
 /// The tables of the page's grids that hold text in half their cells or more, their glyphs taken off the page. A glyph is
-/// in the cell its middle is in. They are read before the page is turned or not, and take no part in that: a table set
-/// across on a page of vertical writing can hold more glyphs than its columns.
-fn take_tables(p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
+/// in the cell its middle is in. A turned glyph is left to the page unless it `turns`, as the page drops it as a label.
+fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     let mut tables = Vec::new();
-    for Grid { at, xs, ys } in grids {
-        let between =
-            |edges: &[f64], at: f64| Some(edges.partition_point(|&e| e < at)).filter(|&i| i > 0 && edges.get(i).is_some_and(|&e| e > at)).map(|i| i - 1);
-        // A glyph set across is placed by its baseline, a vertical one by the middle of its column and the top of its em box.
-        // A turned one is left to the page, which drops it as a label unless the page turns.
-        let cell = |g: &Glyph| {
-            if g.turned {
-                return None;
-            }
-            let (x, y) = if g.vertical {
-                (g.x, g.y + 0.5 * g.size)
-            } else {
-                ((g.x + g.end) / 2., g.y - 0.3 * g.size)
-            };
-            Some((between(&ys, y)?, between(&xs, x)?))
-        };
+    for grid in grids {
+        let cell = |g: &Glyph| grid.cell(g).filter(|_| turns || !g.turned);
+        let Grid { at, xs, ys } = &grid;
         let mut cells = vec![vec![Vec::new(); xs.len() - 1]; ys.len() - 1];
         for g in &p.glyphs {
             if let Some((row, column)) = cell(g) {
                 cells[row][column].push(g);
             }
         }
-        let rows: Vec<Vec<String>> = cells.iter().flat_map(|band| band_rows(band, &xs, p.width)).collect();
+        let rows: Vec<Vec<String>> = cells.iter().flat_map(|band| band_rows(band, xs, p.width)).collect();
         let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
             p.glyphs.retain(|g| cell(g).is_none());
-            tables.push(Table { at, rows });
+            tables.push(Table { at: *at, rows });
         }
     }
     tables
@@ -464,7 +450,7 @@ fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
     let mut breaks = Vec::new();
     if let [(_, first), _, ..] = &cells[..]
         && cells.iter().all(|(_, lines)| on(&lines[0], first[0].y))
-        && !band.iter().flatten().any(|g| g.vertical)
+        && !band.iter().flatten().any(|g| g.vertical || g.turned)
     {
         breaks.extend(first[1..].iter().map(|l| l.y).filter(|&y| starts_row(y)));
     }
@@ -477,12 +463,28 @@ fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
     rows.iter().map(|row| row.iter().map(|glyphs| cell_text(glyphs, width)).collect()).collect()
 }
 
-/// A cell's text, built as a paragraph's is. `block` reads only the lines' text, so their page is left 0.
+/// A cell's text, built as a paragraph's is, and one set down the page read as a turned page is. `block` reads only the
+/// lines' text, so their page is left 0.
 fn cell_text(glyphs: &[&Glyph], width: f64) -> String {
-    let lines = page_lines(0, glyphs, width);
+    let mut down = Page { width, ..Default::default() };
+    if glyphs.iter().any(|g| g.vertical || g.turned) {
+        down.glyphs = glyphs.iter().map(|&g| g.clone()).collect();
+        turn(&mut down);
+    }
+    let turned: Vec<&Glyph> = down.glyphs.iter().collect();
+    let lines = page_lines(
+        0,
+        if turned.is_empty() {
+            glyphs
+        } else {
+            &turned
+        },
+        down.width,
+    );
     block(Draft { kind: Kind::Paragraph, lines: lines.iter().collect() }, &vocabulary(&lines)).map(|b| b.text).unwrap_or_default()
 }
 
+#[derive(Clone)]
 struct Glyph {
     x: f64,
     /// Baseline, from the top of the page.
@@ -721,6 +723,21 @@ struct Grid {
     at: Bounds,
     xs: Vec<f64>,
     ys: Vec<f64>,
+}
+
+impl Grid {
+    /// The row and the column of the cell a glyph's middle is in. A glyph set across is placed by its baseline, one set
+    /// down the page by the middle of its column and of its advance down it: a vertical glyph's `y` is its em box's top.
+    fn cell(&self, g: &Glyph) -> Option<(usize, usize)> {
+        let between =
+            |edges: &[f64], at: f64| Some(edges.partition_point(|&e| e < at)).filter(|&i| i > 0 && edges.get(i).is_some_and(|&e| e > at)).map(|i| i - 1);
+        let (x, y) = if g.vertical || g.turned {
+            (g.x, g.y + (g.end - g.x) / 2.)
+        } else {
+            ((g.x + g.end) / 2., g.y - 0.3 * g.size)
+        };
+        Some((between(&self.ys, y)?, between(&self.xs, x)?))
+    }
 }
 
 /// How far apart rules may be and still meet or run on: more than a rule is thick, and than the gap a book leaves between
@@ -1042,10 +1059,14 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             .collect();
         // Down the page, as tables with no text between them are read.
         grids.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
-        page.tables = take_tables(page, grids);
-        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
+        // Glyphs in a grid have no say: a table set across on a page of vertical writing can hold more glyphs than its
+        // columns. The page's turn is known before its tables are taken, so that a turned glyph goes into its cell.
+        let outside = |g: &&Glyph| !grids.iter().any(|grid| grid.cell(g).is_some());
+        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty()).filter(outside);
         let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
-        if down * 2 > all {
+        let turns = down * 2 > all;
+        page.tables = take_tables(page, grids, turns);
+        if turns {
             turn(page);
         } else {
             page.glyphs.retain(|g| !g.turned);
@@ -4402,6 +4423,10 @@ pub(crate) mod tests {
         let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
         let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
         assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう\nあい\tかき")]);
+        // "API" turned a quarter down the first row's second cell beside its column, as vertical writing sets Latin.
+        let latin = format!("BT /F1 10 Tf 0 -1 1 0 472 {} Tm (API) Tj ET\n", 792. - 105.);
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(ops + &latin)), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう API\nあい\tかき")]);
     }
 
     #[test]
