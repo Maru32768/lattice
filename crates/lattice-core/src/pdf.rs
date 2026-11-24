@@ -3016,11 +3016,7 @@ pub(crate) mod tests {
         for x in xs.windows(2) {
             for y in ys.windows(2) {
                 let [a, b, c, d] = [to(x[0], y[0]), to(x[1], y[0]), to(x[1], y[1]), to(x[0], y[1])];
-                ops += &format!(
-                    "{} {} m {} {} l {} {} l {} {} l {end}
-",
-                    a.0, a.1, b.0, b.1, c.0, c.1, d.0, d.1
-                );
+                ops += &format!("{} {} m {} {} l {} {} l {} {} l {end}\n", a.0, a.1, b.0, b.1, c.0, c.1, d.0, d.1);
             }
         }
         ops
@@ -3071,42 +3067,12 @@ pub(crate) mod tests {
         let empty = ruled(&[72., 172., 540.], &[300., 350., 400.], "strokes");
         let one_row = ruled(&[72., 172., 540.], &[110., 160.], "strokes");
         // The top row one cell across the table: the rule between the columns runs down the second row only.
-        let mut merged: String = [110., 160., 200.]
-            .iter()
-            .map(|&y| {
-                format!(
-                    "72 {y} m 540 {y} l S
-",
-                    y = 792. - y
-                )
-            })
-            .collect();
-        merged += &[72., 540.]
-            .map(|x| {
-                format!(
-                    "{x} 682 m {x} 592 l S
-"
-                )
-            })
-            .concat();
-        merged += "172 632 m 172 592 l S
-";
+        let mut merged: String = [110., 160., 200.].iter().map(|&y| format!("72 {y} m 540 {y} l S\n", y = 792. - y)).collect();
+        merged += &[72., 540.].map(|x| format!("{x} 682 m {x} 592 l S\n")).concat();
+        merged += "172 632 m 172 592 l S\n";
         // Each cell clipped to its box, as a report writer keeps its text in, or shaded, with nothing stroked.
-        let clipped = [(72., 172.), (172., 540.)]
-            .map(|(x0, x1)| {
-                [(110., 160.), (160., 200.)]
-                    .map(|(y0, y1)| {
-                        format!(
-                            "q {x0} {} {} {} re W n Q
-",
-                            792. - y1,
-                            x1 - x0,
-                            y1 - y0
-                        )
-                    })
-                    .concat()
-            })
-            .concat();
+        let clip = |(x0, x1): (f64, f64), (y0, y1): (f64, f64)| format!("q {x0} {} {} {} re W n Q\n", 792. - y1, x1 - x0, y1 - y0);
+        let clipped = [(72., 172.), (172., 540.)].map(|x| [(110., 160.), (160., 200.)].map(|y| clip(x, y)).concat()).concat();
         let shaded = outlined(&[72., 172., 540.], &[110., 160., 200.], &|x, y| (x, 792. - y), "h f");
         let shapes = [("rules across", across), ("a box round it all", boxed), ("a chart's grid", chart), ("one column", one_column), ("no text", empty)];
         let more = [("one row", one_row), ("a merged cell", merged), ("clipped cells", clipped), ("shaded cells", shaded)];
