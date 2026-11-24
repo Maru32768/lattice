@@ -485,6 +485,46 @@ test("in a narrow pane a card that opens at the bottom of the view moves the tex
   await expect(shell.locator(paraBlock(40))).toBeInViewport();
 });
 
+test("the line being read stays at the top of the view through a narrow pane and a wide one, however often", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1200, height: 800 });
+  await startLong(shell, 12);
+  for (const block of [null, paraId(10), paraId(40), paraId(50)]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await expect(cards(shell)).toHaveCount(4);
+  const column = shell.locator(".stickies[data-beside]");
+  await expect(column).toHaveCount(0);
+  const passed = async (block: string) => {
+    const [b, view] = [await boxOf(shell.locator(block)), await boxOf(doc(shell))];
+    return (view.y - b.y) / b.height;
+  };
+  // From one place, and then from where the reader goes on.
+  for (const block of [paraBlock(40), paraBlock(30)]) {
+    await scrollTo(shell, block, "start");
+    await doc(shell).evaluate((el) => {
+      el.scrollTop += 100;
+      return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    });
+    const before = await passed(block);
+    expect(before).toBeGreaterThan(0.3);
+    for (let i = 0; i < 3; i++) {
+      await shell.setViewportSize({ width: 1900, height: 800 });
+      await expect(column).toHaveCount(1);
+      await expect.poll(async () => Math.abs((await passed(block)) - before)).toBeLessThan(0.02);
+      await shell.setViewportSize({ width: 1200, height: 800 });
+      await expect(column).toHaveCount(0);
+      await expect.poll(async () => Math.abs((await passed(block)) - before)).toBeLessThan(0.01);
+    }
+  }
+  // A jump as the pane changes is where the reader asked to go.
+  await shell.locator(paraBlock(60)).evaluate((el) => {
+    el.scrollIntoView({ block: "start" });
+    document.querySelector<HTMLElement>(".list")!.style.display = "none";
+  });
+  await expect(column).toHaveCount(1);
+  await expect.poll(() => passed(paraBlock(60))).toBeCloseTo(0, 1);
+});
+
 test("in a narrow pane the text being read stays still as an answer above it comes and goes", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await startNarrow(shell);
