@@ -407,7 +407,8 @@ struct Table {
 fn take_tables(p: &mut Page, grids: Vec<Grid>) -> Vec<Table> {
     let mut tables = Vec::new();
     for Grid { at, xs, ys } in grids {
-        let between = |edges: &[f64], at: f64| edges.windows(2).position(|w| w[0] < at && at < w[1]);
+        let between =
+            |edges: &[f64], at: f64| Some(edges.partition_point(|&e| e < at)).filter(|&i| i > 0 && edges.get(i).is_some_and(|&e| e > at)).map(|i| i - 1);
         // A glyph set across is placed by its baseline, a vertical one by the middle of its column and the top of its em box.
         // A turned one is left to the page, which drops it as a label unless the page turns.
         let cell = |g: &Glyph| {
