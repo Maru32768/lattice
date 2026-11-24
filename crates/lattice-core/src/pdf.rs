@@ -2616,6 +2616,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_title_level_with_a_line_of_the_other_column_or_close_over_its_text_is_translated() {
+        const HALF: &str = "the leader sends every write to all of the replicas";
+        let left = (0..8).map(|i| (L, 100. + 12. * i as f64, 10., HALF));
+        let title = [(L, 208., 10., "Aside Laws that hold"), (L, 223., 9.5, "and a sentence of the aside that ends on this line.")];
+        let right = (0..12).map(|i| (R, 100. + 12. * i as f64, 10., HALF));
+        let r = regions(&pdf(&[left.chain(title).chain(right).collect()], None)).unwrap();
+        assert!(r.iter().any(|x| x.text == "Aside Laws that hold"), "{r:?}");
+    }
+
+    #[test]
     fn a_box_set_wider_than_the_body_leaves_the_body_its_own_right_edge() {
         for size in [9.5, 10.] {
             let aside = (0..5).map(|i| (60., 100. + 11.5 * i as f64, size, ASIDE));
