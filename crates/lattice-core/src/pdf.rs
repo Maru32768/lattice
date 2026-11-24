@@ -3055,7 +3055,7 @@ pub(crate) mod tests {
             assert_eq!(kinds(&ir), TABLES_PAGE, "{how}");
             assert_eq!((ir.blocks[1].attrs.rows.clone(), ir.blocks[3].attrs.rows.clone()), (rows(&first), rows(&second)), "{how}");
             let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
-            assert!(!texts.iter().any(|t| t.contains("keep at it") || t.contains("over the years") || t.contains("comes easily")), "{how}: {texts:?}");
+            assert_eq!(texts, ["Pros of passion", "Cons of passion"], "{how}");
         }
     }
 
