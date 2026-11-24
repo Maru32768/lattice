@@ -296,13 +296,19 @@ test("a sticky is deleted after a confirmation, and the column goes with the las
   await expect(card(app, "詳しく").locator(".answer")).toBeVisible();
   const remove = card(app, "詳しく").getByRole("button", { name: "付箋を削除" });
   const dialog = app.getByRole("alertdialog", { name: "付箋を削除しますか？" });
-  await remove.click();
-  await dialog.getByRole("button", { name: "キャンセル" }).click();
+  for (const cancel of [() => dialog.getByRole("button", { name: "キャンセル" }).click(), () => app.keyboard.press("Escape")]) {
+    await remove.click();
+    await expect(dialog).toBeVisible();
+    await cancel();
+    await expect(dialog).toBeHidden();
+    await expect(remove).toBeFocused();
+  }
   await expect(cards(app)).toHaveCount(1);
   expect(await callsOf(app, "delete_sticky")).toEqual([]);
-  await remove.click();
+  await app.keyboard.press("Enter");
   await dialog.getByRole("button", { name: "削除" }).click();
   await expect(app.locator(".stickies")).toBeHidden();
+  await expect(app.locator(".doc-scroll")).toBeFocused();
   expect(await callsOf(app, "delete_sticky")).toEqual([{ id: 1 }]);
   expect(await boxOf(app.locator("#b-102"))).toEqual(before);
   await open(app, LONG_ID);

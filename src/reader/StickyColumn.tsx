@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { Block, Sticky, StickyKind, StickyMessage } from "../api";
 import { splitCitations } from "../chat/chat";
 import { sendsOn, useSendKey } from "../chat/sendKey";
@@ -148,6 +149,9 @@ export function StickyColumn({
   );
 }
 
+/** The keyboard goes back to the article from a card that loses what had it, or goes. */
+const leave = (from: HTMLElement | null) => from?.closest<HTMLElement>(".doc-scroll")?.focus({ preventScroll: true });
+
 function Quote({ text }: { text: string }) {
   return (
     <blockquote className="sticky-quote" title={text}>
@@ -190,12 +194,15 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
   const t = useT();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const remove = useRef<HTMLButtonElement>(null);
   const label = t(STICKY_LABELS[sticky.kind]);
+  // At once: the dialog holds the focus while it is there, and leaves it nowhere.
+  const close = () => flushSync(() => setDeleting(false));
   return (
     <section className="sticky" aria-label={label} data-block={sticky.block_id ?? undefined} data-opened={opened || undefined}>
       <div className="sticky-h">
         <span className="sticky-kind">{label}</span>
-        <button className="ib" onClick={() => setDeleting(true)} aria-label={t("stickies.delete")} title={t("stickies.delete")}>
+        <button className="ib" ref={remove} onClick={() => setDeleting(true)} aria-label={t("stickies.delete")} title={t("stickies.delete")}>
           <Icon name="x" size="sm" />
         </button>
       </div>
@@ -216,10 +223,14 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
           title={t("stickies.confirmDelete")}
           confirm={t("common.delete")}
           onConfirm={() => {
-            setDeleting(false);
+            close();
+            leave(remove.current);
             deleteSticky(sticky.article_id, sticky.id).catch((e: unknown) => setError(String(e)));
           }}
-          onCancel={() => setDeleting(false)}
+          onCancel={() => {
+            close();
+            remove.current?.focus();
+          }}
         >
           <p>{t("stickies.deleteDesc")}</p>
         </ConfirmDialog>
@@ -236,8 +247,6 @@ function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: 
   const failed = ask.step === "failed";
   const writing = ask.kind === "question" && ask.step !== "pending";
   const blank = ask.kind === "question" && !ask.question.trim();
-  // A card that loses its field, or goes, gives the keyboard back to the article.
-  const leave = (from: HTMLElement) => from.closest<HTMLElement>(".doc-scroll")?.focus({ preventScroll: true });
   const send = (from: HTMLElement) => {
     if (!blank) {
       leave(from);
