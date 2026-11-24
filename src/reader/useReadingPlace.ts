@@ -57,7 +57,8 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     /**
      * The blocks and the view's top as they would be on screen without the stickies' room under blocks: a place must be
      * good where there are none (the Page view, the phone, a wider pane). In such room the top is the end of the block
-     * above, where its cards start.
+     * above, where its cards start. Those beside the text can go on below it, and the view with them: the top is then
+     * the last block's end.
      */
     const measure = () => {
       const els = [...view.querySelectorAll<HTMLElement>("[id^='b-']")];
@@ -73,14 +74,12 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
         boxes.set(el, { top: r.top - rooms, bottom: r.bottom - rooms, height: r.height });
         rooms += room;
       }
-      return { els, top, boxOf: (el: HTMLElement) => boxes.get(el)! };
+      const last = els.findLast((el) => shown.current.find((b) => el.id === `b-${b.id}`)?.text.trim());
+      return { els, top: last ? Math.min(top, boxes.get(last)!.bottom - 1) : top, boxOf: (el: HTMLElement) => boxes.get(el)! };
     };
     const placeAt = (prose: boolean) => {
       const { els, top, boxOf } = measure();
-      const blockAt = (el: HTMLElement) => shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind)));
-      // Stickies beside the text can go on below it, and the view with them, past the last block: the place is then that block's end.
-      const last = prose ? undefined : els.findLast((el) => blockAt(el)?.text.trim());
-      return placeIn(els, last ? Math.min(top, boxOf(last).bottom - 1) : top, blockAt, boxOf);
+      return placeIn(els, top, (el) => shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))), boxOf);
     };
     // A place this Reader could not show (the Page view's, from a part of the page it lacks; or an article without
     // text) is still the article's until the reader moves to another block: leaving at once must not put this Reader's

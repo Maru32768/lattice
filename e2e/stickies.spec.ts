@@ -24,10 +24,10 @@ async function openSnapshot(page: Page) {
 }
 
 /** The app with one article long enough to scroll, beside the sidebar and the list. */
-async function startLong(shell: Page, sentences = 1) {
+async function startLong(shell: Page, sentences = 1, tail = "") {
   await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
     const res = await route.fetch();
-    const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', Array(${sentences}).fill(\`Paragraph \${i} of the long article.\`).join(' '), null])] : plain(a)))(genericBlocks);`;
+    const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', Array(${sentences}).fill(\`Paragraph \${i} of the long article.\`).join(' '), null]), ${tail}] : plain(a)))(genericBlocks);`;
     await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
   });
   await shell.goto("/");
@@ -908,6 +908,17 @@ test("the reading place among the cards under a block is the block's end, and th
   await doc(shell).evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(shell.locator(paraBlock(79))).not.toBeInViewport();
   await expect.poll(() => placeText(shell)).toBe(para(79));
+});
+
+test("the place that the Page view gets among the cards below an article that ends in a listing is the listing's end", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell, 1, "['code', 'the last listing', null]");
+  await askMany(shell, LONG_ID, paraId(70), 12);
+  await doc(shell).evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect(shell.locator(paraBlock(80))).not.toBeInViewport();
+  await expect.poll(() => placeText(shell)).toBe("the last listing");
+  // In heights of the paragraph above the listing, a line each.
+  expect((await placeOf(shell))!.page!.at).toBeLessThan(5);
 });
 
 test("the place that the Page view gets of a code block leaves out the cards between it and the next paragraph", async ({ shell }) => {
