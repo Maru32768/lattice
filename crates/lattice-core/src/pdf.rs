@@ -1897,26 +1897,25 @@ struct Draft<'a> {
     lines: Vec<&'a Line>,
 }
 
-/// The drafts' blocks with the figures' and then the tables' among them, each before the draft `place` puts it at, in
-/// drawing order. The figures' `src` starts with `prefix`.
+/// The drafts' blocks with the figures' and the tables' among them, each before the draft `place` puts it at, and those
+/// before the same draft, which are over it, down the pages. The figures' `src` starts with `prefix`.
 fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[(usize, &Table)], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
     let drafts = drafts(lines, body);
-    let mut out: Vec<(usize, Block)> = figures
-        .iter()
-        .map(|&(page, f)| {
-            let at = place(&drafts, page, [f.x0, f.y0, f.x1, f.y1]);
-            let label = drafts.get(at).filter(|d| d.kind == Kind::Caption).and_then(|d| caption_label(&d.lines[0].text));
-            let src = format!("{prefix}{}.{}", f.id.0, f.id.1);
-            let attrs = BlockAttrs { src: Some(src), ..Default::default() };
-            (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
-        })
-        .collect();
-    out.extend(tables.iter().map(|&(page, t)| (place(&drafts, page, t.at), Block::table(t.rows.clone()))));
-    // After the figures: the stable sort keeps each figure before the draft it goes before.
-    out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some((i, block(d, &vocab)?))));
-    out.sort_by_key(|(at, _)| *at);
-    out.into_iter().map(|(_, b)| b).collect()
+    let figures = figures.iter().map(|&(page, f)| {
+        let at = place(&drafts, page, [f.x0, f.y0, f.x1, f.y1]);
+        let label = drafts.get(at).filter(|d| d.kind == Kind::Caption).and_then(|d| caption_label(&d.lines[0].text));
+        let src = format!("{prefix}{}.{}", f.id.0, f.id.1);
+        let attrs = BlockAttrs { src: Some(src), ..Default::default() };
+        (at, page, f.y0, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
+    });
+    let tables = tables.iter().map(|&(page, t)| (place(&drafts, page, t.at), page, t.at[1], Block::table(t.rows.clone())));
+    let mut out: Vec<(usize, usize, f64, Block)> = figures.chain(tables).collect();
+    out.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)).then(a.2.total_cmp(&b.2)));
+    // After the figures and tables: the stable sort keeps each before the draft it goes before.
+    out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some((i, 0, 0., block(d, &vocab)?))));
+    out.sort_by_key(|&(at, ..)| at);
+    out.into_iter().map(|(.., b)| b).collect()
 }
 
 /// `pdf-figure:<the start of the PDF's sha256>/<object>.<generation>`: re-extracting the same file keeps every `src` and
@@ -3387,6 +3386,17 @@ pub(crate) mod tests {
         let at = |w: &str| text.find(w).unwrap();
         assert!(texts.contains(&"Strong\tLasting\nCostly\tEasy"), "{texts:?}");
         assert!(at("Leftbelow 0") < at("Rightcol 0"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_figure_right_under_a_table_comes_after_it() {
+        // The table's caption over it, the figure right under the table, and the figure's caption under the figure.
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let ops = shown(72., 100., "Table 1: Pros and cons.") + &ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
+        let ops = ops + &shown(72., 335., "Figure 1: A chart of the passion.") + &shown(72., 360., "Then a paragraph of prose follows the figure.");
+        let bytes = draw(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), rgb(30, 10, [200, 0, 0]), &[(0, L, 215., 300., 100.)]);
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["caption", "table", "image", "caption", "paragraph"], "{:?}", kinds(&ir));
     }
 
     #[test]
