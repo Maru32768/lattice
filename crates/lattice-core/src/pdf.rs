@@ -3529,8 +3529,9 @@ pub(crate) mod tests {
 
     #[test]
     fn a_one_page_pdf_keeps_a_table_in_its_top_margin() {
-        let cells = shown(78., 40., "Strong") + &shown(178., 40., "Lasting") + &shown(78., 70., "Costly") + &shown(178., 70., "Easy");
-        let ops = ruled(&[72., 172., 540.], &[24., 54., 84.], "strokes") + &cells + &shown(72., 200., "Then a paragraph of prose follows the table.");
+        // Wholly in the top 8% of the page, as a running header is.
+        let cells = shown(78., 28., "Strong") + &shown(178., 28., "Lasting") + &shown(78., 53., "Costly") + &shown(178., 53., "Easy");
+        let ops = ruled(&[72., 172., 540.], &[10., 35., 60.], "strokes") + &cells + &shown(72., 200., "Then a paragraph of prose follows the table.");
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "Strong\tLasting\nCostly\tEasy"), ("paragraph", "Then a paragraph of prose follows the table.")]);
     }
