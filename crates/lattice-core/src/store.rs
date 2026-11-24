@@ -279,6 +279,8 @@ pub enum ArticleSort {
     DifficultyAsc,
     /// Most important first; unscored articles come last.
     RelevanceDesc,
+    /// By the title the list shows, ignoring ASCII case.
+    TitleAsc,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -409,7 +411,7 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
 /// A not yet extracted article shows its feed entry's title.
 const ARTICLE_COLS: &str = concat!(
     "id, original_url, canonical_url, domain,
-    coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)), author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
+    coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)) AS shown_title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
     (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
@@ -995,6 +997,7 @@ impl Store {
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
             ArticleSort::DifficultyAsc => "difficulty IS NULL, difficulty, saved_at DESC, id DESC",
             ArticleSort::RelevanceDesc => concat!(crate::relevance::score_sql!(), " DESC NULLS LAST, saved_at DESC, id DESC"),
+            ArticleSort::TitleAsc => "coalesce(shown_title, original_url) COLLATE NOCASE, id",
         };
         let (cond, arg) = filter_cond(filter);
         let c = self.conn();
@@ -2565,6 +2568,8 @@ mod tests {
         assert_eq!(ids(ArticleSort::PublishedDesc), [1, 3, 2], "undated last");
         s.exec_for_test("UPDATE articles SET difficulty = 4 WHERE id = 1; UPDATE articles SET difficulty = 2 WHERE id = 2;");
         assert_eq!(ids(ArticleSort::DifficultyAsc), [2, 1, 3], "unrated last");
+        s.exec_for_test("UPDATE articles SET title = 'beta' WHERE id = 1; UPDATE articles SET title = 'Alpha' WHERE id = 3;");
+        assert_eq!(ids(ArticleSort::TitleAsc), [3, 1, 2], "case-insensitive; untitled by its URL");
     }
 
     #[test]

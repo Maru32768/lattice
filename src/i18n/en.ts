@@ -1314,6 +1314,7 @@ export const en = {
   "library.relevance5": "Must read",
   "library.relevanceNone": "Not rated",
   "listPane.relevanceDesc": "Most important first",
+  "listPane.titleAsc": "Title, A to Z",
   "listPane.importance": "Key {score}",
   "listPane.rescore": "Rate again",
   "listPane.markRead": "Mark all as read",

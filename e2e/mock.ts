@@ -255,6 +255,7 @@ const SORTERS: Record<ArticleSort, (a: ArticleRow, b: ArticleRow) => number> = {
   published_desc: (a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "") || b.id - a.id,
   difficulty_asc: (a, b) => (a.difficulty ?? 9) - (b.difficulty ?? 9) || b.id - a.id,
   relevance_desc: (a, b) => (b.relevance ?? 0) - (a.relevance ?? 0) || b.saved_at.localeCompare(a.saved_at) || b.id - a.id,
+  title_asc: (a, b) => (a.title ?? a.original_url).toLowerCase().localeCompare((b.title ?? b.original_url).toLowerCase()) || a.id - b.id,
 };
 
 const counts = (values: (string | null)[]): TagCount[] => {

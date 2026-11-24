@@ -25,6 +25,7 @@ export const SORTS: [ArticleSort, PlainKey][] = [
   ["published_desc", "listPane.publishedDesc"],
   ["difficulty_asc", "listPane.difficultyAsc"],
   ["relevance_desc", "listPane.relevanceDesc"],
+  ["title_asc", "listPane.titleAsc"],
 ];
 const GROUPINGS: [Grouping, PlainKey][] = [
   ["none", "common.none"],
