@@ -2607,7 +2607,7 @@ pub(crate) mod tests {
     #[test]
     fn a_box_set_wider_than_the_body_leaves_the_body_its_own_right_edge() {
         for size in [9.5, 10.] {
-            let aside = (0..5).map(|i| (80., 100. + 11.5 * i as f64, size, ASIDE));
+            let aside = (0..5).map(|i| (60., 100. + 11.5 * i as f64, size, ASIDE));
             let first = aside.chain((0..6).map(|i| (L, 300. + 12. * i as f64, 10., BODY))).collect();
             let second = (0..4).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 148., 10., "and that is the end of it.")]).collect();
             let bytes = pdf(&[first, second], None);
@@ -2815,7 +2815,7 @@ pub(crate) mod tests {
 
     #[test]
     fn what_is_set_in_under_a_full_line_is_not_always_the_rest_of_it() {
-        const ENDED: &str = "the leader sends every write to all of the replicas and waits for this one:";
+        const ENDED: &str = "the leader sends every write to all of the replicas and waits for these two:";
         let after = |line: &'static str, x: f64, text: &'static str| {
             let page = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 190., 10., line), (x, 202., 10., text)]).collect();
             texts(&to_ir(&pdf(&[page], None), None).unwrap()).last().copied().map(str::to_string)
