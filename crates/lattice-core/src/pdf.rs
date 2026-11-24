@@ -2605,17 +2605,19 @@ pub(crate) mod tests {
 
     #[test]
     fn a_box_set_wider_than_the_body_leaves_the_body_its_own_right_edge() {
-        let aside = (0..5).map(|i| (80., 100. + 11.5 * i as f64, 9.5, ASIDE));
-        let first = aside.chain((0..6).map(|i| (L, 300. + 12. * i as f64, 10., BODY))).collect();
-        let second = (0..4).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 148., 10., "and that is the end of it.")]).collect();
-        let bytes = pdf(&[first, second], None);
-        let ir = to_ir(&bytes, None).unwrap();
-        let body: Vec<&Block> = ir.blocks.iter().filter(|b| b.text.starts_with(BODY)).collect();
-        assert_eq!(body.len(), 1, "the paragraph runs on to the next page: {:?}", kinds(&ir));
-        assert!(body[0].text.ends_with("the end of it."));
-        let r = regions(&bytes).unwrap();
-        let pages: Vec<usize> = r.iter().filter(|x| x.text.starts_with(BODY) || x.text.ends_with("the end of it.")).map(|x| x.page).collect();
-        assert_eq!(pages, [0, 1], "and both of its pieces are translated");
+        for size in [9.5, 10.] {
+            let aside = (0..5).map(|i| (80., 100. + 11.5 * i as f64, size, ASIDE));
+            let first = aside.chain((0..6).map(|i| (L, 300. + 12. * i as f64, 10., BODY))).collect();
+            let second = (0..4).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 148., 10., "and that is the end of it.")]).collect();
+            let bytes = pdf(&[first, second], None);
+            let ir = to_ir(&bytes, None).unwrap();
+            let body: Vec<&Block> = ir.blocks.iter().filter(|b| b.text.starts_with(BODY)).collect();
+            assert_eq!(body.len(), 1, "the paragraph runs on to the next page: {:?}", kinds(&ir));
+            assert!(body[0].text.ends_with("the end of it."));
+            let r = regions(&bytes).unwrap();
+            let pages: Vec<usize> = r.iter().filter(|x| x.text.starts_with(BODY) || x.text.ends_with("the end of it.")).map(|x| x.page).collect();
+            assert_eq!(pages, [0, 1], "and both of its pieces are translated");
+        }
     }
 
     #[test]
@@ -2840,6 +2842,7 @@ pub(crate) mod tests {
             ("to answer with the same stored value, which is the one that is the mem", L + 7., 10., "that it has given to them."),
             ("to answer with the same stored value, which is the one that is the mem", L + 7., 10., "300 of them have been given."),
             ("to answer with the same stored value, which is the one that is the mem", L, 9., "node_self_current_idx that it has given to them."),
+            ("to answer with the same stored value, which is the one that is the log", L, 10., "Paxos keeps every one of the writes that it was given to send"),
         ] {
             let second = (0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY));
             let second = [(x, 100., size, next)].into_iter().chain(second).collect();
@@ -2849,11 +2852,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rows_of_numbers_that_end_together_are_no_block_of_prose() {
-        let rows = (0..5).map(|i| (L, 200. + 11. * i as f64, 9., "node0 00000003 10 20 20 20 00000003 10 20 20 20 1"));
-        let page = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain(rows).collect();
-        let r = regions(&pdf(&[page], None)).unwrap();
-        assert!(!r.iter().any(|x| x.text.contains("node0")), "{r:?}");
+    fn rows_that_end_together_are_no_block_of_prose() {
+        let numbers: &[(f64, &str)] = &[(L, "node0 00000003 10 20 20 20 00000003 10 20 20 20 1")];
+        let cells: &[(f64, &str)] = &[(L, "node0 that has the value"), (250., "one copy of all the data")];
+        let short: &[(f64, &str)] = &[(L, "node0 has one copy")];
+        for row in [numbers, cells, short] {
+            let rows = (0..5).flat_map(|i| row.iter().map(move |&(x, text)| (x, 200. + 11. * i as f64, 9., text)));
+            let page = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain(rows).collect();
+            let r = regions(&pdf(&[page], None)).unwrap();
+            assert!(!r.iter().any(|x| x.text.contains("node0")), "{r:?}");
+        }
     }
 
     #[test]
@@ -2940,6 +2948,8 @@ pub(crate) mod tests {
             (80., 148.2, 3.5, "."),
             (90., 150., 10., "To serve more reads."),
             (L, 170., 10., "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
+            (L, 197., 6., "*"),
+            (80., 200., 9., "Ada Lovelace wrote this while she was at the university."),
         ];
         let bytes = pdf(&[page], None);
         assert_eq!(
@@ -2949,6 +2959,7 @@ pub(crate) mod tests {
                 ("list_item", "• To keep the data close to the people who use it (and so reduce the latency)"),
                 ("list_item", "• To serve more reads."),
                 ("paragraph", "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
+                ("paragraph", "* Ada Lovelace wrote this while she was at the university."),
             ]
         );
         let r = regions(&bytes).unwrap();
