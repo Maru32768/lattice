@@ -1100,10 +1100,11 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             .collect();
         // Down the page, as tables with no text between them are read.
         grids.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
-        // Glyphs in a grid have no say: a table set across on a page of vertical writing can hold more glyphs than its
-        // columns. The page's turn is known before its tables are taken, so that a turned glyph goes into its cell.
-        let outside = |g: &&Glyph| !grids.iter().any(|grid| grid.cell(g).is_some());
-        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty()).filter(outside);
+        // Glyphs set across in a grid have no say: a table set across on a page of vertical writing can hold more glyphs
+        // than its columns. Vertical writing in a grid has, as a page that is all one table of it turns. The page's turn is
+        // known before its tables are taken, so that a turned glyph goes into its cell.
+        let says = |g: &&Glyph| g.vertical || !grids.iter().any(|grid| grid.cell(g).is_some());
+        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty()).filter(says);
         let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
         let turns = down * 2 > all;
         page.tables = take_tables(page, grids, turns);
@@ -5087,6 +5088,32 @@ pub(crate) mod tests {
         let again: Vec<i64> = s.get_article(id, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
         assert_eq!(again, ids, "re-extraction reads the stored PDF");
         assert!(import(&s, b"not a pdf", None).is_err());
+    }
+
+    #[test]
+    fn a_page_that_is_one_table_of_vertical_writing_keeps_the_latin_turned_down_its_cells() {
+        let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
+        let cells = column(490., 102., "034B034D034F") + &column(430., 102., "03510353") + &column(490., 162., "03540356") + &column(430., 162., "034B034D");
+        let latin = format!("BT /F1 10 Tf 0 -1 1 0 472 {} Tm (API) Tj ET\n", 792. - 105.);
+        let ops = ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n") + &latin;
+        // Alone, and with a page number set across.
+        for folio in [vec![], vec![(300., 760., 10., "12")]] {
+            let ir = to_ir(&japanese(std::slice::from_ref(&folio), "Identity-V", &ops), None).unwrap();
+            assert!(kinds(&ir).contains(&("table", "えお\tあいう API\nあい\tかき")), "folio {}: {:?}", folio.len(), kinds(&ir));
+        }
+    }
+
+    #[test]
+    fn vertical_writing_in_a_grid_that_is_no_table_reads_as_it_was() {
+        // Four columns of vertical writing, two paragraphs, in one cell of a grid of four: too little text for a table.
+        let ten = "034B034D034F035103530354035603580359035A";
+        let col = |x: f64, y: f64, codes: &str| format!("1 0 0 1 {x} {y} Tm <{codes}> Tj ");
+        let columns =
+            format!("BT /F3 10 Tf {}{}{}{}ET\n", col(500., 700., ten), col(488., 700., ten), col(476., 690., "034B034D034F0351"), col(464., 700., ten));
+        let plain = japanese(&[vec![]], "Identity-V", &columns);
+        let gridded = japanese(&[vec![]], "Identity-V", &(columns.clone() + &ruled(&[300., 420., 540.], &[60., 200., 400.], "strokes")));
+        assert_eq!(kinds(&to_ir(&gridded, None).unwrap()), kinds(&to_ir(&plain, None).unwrap()));
+        assert!(glyphs(&gridded, true).unwrap().1[0].vertical);
     }
 
     /// The object numbers of the figures, in the order the Reader shows them.
