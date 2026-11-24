@@ -6,11 +6,13 @@ import type { Ask } from "./stickies";
 interface Stickies {
   saved: Sticky[];
   asks: Ask[];
+  /** The stickies that asks of this window became, by the ask's key. */
+  answers: ReadonlyMap<number, number>;
   /** Why the saved ones could not be read. */
   error: string | null;
 }
 
-const NONE: Stickies = { saved: [], asks: [], error: null };
+const NONE: Stickies = { saved: [], asks: [], answers: new Map(), error: null };
 // The Reader unmounts when another article, tab or screen is shown: what was asked outlives it here, by article id, and an
 // answer that comes meanwhile is put here too.
 const articles = new Map<number, Stickies>();
@@ -70,7 +72,12 @@ export async function sendAsk(article: number, ask: Ask) {
   replace(article, { key, blockId, kind, quote, question, step: "pending" });
   try {
     const sticky = await api.stickyAsk({ articleId: article, blockId, kind, quote, question });
-    put(article, { saved: [...of(article).saved.filter((s) => s.id !== sticky.id), sticky], asks: of(article).asks.filter((a) => a.key !== key) });
+    const { saved, asks, answers } = of(article);
+    put(article, {
+      saved: [...saved.filter((s) => s.id !== sticky.id), sticky],
+      asks: asks.filter((a) => a.key !== key),
+      answers: new Map(answers).set(key, sticky.id),
+    });
   } catch (e) {
     replace(article, { key, blockId, kind, quote, question, step: "failed", error: String(e) });
   }

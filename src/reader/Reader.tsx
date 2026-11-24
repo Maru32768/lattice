@@ -1308,6 +1308,7 @@ export function Reader({
             blocks={blocks}
             saved={stickies.saved}
             asks={stickies.asks}
+            answers={stickies.answers}
             error={stickies.error}
             opened={opened}
             onSource={(b) => act.onFocusBlock(b, "sticky")}

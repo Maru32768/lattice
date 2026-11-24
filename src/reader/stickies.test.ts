@@ -34,3 +34,19 @@ test("a card is at its block's height, and below the card before where it would 
   assert.deepEqual(tops, [0, 60, 170, 1000]);
   assert.deepEqual(stack([]), []);
 });
+
+test("the opened card is at its block's height: those before it move up as far as it takes, those after it go below", () => {
+  const cards = (at: number) => [
+    { at: 0, height: 100 },
+    { at: 200, height: 300 },
+    { at: 210, height: 50 },
+    { at, height: 80 },
+    { at: at + 10, height: 40 },
+  ];
+  assert.deepEqual(stack(cards(520)), [0, 200, 510, 570, 660]);
+  assert.deepEqual(stack(cards(520), 3), [0, 150, 460, 520, 610], "the first is out of the way as it is");
+  assert.deepEqual(stack(cards(480), 3), [0, 110, 420, 480, 570], "to the top of the column");
+  assert.deepEqual(stack(cards(400), 3), [0, 110, 420, 480, 570], "and only then down itself");
+  assert.deepEqual(stack(cards(900), 3), stack(cards(900)), "nothing is in its way");
+  assert.deepEqual(stack(cards(520), 1), [0, 200, 510, 570, 660]);
+});

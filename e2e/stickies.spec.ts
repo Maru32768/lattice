@@ -364,6 +364,51 @@ test("cards on one block do not cover each other, those without a block come fir
   await expect.poll(apart).toBe(true);
 });
 
+test("the card just asked is at its block's height, and stays there with its answer, until another is", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  // Six cards on one block: down the column past the blocks that follow.
+  for (let i = 0; i < 6; i++) {
+    void askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 30, `card ${i}`);
+  }
+  await expect.poll(async () => (await asked(shell)).length).toBe(6);
+  await shell.evaluate(() => window.__e2e.release("sticky_ask", 6));
+  await expect(cards(shell)).toHaveCount(6);
+  const off = async (nth: number, block: string) => (await boxOf(cards(shell).nth(nth))).y - (await boxOf(shell.locator(block))).y;
+  const apart = async () => {
+    const all = await Promise.all((await cards(shell).all()).map(boxOf));
+    const column = await boxOf(shell.locator(".art-meta"));
+    return all[0].y >= column.y - 1 && all.slice(1).every((x, i) => x.y >= all[i].y + all[i].height);
+  };
+
+  await scrollTo(shell, paraBlock(32), "center");
+  const top = await scrollTop(shell);
+  await askAbout(shell, "詳しく", paraBlock(32));
+  expect(Math.abs(await off(6, paraBlock(32)))).toBeLessThan(1);
+  expect(await scrollTop(shell), "the passage stays where it was").toBe(top);
+  expect(await apart()).toBe(true);
+  await shell.evaluate(() => window.__e2e.release("sticky_ask"));
+  await expect(card(shell, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  expect(Math.abs(await off(6, paraBlock(32)))).toBeLessThan(1);
+  expect(await scrollTop(shell)).toBe(top);
+
+  // The next one takes the place.
+  await askAbout(shell, "質問", paraBlock(33));
+  expect(Math.abs(await off(7, paraBlock(33)))).toBeLessThan(1);
+  expect(await off(6, paraBlock(32))).toBeLessThan(0);
+  expect(await apart()).toBe(true);
+  expect(await scrollTop(shell)).toBe(top);
+  await shell.keyboard.press("Escape");
+  await expect(cards(shell)).toHaveCount(7);
+  expect(await off(6, paraBlock(32)), "below the six again").toBeGreaterThan(100);
+  // A Reader that did not ask has them in order.
+  await open(shell, SNAPSHOT_ID);
+  await open(shell, LONG_ID);
+  await expect(cards(shell)).toHaveCount(7);
+  expect(await off(0, paraBlock(30))).toBeCloseTo(0, 0);
+});
+
 test("the column goes on below a short article, and scrolls with it", async ({ app }) => {
   await openSnapshot(app);
   for (let i = 0; i < 8; i++) {
@@ -498,6 +543,12 @@ test("the cards are under their block in a narrow pane, and beside it in a wider
   expect(text.width, "the text gives up width").toBeGreaterThan(240);
   await shell.setViewportSize({ width: 1500 - pane + 540, height: 900 });
   await expect.poll(under).toBe(true);
+
+  // Asked here it is under those before too.
+  await askAbout(shell, "用語", paraBlock(0));
+  await expect(cards(shell)).toHaveCount(3);
+  await expect.poll(async () => (await boxOf(cards(shell).nth(2))).y >= (await boxOf(two)).y + (await boxOf(two)).height).toBe(true);
+  expect(await under()).toBe(true);
 
   // A card that the reader makes taller pushes the text below it.
   await scrollTo(shell, paraBlock(3), "center");

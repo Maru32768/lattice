@@ -34,12 +34,21 @@ export function cardsOf(saved: Sticky[], asks: Ask[], blocks: { id: number }[]):
   return cards.toSorted((a, b) => ordinal(a) - ordinal(b));
 }
 
-/** Where the cards go in the column, in order: each at its block's height, or below the card before where it would cover that. */
-export function stack(cards: { at: number; height: number }[]): number[] {
+/**
+ * Where the cards go in the column, in order: each at its block's height, or below the card before where it would cover that.
+ * For the card at index `opened` it is the cards before that give way, up the column as far as there is room.
+ */
+export function stack(cards: { at: number; height: number }[], opened = -1): number[] {
   let free = 0;
-  return cards.map(({ at, height }) => {
-    const top = Math.max(at, free);
+  let heights = 0;
+  const tops = cards.map(({ at, height }, i) => {
+    const top = Math.max(at, i === opened ? heights : free);
     free = top + height + GAP;
+    heights += height + GAP;
     return top;
   });
+  for (let i = opened - 1; i >= 0; i--) {
+    tops[i] = Math.min(tops[i]!, tops[i + 1]! - GAP - cards[i]!.height);
+  }
+  return tops;
 }

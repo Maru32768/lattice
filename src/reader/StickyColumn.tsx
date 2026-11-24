@@ -56,6 +56,7 @@ function place(column: HTMLElement, room = true) {
   const under = (block: HTMLElement | null) => (block ? block.getBoundingClientRect().bottom : article.getBoundingClientRect().top) + GAP;
   const tops = stack(
     cards.map(({ el, block }) => ({ at: (beside ? (block?.getBoundingClientRect().top ?? top) : under(block)) - top, height: el.offsetHeight })),
+    beside ? cards.findIndex(({ el }) => el.hasAttribute("data-opened")) : -1,
   );
   cards.forEach(({ el }, i) => (el.style.top = `${tops[i]}px`));
 
@@ -71,6 +72,7 @@ export function StickyColumn({
   blocks,
   saved,
   asks,
+  answers,
   error,
   opened,
   onSource,
@@ -79,8 +81,9 @@ export function StickyColumn({
   blocks: Block[];
   saved: Sticky[];
   asks: Ask[];
+  answers: ReadonlyMap<number, number>;
   error: string | null;
-  /** The ask this Reader opened last, to bring into view: the same article may be open in another pane. */
+  /** The ask this Reader opened last, to bring into view and to keep at its block's height, its answer too: the same article may be open in another pane. */
   opened: number | null;
   /** Shows a block that an answer cites. */
   onSource: (block: number) => void;
@@ -121,7 +124,7 @@ export function StickyColumn({
     };
   });
   useLayoutEffect(() => {
-    const card = opened == null ? null : root.current?.querySelector(`[data-ask="${opened}"]`);
+    const card = opened == null ? null : root.current?.querySelector("[data-opened]");
     // Focus by itself would scroll the card to the middle of the view.
     card?.querySelector("textarea")?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: "nearest" });
@@ -135,7 +138,11 @@ export function StickyColumn({
         </p>
       )}
       {cards.map((c) =>
-        "sticky" in c ? <SavedCard key={c.key} sticky={c.sticky} blocks={blocks} onSource={onSource} /> : <AskCard key={c.key} article={article} ask={c.ask} />,
+        "sticky" in c ? (
+          <SavedCard key={c.key} sticky={c.sticky} opened={opened != null && answers.get(opened) === c.sticky.id} blocks={blocks} onSource={onSource} />
+        ) : (
+          <AskCard key={c.key} article={article} ask={c.ask} opened={c.ask.key === opened} />
+        ),
       )}
     </aside>
   );
@@ -179,13 +186,13 @@ function Answer({ m, blocks, onSource }: { m: StickyMessage; blocks: Block[]; on
   );
 }
 
-function SavedCard({ sticky, blocks, onSource }: { sticky: Sticky; blocks: Block[]; onSource: (block: number) => void }) {
+function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opened: boolean; blocks: Block[]; onSource: (block: number) => void }) {
   const t = useT();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const label = t(STICKY_LABELS[sticky.kind]);
   return (
-    <section className="sticky" aria-label={label} data-block={sticky.block_id ?? undefined}>
+    <section className="sticky" aria-label={label} data-block={sticky.block_id ?? undefined} data-opened={opened || undefined}>
       <div className="sticky-h">
         <span className="sticky-kind">{label}</span>
         <button className="ib" onClick={() => setDeleting(true)} aria-label={t("stickies.delete")} title={t("stickies.delete")}>
@@ -222,7 +229,7 @@ function SavedCard({ sticky, blocks, onSource }: { sticky: Sticky; blocks: Block
 }
 
 /** A card without an answer: the question being written, the wait, or what went wrong. */
-function AskCard({ article, ask }: { article: number; ask: Ask }) {
+function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: boolean }) {
   const t = useT();
   const sendKey = useSendKey();
   const label = t(STICKY_LABELS[ask.kind]);
@@ -242,7 +249,7 @@ function AskCard({ article, ask }: { article: number; ask: Ask }) {
     dropAsk(article, ask.key);
   };
   return (
-    <section className="sticky" aria-label={label} data-block={ask.blockId ?? undefined} data-ask={ask.key}>
+    <section className="sticky" aria-label={label} data-block={ask.blockId ?? undefined} data-opened={opened || undefined}>
       <div className="sticky-h">
         <span className="sticky-kind">{label}</span>
       </div>
