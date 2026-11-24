@@ -1826,7 +1826,11 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                 Kind::Paragraph if flows => {
                     let indented = l.x0 > prev.x0 + 0.8 * l.size;
                     let ended = prev.x1 < prev.right - 2. * prev.size && prev.text.ends_with(['.', '!', '?', ':']);
-                    !indented && !ended
+                    let hung = further_in(first, prev) > 0.8 * l.size;
+                    if hung && further_in(first, l) <= 0.3 * l.size {
+                        return false;
+                    }
+                    (!indented || std::ptr::eq(first, prev) && hangs(first, l)) && !ended
                 }
                 Kind::Paragraph => across,
             });
@@ -1850,6 +1854,13 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     }
     drop_figure_labels(&mut drafts);
     drafts
+}
+
+/// Whether the line carries on the sentence of an entry's first line, set with a hanging indent. An equation stands
+/// further in, and a contents entry under another starts with a capital or a number.
+fn hangs(first: &Line, l: &Line) -> bool {
+    let full = first.x1 >= first.right - 0.5 * first.size && !first.text.ends_with(['.', '!', '?', ':']);
+    full && l.text.starts_with(char::is_lowercase) && further_in(first, l) < 4. * l.size
 }
 
 /// How much further in than `first` a line starts. On another page or in another column, from the edges of the two.
@@ -2568,6 +2579,40 @@ pub(crate) mod tests {
             [("paragraph", "bool Eq = (A == B);"), ("paragraph", "where A and B are the two words that are compared with each other.")],
             "{k:?}"
         );
+    }
+
+    #[test]
+    fn entries_set_with_a_hanging_indent_are_a_paragraph_each() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "Each of the stages has a part of the work to do:"),
+            (82., 118., 10., "A. The first stage reads the bytes of a write from the log of the leader and"),
+            (108., 130., 10., "passes them on. It goes by the place it was given, which may be"),
+            (108., 142., 10., "an old one"),
+            (82., 154., 10., "B. The first stage reads the bytes of a write from the log of the leader and"),
+            (108., 166., 10., "keeps them."),
+            (L, 178., 10., "After that it starts again with the first stage."),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        let texts: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "Each of the stages has a part of the work to do:",
+                "A. The first stage reads the bytes of a write from the log of the leader and passes them on. It goes by the place it was given, which may be an old one",
+                "B. The first stage reads the bytes of a write from the log of the leader and keeps them.",
+                "After that it starts again with the first stage.",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_contents_entry_under_another_is_not_its_second_line() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "1 The parts of a machine and how they are put together to make a whole 1"),
+            (90., 112., 10., "1.1 The first of the parts and what it is for in the machines of today"),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert_eq!(ir.blocks.len(), 2, "{:?}", kinds(&ir));
     }
 
     #[test]
