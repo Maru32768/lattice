@@ -1974,7 +1974,8 @@ enum Kind {
 struct Draft<'a> {
     kind: Kind,
     lines: Vec<&'a Line>,
-    /// The index of its first line among the document's.
+    /// Where it is read from among the document's lines: its first line's index, or for a paragraph a float interrupted,
+    /// the line it goes on with after the float.
     start: usize,
 }
 
@@ -2161,10 +2162,11 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             });
         if continues {
             drafts.last_mut().expect("continues a draft").lines.push(l);
-        } else if let Some(i) = start.is_none().then(|| interrupted(&drafts, l, body)).flatten() {
-            // The figure goes before the paragraph it interrupted, as a float would.
-            let mut d = drafts.remove(i);
+        } else if let Some(cut) = start.is_none().then(|| interrupted(&drafts, l, body)).flatten() {
+            // The figure goes before the paragraph it interrupted, as a float would, and so does a table read there.
+            let mut d = drafts.remove(cut);
             d.lines.push(l);
+            d.start = i;
             drafts.push(d);
         } else {
             drafts.push(Draft {
@@ -5337,5 +5339,68 @@ pub(crate) mod tests {
             to_ir(&with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &ops[0]), (1, &ops[1]), (2, &ops[2])]), None).unwrap()
         };
         assert_eq!(read(&ruled(&[72., 294., 540.], &[740., 762., 782.], "strokes")).blocks, read("").blocks);
+    }
+
+    #[test]
+    fn a_table_under_its_caption_that_cuts_a_sentence_comes_right_after_the_caption() {
+        // The sentence runs on to the next page, past the caption and the table at its top.
+        let first = shown(72., 700., "A paragraph of prose opens the first page and it runs on along the line")
+            + &shown(72., 712., "until the very foot of the page, where it goes on past the table on the");
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let table = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
+        let second = shown(72., 100., "Table 1: Pros and cons.") + &table + &shown(72., 220., "next page and comes to its end here.");
+        let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(0, &first), (1, &second)]), None).unwrap();
+        let k = kinds(&ir);
+        assert_eq!(k.iter().map(|b| b.0).collect::<Vec<_>>(), ["caption", "table", "paragraph"], "{k:?}");
+        assert!(k[2].1.contains("past the table on the next page"), "{k:?}");
+    }
+
+    #[test]
+    fn a_table_under_its_caption_that_cuts_a_sentence_in_two_columns_comes_right_after_the_caption() {
+        let cells = |x: f64, y: f64| {
+            shown(x + 6., y + 20., "Strong") + &shown(x + 106., y + 20., "Lasting") + &shown(x + 6., y + 72., "Costly") + &shown(x + 106., y + 72., "Easy")
+        };
+        let left = |last: &str| {
+            (0..20)
+                .map(|i| {
+                    shown(
+                        72.,
+                        100. + 12. * i as f64,
+                        &if i < 19 {
+                            format!("Left column line {i} of the body runs on and")
+                        } else {
+                            last.to_string()
+                        },
+                    )
+                })
+                .collect::<String>()
+        };
+        // At the foot of the left column, the sentence going on at the top of the right one.
+        let mut foot = left("on until the float cuts it here and then it") + &shown(72., 500., "Table 1: Pros and cons.");
+        foot += &(ruled(&[72., 172., 290.], &[510., 560., 600.], "strokes") + &cells(72., 510.));
+        for i in 0..30 {
+            foot += &shown(
+                320.,
+                100. + 12. * i as f64,
+                &if i == 0 {
+                    "goes on in the right column of the page and".to_string()
+                } else {
+                    format!("Right column line {i} of the body runs on and")
+                },
+            );
+        }
+        // At the top of the right column, the left column's sentence going on under it.
+        let mut top = left("on past the table in the right column as a") + &shown(320., 100., "Table 1: Pros and cons.");
+        top +=
+            &(ruled(&[320., 420., 540.], &[110., 160., 200.], "strokes") + &cells(320., 110.) + &shown(320., 220., "sentence does across a float to its end."));
+        for i in 0..14 {
+            top += &shown(320., 244. + 12. * i as f64, &format!("Right column line {i} of the body runs on and"));
+        }
+        for (ops, runs_on) in [(foot, "and then it goes on in the right column"), (top, "in the right column as a sentence does")] {
+            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+            let k = kinds(&ir);
+            assert_eq!(k[..3].iter().map(|b| b.0).collect::<Vec<_>>(), ["caption", "table", "paragraph"], "{k:?}");
+            assert!(k[2].1.contains(runs_on), "{k:?}");
+        }
     }
 }
