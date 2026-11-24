@@ -803,9 +803,33 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             turn(page);
         } else {
             page.glyphs.retain(|g| !g.turned);
+            set_down_drop_caps(&mut page.glyphs);
         }
     }
     Ok((doc, out.pages))
+}
+
+/// A drop cap is drawn several times the size of the lines beside it and on the baseline of a later one, so those lines
+/// would all be its scripts and make one line. It is set down as the first letter of the first line: at that line's
+/// size and baseline, and at the cap's right edge, where the lines beside it start, so the second is not indented
+/// under the first. A capital with a superscript has no second line beside it: its own line goes on at its size.
+fn set_down_drop_caps(glyphs: &mut [Glyph]) {
+    let ink = |g: &&Glyph| !g.text.trim().is_empty();
+    let first_line = |glyphs: &[Glyph], i: usize| {
+        let cap = &glyphs[i];
+        let alone = glyphs[..i].iter().rev().find(ink).is_none_or(|before| before.size < SCRIPT * cap.size);
+        let mut after = glyphs[i + 1..].iter().filter(ink);
+        let first = after.next()?;
+        let second = after.find(|g| g.y != first.y)?;
+        let beside = |g: &Glyph| 2. * g.size <= cap.size && g.y > cap.y - cap.size && g.y < cap.y + 0.5 * g.size && g.x >= cap.end - 0.5 * g.size;
+        (cap.text.starts_with(char::is_uppercase) && alone && beside(first) && beside(second) && second.y > first.y).then_some((first.y, first.size))
+    };
+    for i in 0..glyphs.len() {
+        if let Some((y, size)) = first_line(glyphs, i) {
+            let cap = &mut glyphs[i];
+            (cap.x, cap.y, cap.size) = (cap.end, y, size);
+        }
+    }
 }
 
 /// The document as pdf-extract is given it, with what `walk` finds on each of its pages. `quotes`: with `'` and `"`
@@ -2313,6 +2337,32 @@ pub(crate) mod tests {
         ]);
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         assert!(kinds(&ir).contains(&("paragraph", "40")), "an axis tick, not a page number: {:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_drop_cap_is_the_first_letter_of_its_paragraph() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "The paragraph before this one ends on a line of its own, which is short."),
+            (L, 136., 26., "M"),
+            (94., 124., 10., "odern machines are among the most complex things that people have ever built,"),
+            (94., 136., 10., "and a single chip can hold several of them, each one able to run many programs"),
+            (L, 148., 10., "at the same time, with the memory and the devices that they all have to share."),
+        ];
+        let bytes = pdf(&[page], None);
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir).len(), 2, "the lines beside the cap and the one under it are one paragraph: {:?}", kinds(&ir));
+        assert!(ir.blocks[1].text.starts_with("Modern machines are") && ir.blocks[1].text.ends_with("have to share."), "{}", ir.blocks[1].text);
+        let r = regions(&bytes).unwrap();
+        let r = r.iter().find(|r| r.text.starts_with("Modern")).expect("the Page view translates it");
+        assert_eq!((r.x0, r.y0, r.y1), (L, 114., 151.), "from the top of the first line to below the third");
+    }
+
+    #[test]
+    fn a_capital_with_a_superscript_is_not_a_drop_cap() {
+        let page: Vec<Run> = vec![(L, 136., 26., "N"), (91., 124., 10., "ab"), (120., 136., 26., "is the size of the largest set.")];
+        let r = regions(&pdf(&[page], None)).unwrap();
+        let scripts: Vec<&str> = r[0].runs.iter().filter(|run| run.script == Some(Script::Sup)).map(|run| run.text.as_str()).collect();
+        assert_eq!(scripts, ["ab"], "{:?}", r[0].runs);
     }
 
     #[test]
