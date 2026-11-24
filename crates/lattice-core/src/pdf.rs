@@ -271,20 +271,19 @@ fn laid_out_text(d: &Draft, body: f64) -> bool {
     d.kind == Kind::Paragraph && (short && !is_title(d, body) || d.lines.iter().any(|l| l.tabular()))
 }
 
-/// A line of words set like the body, with no full stop: a title that is no heading, as over a book's aside.
+/// A title that is no heading, as over a book's aside.
 fn is_title(d: &Draft, body: f64) -> bool {
     matches!(d.lines.as_slice(), [l] if titles(l, body))
 }
 
+/// A line with no full stop, of three words set like the body or of one set larger: not code, a formula, a label or a
+/// table's row. It starts with a capital, has little but letters, and ends in a word or leads to an equation.
 fn titles(l: &Line, body: f64) -> bool {
-    l.size > 0.97 * body && !l.text.ends_with('.') && reads_as_words(&l.text)
-}
-
-/// Starts with a capital, has three words or more with little but letters, and ends in one of them or leads to an
-/// equation: not code, a formula, a label or a table's row.
-fn reads_as_words(t: &str) -> bool {
+    let t = l.text.as_str();
+    let larger = l.size > 1.03 * body;
+    let enough = words(t) >= 3 || larger && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
     let closed = t.split_whitespace().last().is_some_and(|w| w == "=" || w.trim_start_matches(['(', '“', '‘']).starts_with(char::is_alphabetic));
-    t.starts_with(char::is_uppercase) && words(t) >= 3 && closed && mostly_letters(t)
+    l.size > 0.97 * body && t.starts_with(char::is_uppercase) && !t.ends_with('.') && enough && closed && mostly_letters(t)
 }
 
 fn words(t: &str) -> usize {
@@ -2068,7 +2067,9 @@ fn section_level(l: &Line, body: f64) -> Option<u8> {
         let rest = rest.trim();
         let letters = rest.chars().filter(|c| c.is_alphabetic()).count();
         let digits = rest.chars().filter(char::is_ascii_digit).count();
-        if rest.chars().next().is_some_and(char::is_uppercase) && letters >= 3 && digits <= 2 && !rest.ends_with([',', ';']) && words <= 10 {
+        // "3 GPUs 2048 512" is a table's row. A row is not numbered three levels deep, and a title can name an "Y86-64".
+        let text = letters >= 3 && (digits <= 2 || depth > 2);
+        if rest.chars().next().is_some_and(char::is_uppercase) && text && !rest.ends_with([',', ';']) && words <= 10 {
             return Some((depth + 1).min(4) as u8);
         }
     }
@@ -2498,6 +2499,21 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_section_title_with_a_number_in_a_name_is_a_heading_and_a_tables_row_is_not() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "A long line of body text that runs across the whole of the column and on to its end,"),
+            (L, 112., 10., "with a second line that is nearly as long as the first one and then comes to a stop."),
+            (L, 140., 10., "4.1.2 Y86-64 Instructions"),
+            (L, 158., 10., "Another long line of body text that runs across the whole of the column to its end,"),
+            (L, 170., 10., "which the page needs for most of its text to be set at the size of the body."),
+            (L, 200., 10., "3 GPUs 2048 512"),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
+        assert_eq!(headings, ["4.1.2 Y86-64 Instructions"]);
+    }
+
+    #[test]
     fn a_title_set_like_the_body_is_translated_and_a_label_or_a_line_of_code_is_not() {
         let page: Vec<Run> = vec![
             (L, 100., 10., "A long line of body text that runs across the whole of the column and on to its end,"),
@@ -2509,6 +2525,8 @@ pub(crate) mod tests {
             (L, 230., 10., "irmovq $15,%rbx # Load constant 15"),
             (L, 320., 10., "Late cache prefetches 2.65%"),
             (L, 350., 10., "Here is how to run the program from the shell:3"),
+            (L, 380., 10.5, "Interrupts"),
+            (L, 400., 10.5, "II"),
             (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
             (L, 272., 10., "which the page needs for most of its text to be set at the size of the body."),
         ];
@@ -2516,6 +2534,7 @@ pub(crate) mod tests {
         let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
         assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
         assert!(texts.contains(&"Here is how to run the program from the shell:3"), "a footnote's mark after the last word: {texts:?}");
+        assert!(texts.contains(&"Interrupts") && !texts.contains(&"II"), "a word set larger than the body: {texts:?}");
         assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq") || t.starts_with("Late")), "{texts:?}");
     }
 
