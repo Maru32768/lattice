@@ -287,7 +287,7 @@ fn titles(l: &Line, body: f64) -> bool {
 }
 
 fn words(t: &str) -> usize {
-    let word = |w: &&str| !w.is_empty() && w.chars().all(char::is_alphabetic);
+    let word = |w: &&str| !w.is_empty() && w.chars().all(|c| c.is_alphabetic() || "’'-".contains(c));
     t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count()
 }
 
@@ -2067,8 +2067,9 @@ fn section_level(l: &Line, body: f64) -> Option<u8> {
         let rest = rest.trim();
         let letters = rest.chars().filter(|c| c.is_alphabetic()).count();
         let digits = rest.chars().filter(char::is_ascii_digit).count();
-        // "3 GPUs 2048 512" is a table's row. A row is not numbered three levels deep, and a title can name an "Y86-64".
-        let text = letters >= 3 && (digits <= 2 || depth > 2);
+        // "3 GPUs 2048 512" is a table's row. Numbered three levels deep, it is a title that names an "Y86-64", or a
+        // contents entry with its page.
+        let text = letters >= 3 && (digits <= 2 || depth > 2 && !rest.ends_with(|c: char| c.is_ascii_digit()));
         if rest.chars().next().is_some_and(char::is_uppercase) && text && !rest.ends_with([',', ';']) && words <= 10 {
             return Some((depth + 1).min(4) as u8);
         }
@@ -2507,6 +2508,7 @@ pub(crate) mod tests {
             (L, 158., 10., "Another long line of body text that runs across the whole of the column to its end,"),
             (L, 170., 10., "which the page needs for most of its text to be set at the size of the body."),
             (L, 200., 10., "3 GPUs 2048 512"),
+            (L, 230., 10., "2.2.3 Encodings of the integers 100"),
         ];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
@@ -2527,6 +2529,7 @@ pub(crate) mod tests {
             (L, 350., 10., "Here is how to run the program from the shell:3"),
             (L, 380., 10.5, "Interrupts"),
             (L, 400., 10.5, "II"),
+            (L, 440., 10., "Aside Moore's Law"),
             (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
             (L, 272., 10., "which the page needs for most of its text to be set at the size of the body."),
         ];
@@ -2534,6 +2537,7 @@ pub(crate) mod tests {
         let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
         assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
         assert!(texts.contains(&"Here is how to run the program from the shell:3"), "a footnote's mark after the last word: {texts:?}");
+        assert!(texts.contains(&"Aside Moore’s Law"), "a possessive is a word: {texts:?}");
         assert!(texts.contains(&"Interrupts") && !texts.contains(&"II"), "a word set larger than the body: {texts:?}");
         assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq") || t.starts_with("Late")), "{texts:?}");
     }
