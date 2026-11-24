@@ -276,12 +276,18 @@ fn is_title(d: &Draft, body: f64) -> bool {
     matches!(d.lines.as_slice(), [l] if l.size > 0.97 * body && !l.text.ends_with('.') && reads_as_words(&l.text))
 }
 
-/// Starts with a capital and has three words or more, with little but letters: not code, a formula or a label.
+/// Starts with a capital, has three words or more with little but letters, and ends in one of them: not code, a
+/// formula, a label or a table's row.
 fn reads_as_words(t: &str) -> bool {
     let word = |w: &&str| !w.is_empty() && w.chars().all(char::is_alphabetic);
     let words = t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count();
+    let closed = t.ends_with(|c: char| c.is_alphabetic() || matches!(c, ')' | '?' | '!' | '”' | '’'));
+    t.starts_with(char::is_uppercase) && words >= 3 && closed && mostly_letters(t)
+}
+
+fn mostly_letters(t: &str) -> bool {
     let (letters, ink) = t.chars().filter(|c| !c.is_whitespace()).fold((0, 0), |(l, n), c| (l + usize::from(c.is_alphabetic()), n + 1));
-    t.starts_with(char::is_uppercase) && words >= 3 && letters * 4 >= ink * 3
+    letters * 4 >= ink * 3
 }
 
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
@@ -1565,10 +1571,10 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
         // A box set wider than the body (a book's aside) would make every body line look short of the edges. Justified
         // lines end at one place, ragged ones nowhere in particular: where a fifth of the lines of prose of one size end
         // is a block's edge, and the block reaches left to where the first of those starts. Only lines of its size are in
-        // it: rows of code beside it end anywhere. Rows of a table end together too, with cells across them or well short
-        // of the column.
+        // it: rows of code beside it end anywhere. Rows of a table end together too, with cells across them, well short of
+        // the column or with numbers in them.
         let size = |l: &Line| (l.size * 10.).round() as i64;
-        let mut prose: Vec<&Line> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo)).collect();
+        let mut prose: Vec<&Line> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo) && mostly_letters(&l.text)).collect();
         prose.sort_by(|a, b| size(a).cmp(&size(b)).then(a.x1.total_cmp(&b.x1)));
         let blocks: Vec<(i64, f64, f64)> = prose
             .chunk_by(|a, b| size(a) == size(b))
@@ -2495,13 +2501,14 @@ pub(crate) mod tests {
             (L, 169.5, 9.5, "and that ends on its second line."),
             (200., 200., 8., "RF: Program registers"),
             (L, 230., 10., "irmovq $15,%rbx # Load constant 15"),
+            (L, 320., 10., "Late cache prefetches 2.65%"),
             (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
             (L, 272., 10., "which the page needs for most of its text to be set at the size of the body."),
         ];
         let r = regions(&pdf(&[page], None)).unwrap();
         let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
         assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
-        assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq")), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq") || t.starts_with("Late")), "{texts:?}");
     }
 
     #[test]
@@ -2659,6 +2666,15 @@ pub(crate) mod tests {
             let ir = to_ir(&pdf(&[first(last), second], None), None).unwrap();
             assert!(ir.blocks[0].text.contains(next), "{:?}", kinds(&ir));
         }
+    }
+
+    #[test]
+    fn rows_of_numbers_that_end_together_are_no_block_of_prose() {
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let rows = (0..5).map(|i| (L, 200. + 11. * i as f64, 9., "node0 00000003 10 20 20 20 00000003 10 20 20 20 1"));
+        let page = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain(rows).collect();
+        let r = regions(&pdf(&[page], None)).unwrap();
+        assert!(!r.iter().any(|x| x.text.contains("node0")), "{r:?}");
     }
 
     #[test]
