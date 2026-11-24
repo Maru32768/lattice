@@ -276,13 +276,16 @@ fn is_title(d: &Draft, body: f64) -> bool {
     matches!(d.lines.as_slice(), [l] if l.size > 0.97 * body && !l.text.ends_with('.') && reads_as_words(&l.text))
 }
 
-/// Starts with a capital, has three words or more with little but letters, and ends in one of them: not code, a
-/// formula, a label or a table's row.
+/// Starts with a capital, has three words or more with little but letters, and ends in one of them or leads to an
+/// equation: not code, a formula, a label or a table's row.
 fn reads_as_words(t: &str) -> bool {
+    let closed = t.split_whitespace().last().is_some_and(|w| w == "=" || w.trim_start_matches(['(', '“', '‘']).starts_with(char::is_alphabetic));
+    t.starts_with(char::is_uppercase) && words(t) >= 3 && closed && mostly_letters(t)
+}
+
+fn words(t: &str) -> usize {
     let word = |w: &&str| !w.is_empty() && w.chars().all(char::is_alphabetic);
-    let words = t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count();
-    let closed = t.ends_with(|c: char| c.is_alphabetic() || matches!(c, ')' | '?' | '!' | '”' | '’'));
-    t.starts_with(char::is_uppercase) && words >= 3 && closed && mostly_letters(t)
+    t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count()
 }
 
 fn mostly_letters(t: &str) -> bool {
@@ -1866,16 +1869,12 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
 
 /// Whether the line carries on the sentence of an entry's first line, set with a hanging indent. An equation stands
 /// further in, and a contents entry under another starts with a capital or a number. A table's cell stops short of the
-/// column's edge, as a line of code does, but code is set in by more than a letter.
+/// column's edge, as code and the parts of an equation do, but those are few words or set in by more than a letter.
 fn hangs(first: &Line, l: &Line) -> bool {
     let full = first.x1 >= first.right - 0.5 * first.size;
     let cut = !first.text.ends_with(['.', '!', '?', ':']) && (l.text.starts_with(char::is_lowercase) || first.text.ends_with('-'));
-    let most = if full {
-        4.
-    } else {
-        1.
-    };
-    cut && further_in(first, l) < most * l.size
+    let cell = words(&first.text) >= 3 && mostly_letters(&first.text) && further_in(first, l) < l.size;
+    cut && (full && further_in(first, l) < 4. * l.size || cell)
 }
 
 /// How much further in than `first` a line starts. On another page or in another column, from the edges of the two.
@@ -2502,12 +2501,14 @@ pub(crate) mod tests {
             (200., 200., 8., "RF: Program registers"),
             (L, 230., 10., "irmovq $15,%rbx # Load constant 15"),
             (L, 320., 10., "Late cache prefetches 2.65%"),
+            (L, 350., 10., "Here is how to run the program from the shell:3"),
             (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
             (L, 272., 10., "which the page needs for most of its text to be set at the size of the body."),
         ];
         let r = regions(&pdf(&[page], None)).unwrap();
         let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
         assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
+        assert!(texts.contains(&"Here is how to run the program from the shell:3"), "a footnote's mark after the last word: {texts:?}");
         assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq") || t.starts_with("Late")), "{texts:?}");
     }
 
@@ -2635,12 +2636,14 @@ pub(crate) mod tests {
                 (308., 241., 9.2, "instructions are used."),
                 (L, 270., 9.5, "bool need_regids ="),
                 (94., 282., 9.5, "icode in { IRRMOVQ, IOPQ };"),
+                (300., 270., 10., "("),
+                (309., 282., 10., "nx"),
             ])
             .collect();
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         let texts: HashSet<&str> = ir.blocks.iter().skip(1).map(|b| b.text.as_str()).collect();
         let cells = ["Implementation artifacts hidden from all the programs.", "No condition codes. Instead, explicit test instructions are used."];
-        assert_eq!(texts, HashSet::from([cells[0], cells[1], "bool need_regids =", "icode in { IRRMOVQ, IOPQ };"]));
+        assert_eq!(texts, HashSet::from([cells[0], cells[1], "bool need_regids =", "icode in { IRRMOVQ, IOPQ };", "(", "nx"]));
     }
 
     #[test]
