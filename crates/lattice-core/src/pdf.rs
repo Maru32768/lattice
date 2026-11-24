@@ -2417,6 +2417,8 @@ pub(crate) mod tests {
         (L, 100., 10., "the leader sends every write to all of the replicas and then waits"),
         (L, 112., 10., "until a majority of them has answered with the same stored value and"),
     ];
+    const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+    const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
 
     #[test]
     fn a_footer_naming_the_section_is_dropped_by_the_page_number_it_ends_with() {
@@ -2465,7 +2467,7 @@ pub(crate) mod tests {
             &[(40., 110., 8.5, "390 Chapter 4 Making Things"), (300., 760., 10., "4")],
         ]);
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
-        let numbers: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).filter(|t| t.len() < 3).collect();
+        let numbers: Vec<&str> = texts(&ir).into_iter().filter(|t| t.len() < 3).collect();
         assert_eq!(numbers, ["40"], "an axis tick, not one of the page numbers in the margin");
     }
 
@@ -2568,8 +2570,6 @@ pub(crate) mod tests {
 
     #[test]
     fn a_box_set_wider_than_the_body_leaves_the_body_its_own_right_edge() {
-        const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let aside = (0..5).map(|i| (80., 100. + 11.5 * i as f64, 9.5, ASIDE));
         let first = aside.chain((0..6).map(|i| (L, 300. + 12. * i as f64, 10., BODY))).collect();
         let second = (0..4).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 148., 10., "and that is the end of it.")]).collect();
@@ -2585,8 +2585,6 @@ pub(crate) mod tests {
 
     #[test]
     fn an_aside_out_to_the_left_leaves_the_body_its_own_left_edge() {
-        const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let body = |from: f64, n: usize| (0..n).map(move |i| (150., from + 12. * i as f64, 10., BODY));
         let aside = [(L, 100., 10., "Aside The progress of machines")].into_iter().chain((0..25).map(|i| (L, 118. + 11.5 * i as f64, 9.5, ASIDE)));
         let bytes = |n: usize| pdf(&[body(100., 40).collect(), aside.clone().chain(body(440., n)).collect()], None);
@@ -2601,7 +2599,6 @@ pub(crate) mod tests {
 
     #[test]
     fn a_figure_at_the_top_of_a_page_stays_out_of_the_paragraph_the_page_break_cuts() {
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let first: Vec<Run> = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
         let joined = |label: &str, size: f64, next: &str| {
             let second = vec![(L, 100., size, label), (L, 140., 10., next)];
@@ -2618,8 +2615,6 @@ pub(crate) mod tests {
 
     #[test]
     fn what_an_aside_at_the_top_of_a_page_cuts_is_joined() {
-        const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         const ITEM: &str = "it copies every write to all of the replicas and then waits for each of";
         let aside = || [(80., 100., 10., "Aside The progress of machines")].into_iter().chain((0..5).map(|i| (80., 118. + 11.5 * i as f64, 9.5, ASIDE)));
         let body = |from: f64| (0..5).map(move |i| (L, from + 12. * i as f64, 10., BODY));
@@ -2645,7 +2640,6 @@ pub(crate) mod tests {
 
     #[test]
     fn code_displayed_within_a_sentence_stays_where_it_is() {
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let page = (0..5)
             .map(|i| (L, 100. + 12. * i as f64, 10., BODY))
             .chain([(L, 170., 9.5, "bool Eq = (A == B);"), (L, 192., 10., "where A and B are the two words that are compared with each other.")])
@@ -2671,9 +2665,8 @@ pub(crate) mod tests {
             (L, 178., 10., "After that it starts again with the first stage."),
         ];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
-        let texts: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
         assert_eq!(
-            texts,
+            texts(&ir),
             [
                 "Each of the stages has a part of the work to do:",
                 "A. The first stage reads the bytes of a write from the log of the leader and passes them on. It goes by the place it was given, which may be an old one",
@@ -2685,7 +2678,6 @@ pub(crate) mod tests {
 
     #[test]
     fn an_entry_set_with_a_hanging_indent_runs_on_to_the_next_page() {
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         const ENTRY: &str = "A. The first stage reads the bytes of a write from the log of the leader and";
         let body = |from: f64| (0..6).map(move |i| (L, from + 12. * i as f64, 10., BODY));
         let first = body(100.).chain([(82., 180., 10., ENTRY), (108., 192., 10., &ENTRY[7..])]).collect();
@@ -2697,7 +2689,6 @@ pub(crate) mod tests {
 
     #[test]
     fn a_table_cell_set_with_a_hanging_indent_is_one_paragraph() {
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let page: Vec<Run> = (0..9)
             .map(|i| (L, 100. + 12. * i as f64, 10., BODY))
             .chain([
@@ -2712,7 +2703,7 @@ pub(crate) mod tests {
             ])
             .collect();
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
-        let texts: HashSet<&str> = ir.blocks.iter().skip(1).map(|b| b.text.as_str()).collect();
+        let texts: HashSet<&str> = texts(&ir).into_iter().skip(1).collect();
         let cells = ["Implementation artifacts hidden from all the programs.", "No condition codes. Instead, explicit test instructions are used."];
         assert_eq!(texts, HashSet::from([cells[0], cells[1], "bool need_regids =", "icode in { IRRMOVQ, IOPQ };", "(", "nx"]));
     }
@@ -2729,7 +2720,6 @@ pub(crate) mod tests {
 
     #[test]
     fn a_paragraph_runs_on_to_the_next_page_into_a_line_of_code_type_or_a_little_off_its_edge() {
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let first = |last: &'static str| (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 160., 10., last)]).collect::<Vec<Run>>();
         for (last, x, size, next) in [
             ("to answer with the same stored value, which is the one that is the mem-", L, 9., "node_self_current_idx that it has given to them."),
@@ -2744,7 +2734,6 @@ pub(crate) mod tests {
 
     #[test]
     fn rows_of_numbers_that_end_together_are_no_block_of_prose() {
-        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let rows = (0..5).map(|i| (L, 200. + 11. * i as f64, 9., "node0 00000003 10 20 20 20 00000003 10 20 20 20 1"));
         let page = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain(rows).collect();
         let r = regions(&pdf(&[page], None)).unwrap();
