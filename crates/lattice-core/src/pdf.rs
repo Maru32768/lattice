@@ -291,6 +291,10 @@ fn words(t: &str) -> usize {
     t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count()
 }
 
+fn prose(t: &str) -> bool {
+    words(t) >= 3 && mostly_letters(t)
+}
+
 fn mostly_letters(t: &str) -> bool {
     let (letters, ink) = t.chars().filter(|c| !c.is_whitespace()).fold((0, 0), |(l, n), c| (l + usize::from(c.is_alphabetic()), n + 1));
     letters * 4 >= ink * 3
@@ -1873,13 +1877,14 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
 }
 
 /// Whether the line carries on the sentence of an entry's first line, set with a hanging indent. An equation stands
-/// further in, and a contents entry under another starts with a capital or a number. A table's cell stops short of the
-/// column's edge, as code and the parts of an equation do, but those are few words or set in by more than a letter.
+/// further in, and a contents entry ends in its page's number. A table's cell stops short of the column's edge, as code
+/// and the parts of an equation do, but those are few words or set in by more than a letter.
 fn hangs(first: &Line, l: &Line) -> bool {
-    let full = first.x1 >= first.right - 0.5 * first.size;
-    let cut = !first.text.ends_with(['.', '!', '?', ':']) && (l.text.starts_with(char::is_lowercase) || first.text.ends_with('-'));
-    let cell = words(&first.text) >= 3 && mostly_letters(&first.text) && further_in(first, l) < l.size;
-    cut && (full && further_in(first, l) < 4. * l.size || cell)
+    let full = first.x1 >= first.right - 0.5 * first.size && further_in(first, l) < 4. * l.size;
+    let cell = prose(&first.text) && further_in(first, l) < l.size;
+    let sentence = full && !first.text.ends_with(|c: char| c.is_ascii_digit()) && prose(&l.text);
+    let cut = l.text.starts_with(char::is_lowercase) || first.text.ends_with('-') || sentence;
+    !first.text.ends_with(['.', '!', '?', ':']) && cut && (full || cell)
 }
 
 /// How much further in than `first` a line starts. On another page or in another column, from the edges of the two.
@@ -1892,12 +1897,14 @@ fn further_in(first: &Line, l: &Line) -> f64 {
 }
 
 /// Whether the line stands where the draft's next one would on another page or in another column: at the column's edge,
-/// or as far in as an item's text.
+/// or as far in as the text of an item or a hanging entry.
 fn aligned(d: &Draft, l: &Line) -> bool {
     match (d.kind, d.lines.as_slice()) {
         (Kind::Item, [first]) => (0.3 * l.size..3. * l.size).contains(&further_in(first, l)),
-        (Kind::Item, [.., last]) => further_in(last, l).abs() <= 0.5 * l.size,
-        _ => (l.x0 - l.left).abs() <= 0.8 * l.size,
+        (kind, [first, .., last]) if kind == Kind::Item || further_in(first, last) > 0.8 * l.size => further_in(last, l).abs() <= 0.5 * l.size,
+        // An aside's title, or a label, is indented by as little as 0.8, and starts with a capital.
+        _ if l.text.starts_with(char::is_lowercase) => (l.x0 - l.left).abs() <= 0.8 * l.size,
+        _ => (l.x0 - l.left).abs() <= 0.5 * l.size,
     }
 }
 
@@ -1911,7 +1918,10 @@ fn heads(l: &Line, below: &Line, body: f64) -> bool {
 /// them is unfinished.
 fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     let in_body = |l: &Line| (l.size - body).abs() < 0.5;
-    if !l.text.starts_with(char::is_lowercase) || l.tabular() || !in_body(l) {
+    let word = l.text.trim_start_matches(['(', '“', '‘']);
+    // "(a)" opens a part of its own.
+    let part = word.len() < l.text.len() && word.split_whitespace().next().is_some_and(|w| w.ends_with(')'));
+    if !word.starts_with(char::is_lowercase) || part || l.tabular() || !in_body(l) {
         return None;
     }
     let small = |d: &Draft, than: f64| d.lines.iter().all(|x| x.size < body * than);
@@ -2589,13 +2599,17 @@ pub(crate) mod tests {
     fn a_figure_at_the_top_of_a_page_stays_out_of_the_paragraph_the_page_break_cuts() {
         const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
         let first: Vec<Run> = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
-        for (label, size) in [("input b when the signal is not set, and input a when it is set.", 9.), ("data in", 6.)] {
-            let second = vec![(L, 100., size, label), (L, 140., 10., "until a majority of them has answered.")];
+        let joined = |label: &str, size: f64, next: &str| {
+            let second = vec![(L, 100., size, label), (L, 140., 10., next)];
             let ir = to_ir(&pdf(&[first.clone(), second], None), None).unwrap();
             let k = kinds(&ir);
             assert!(k.contains(&("paragraph", label)), "{k:?}");
-            assert!(k.iter().any(|(_, t)| t.starts_with(BODY) && t.ends_with("then waits for them until a majority of them has answered.")), "{k:?}");
-        }
+            k.iter().any(|(_, t)| t.starts_with(BODY) && t.ends_with(&format!("then waits for them {next}")))
+        };
+        assert!(joined("input b when the signal is not set, and input a when it is set.", 9., "until a majority of them has answered."));
+        assert!(joined("data in", 6., "until a majority of them has answered."));
+        assert!(joined("data in", 6., "(a majority of them, that is) to answer."));
+        assert!(!joined("data in", 6., "(a) The leader with a majority of the replicas."));
     }
 
     #[test]
@@ -2649,7 +2663,7 @@ pub(crate) mod tests {
             (108., 130., 10., "passes them on. It goes by the place it was given, which may be"),
             (108., 142., 10., "an old one"),
             (82., 154., 10., "B. The first stage reads the bytes of a write from the log of the leader and"),
-            (108., 166., 10., "keeps them."),
+            (108., 166., 10., "Paxos keeps them for good."),
             (L, 178., 10., "After that it starts again with the first stage."),
         ];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
@@ -2659,10 +2673,22 @@ pub(crate) mod tests {
             [
                 "Each of the stages has a part of the work to do:",
                 "A. The first stage reads the bytes of a write from the log of the leader and passes them on. It goes by the place it was given, which may be an old one",
-                "B. The first stage reads the bytes of a write from the log of the leader and keeps them.",
+                "B. The first stage reads the bytes of a write from the log of the leader and Paxos keeps them for good.",
                 "After that it starts again with the first stage.",
             ]
         );
+    }
+
+    #[test]
+    fn an_entry_set_with_a_hanging_indent_runs_on_to_the_next_page() {
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        const ENTRY: &str = "A. The first stage reads the bytes of a write from the log of the leader and";
+        let body = |from: f64| (0..6).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+        let first = body(100.).chain([(82., 180., 10., ENTRY), (108., 192., 10., &ENTRY[7..])]).collect();
+        let second = [(108., 100., 10., "500 of them, or more.")].into_iter().chain(body(130.)).collect();
+        let ir = to_ir(&pdf(&[first, second], None), None).unwrap();
+        let k = kinds(&ir);
+        assert!(k.contains(&("paragraph", format!("{ENTRY} {} 500 of them, or more.", &ENTRY[7..]).as_str())), "{k:?}");
     }
 
     #[test]
