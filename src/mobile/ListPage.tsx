@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { ArticleRow, GroupRow } from "../bindings";
 import { useT } from "../i18n";
 import { NO_KEPT, activeDims, facetLabel, scopeLabel } from "../library/library";
@@ -9,8 +9,7 @@ import { discardUnsent, submit } from "./client";
 import { FilterSheet } from "./FilterSheet";
 import { savableUrl } from "./urls";
 import { PAGE, type ListView, isOldList, visibleArticles } from "./list";
-
-const popovers = typeof HTMLElement !== "undefined" && "showPopover" in HTMLElement.prototype;
+import { Menu } from "./Menu";
 
 export function ListPage({
   articles,
@@ -46,32 +45,6 @@ export function ListPage({
   const [refreshing, setRefreshing] = useState(false);
   const { base, rows } = visibleArticles(articles, view);
   const [filtering, setFiltering] = useState(false);
-  /** Only where popovers are not supported (iOS before 17): the menu then opens by this, and stays hidden otherwise. */
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuToggle = useRef<HTMLButtonElement>(null);
-  // What a popover does by itself: a tap outside the menu or Esc closes it.
-  useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
-    const outside = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (!document.getElementById("m-menu")?.contains(target) && !menuToggle.current?.contains(target)) {
-        setMenuOpen(false);
-      }
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [menuOpen]);
   const dims = activeDims(view.facets);
   const badgeOf = (a: ArticleRow) => {
     const b = badge(a, null, t);
@@ -129,16 +102,19 @@ export function ListPage({
               </span>
             )}
           </button>
-          <button
-            ref={menuToggle}
-            className="m-icon"
-            popoverTarget="m-menu"
-            onClick={popovers ? undefined : () => setMenuOpen(!menuOpen)}
-            aria-label={t("mobile.menu")}
-            aria-haspopup="menu"
-          >
-            <Icon name="more" />
-          </button>
+          <Menu
+            items={[
+              {
+                label: t("mobile.disconnect"),
+                danger: true,
+                onSelect: () => {
+                  if (window.confirm(t("mobile.disconnectConfirm"))) {
+                    onDisconnect();
+                  }
+                },
+              },
+            ]}
+          />
         </div>
         <div className="m-view">
           <p className="m-view-what">
@@ -167,23 +143,6 @@ export function ListPage({
         groups={groups}
         count={rows.length}
       />
-      {/* A popover: a tap outside or Esc closes it, as a menu should. */}
-      <div id="m-menu" className={menuOpen ? "m-menu open" : "m-menu"} popover="auto" role="menu" aria-label={t("mobile.menu")}>
-        <button
-          role="menuitem"
-          className="danger"
-          popoverTarget="m-menu"
-          popoverTargetAction="hide"
-          onClick={() => {
-            setMenuOpen(false);
-            if (window.confirm(t("mobile.disconnectConfirm"))) {
-              onDisconnect();
-            }
-          }}
-        >
-          {t("mobile.disconnect")}
-        </button>
-      </div>
       <main className="m-list">
         {writable && (
           <div className="m-save">

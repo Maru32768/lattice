@@ -1,6 +1,6 @@
 import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ArticleDoc, ArticleRow, VocabCapture } from "../bindings";
-import { useT } from "../i18n";
+import { type PlainKey, useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "../reader/BlockView";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
@@ -9,12 +9,35 @@ import { Crashed } from "./ErrorBoundary";
 import { FormatMismatch, type LocalOp, Unauthorized, loadArticle, loadImage, savedLanguage, saveLanguage, submit, withOps } from "./client";
 import { blockOf, keepOnRest, placeIn, scrollFor } from "../lib/places";
 import { readingPlaces } from "../reader/useReadingPlace";
+import { Menu } from "./Menu";
 
 type StoredBlock = ArticleDoc["blocks"][number];
 
 /** How long the word's button outlives its selection: on a phone, tapping the button may collapse the selection first. */
 const KEEP_WORD_MS = 500;
-const WORD_TAKEN_MS = 3000;
+const NOTICE_MS = 3000;
+
+/** `navigator.clipboard` is missing on a page that is plain http, as the phone's page is on the home network. */
+function copyText(text: string): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard) {
+    return navigator.clipboard.writeText(text).then(
+      () => true,
+      () => false,
+    );
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.readOnly = true;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.append(area);
+  area.select();
+  area.setSelectionRange(0, text.length);
+  // oxlint-disable-next-line typescript/no-deprecated -- the only copy there is on a page that is not a secure context
+  const done = document.execCommand("copy");
+  area.remove();
+  return Promise.resolve(done);
+}
 
 const openLink = (href: string) => {
   if (/^https?:/i.test(href)) {
@@ -143,8 +166,17 @@ export function ArticlePage({
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   /** The word selected in one prose block, ready to send. */
   const [word, setWord] = useState<VocabCapture | null>(null);
-  const [wordTaken, setWordTaken] = useState(false);
-  const timers = useRef({ word: 0, taken: 0 });
+  /** What just happened, said for a moment at the bottom. An object, so that saying it again keeps it longer. */
+  const [notice, setNotice] = useState<{ key: PlainKey } | null>(null);
+  const say = (key: PlainKey) => setNotice({ key });
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  const timers = useRef({ word: 0 });
 
   const load = async () => {
     setLoaded("loading");
@@ -164,6 +196,32 @@ export function ArticlePage({
     setFlipped(new Set());
     saveLanguage({ mode: m, percent: p });
   };
+  const known = doc === null ? undefined : (row ?? (typeof doc === "object" ? doc.article : undefined));
+  const article = known && withOps(known, ops);
+  const menu = article
+    ? [
+        ...(writable
+          ? [
+              {
+                label: article.favorite ? t("mobile.unfavorite") : t("mobile.favorite"),
+                onSelect: () => submit({ kind: "set_favorite", article_id: article.id, favorite: !article.favorite }),
+              },
+              {
+                label: article.read_status === "read" ? t("mobile.markUnread") : t("mobile.markRead"),
+                onSelect: () => submit({ kind: "set_read", article_id: article.id, read: article.read_status !== "read" }),
+              },
+            ]
+          : []),
+        ...(/^https?:/i.test(article.original_url)
+          ? [
+              {
+                label: t("mobile.copyUrl"),
+                onSelect: () => void copyText(article.original_url).then((ok) => say(ok ? "mobile.urlCopied" : "mobile.copyFailed")),
+              },
+            ]
+          : []),
+      ]
+    : [];
   const toolbar = (
     <header className="m-bar">
       <a className="btn" href="#/" onClick={onBack}>
@@ -191,6 +249,7 @@ export function ArticlePage({
           </button>
         </div>
       )}
+      {menu.length > 0 && <Menu items={menu} />}
     </header>
   );
 
@@ -240,7 +299,6 @@ export function ArticlePage({
     return () => {
       document.removeEventListener("selectionchange", onSelectionChange);
       clearTimeout(running.word);
-      clearTimeout(running.taken);
     };
   }, []);
 
@@ -342,16 +400,6 @@ export function ArticlePage({
             </a>
           )}
         </p>
-        {writable && (
-          <div className="m-actions">
-            <button className="btn" aria-pressed={a.favorite} onClick={() => submit({ kind: "set_favorite", article_id: a.id, favorite: !a.favorite })}>
-              {a.favorite ? t("mobile.unfavorite") : t("mobile.favorite")}
-            </button>
-            <button className="btn" onClick={() => submit({ kind: "set_read", article_id: a.id, read: a.read_status !== "read" })}>
-              {a.read_status === "read" ? t("mobile.markUnread") : t("mobile.markRead")}
-            </button>
-          </div>
-        )}
         {unsent > 0 && <p className="m-note">{t("mobile.pending", { n: unsent })}</p>}
         {doc.summary && (
           <details className="m-summary">
@@ -380,18 +428,16 @@ export function ArticlePage({
               setWord(null);
               // Or the selection would offer the same word again.
               window.getSelection()?.removeAllRanges();
-              setWordTaken(true);
-              clearTimeout(timers.current.taken);
-              timers.current.taken = window.setTimeout(() => setWordTaken(false), WORD_TAKEN_MS);
+              say("mobile.wordTaken");
             }}
           >
             {t("vocab.save")}: {word.surface}
           </button>
         </div>
       )}
-      {wordTaken && !word && (
+      {notice && !word && (
         <div className="m-word" role="status">
-          <span className="m-word-taken">{t("mobile.wordTaken")}</span>
+          <span className="m-word-taken">{t(notice.key)}</span>
         </div>
       )}
     </>
