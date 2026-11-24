@@ -1894,7 +1894,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
 /// and the parts of an equation do, but those are few words or set in by more than a letter.
 fn hangs(first: &Line, l: &Line) -> bool {
     let full = first.x1 >= first.right - 0.5 * first.size && further_in(first, l) < 4. * l.size;
-    let cell = prose(&first.text) && further_in(first, l) < l.size;
+    let cell = prose(&first.text) && further_in(first, l) < 0.9 * l.size;
     let sentence = full && !first.text.ends_with(|c: char| c.is_ascii_digit()) && prose(&l.text);
     let cut = l.text.starts_with(char::is_lowercase) || first.text.ends_with('-') || sentence;
     !first.text.ends_with(['.', '!', '?', ':']) && cut && (full || cell)
@@ -2809,6 +2809,18 @@ pub(crate) mod tests {
         let texts: HashSet<&str> = texts(&ir).into_iter().skip(1).collect();
         let cells = ["Implementation artifacts hidden from all the programs.", "No condition codes. Instead, explicit test instructions are used."];
         assert_eq!(texts, HashSet::from([cells[0], cells[1], "bool need_regids =", "icode in { IRRMOVQ, IOPQ };", "(", "nx"]));
+    }
+
+    #[test]
+    fn what_is_set_in_under_a_full_line_is_not_always_the_rest_of_it() {
+        const ENDED: &str = "the leader sends every write to all of the replicas and waits for this one:";
+        let after = |line: &'static str, x: f64, text: &'static str| {
+            let page = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 190., 10., line), (x, 202., 10., text)]).collect();
+            texts(&to_ir(&pdf(&[page], None), None).unwrap()).last().copied().map(str::to_string)
+        };
+        assert_eq!(after(BODY, L + 120., "t = n + k").as_deref(), Some("t = n + k"), "an equation");
+        assert_eq!(after(ENDED, L + 20., "for (i = 0; i < n; i++)").as_deref(), Some("for (i = 0; i < n; i++)"), "code");
+        assert_eq!(after("while there are more writes to send do", L + 9.96, "send the next one").as_deref(), Some("send the next one"), "an algorithm's step");
     }
 
     #[test]
