@@ -11,11 +11,15 @@
 /* The text and the column, centered together. The text's lines stay about as long as without the column. */
 .doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(200px, 30%, 300px); justify-content: center; }
 .doc-scroll:has(> .stickies[data-beside]) > .reader { align-self: start; width: 100%; max-width: none; margin: 0; padding-right: 28px; }
-/* The browser keeps what it anchors on in place as heights above it change: the text, not a card. */
+/* The browser keeps what it anchors on in place as heights above it change: the text, not a card. Out of the flow, or a
+   selection dragged past the text's edge would go on to the nearest card. */
 .stickies { overflow-anchor: none; position: absolute; top: 0; left: 48px; right: 48px; }
 .stickies > * { position: absolute; left: 0; right: 0; }
-.stickies[data-beside] { position: relative; inset: auto; width: 100%; margin: 40px 0 0; }
+.stickies[data-beside] { grid-column: 2 / 3; inset: 40px 0 auto; }
 .stickies[data-beside] > * { right: 20px; }
+/* A press held from the text selects no card it is dragged over, and one held from a card none of the text. */
+.doc-scroll:active:not(:has(> .stickies > :active)) > .stickies > * { pointer-events: none; }
+.doc-scroll:has(> .stickies > :active) > .reader { user-select: none; }
 
 .sticky { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 8px 12px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raise); box-shadow: 0 1px 4px var(--shadow2); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .sticky-h { display: flex; align-items: center; min-height: 22px; }

@@ -605,16 +605,6 @@ test("a selection that is not of the article's text offers nothing to ask", asyn
     .dblclick({ position: { x: 20, y: 10 } });
   expect(await app.evaluate(() => getSelection()!.toString())).not.toBe("");
   await expect(bar(app)).toHaveCount(0);
-  // From the card into the article: everything between is selected.
-  await app.locator(".art-title").click();
-  const answer = await boxOf(card(app, "詳しく").locator(".answer"));
-  const block = await boxOf(app.locator("#b-103 p"));
-  await app.mouse.move(answer.x + 30, answer.y + 30);
-  await app.mouse.down();
-  await app.mouse.move(block.x + 200, block.y + 10, { steps: 5 });
-  await app.mouse.up();
-  expect(await app.evaluate(() => getSelection()!.toString())).toContain("Monitor them closely.");
-  await expect(bar(app)).toHaveCount(0);
   // From the title.
   await drag(app, ".reader", "#b-102");
   expect(await app.evaluate(() => getSelection()!.toString())).toContain("Every transaction");
@@ -623,6 +613,94 @@ test("a selection that is not of the article's text offers nothing to ask", asyn
   await app.locator("#b-107 p").click({ clickCount: 3 });
   await expect(bar(app).getByRole("button", { name: "詳しく" })).toBeVisible();
 });
+
+const selected = (page: Page) => page.evaluate(() => getSelection()!.toString().trim().replace(/\s+/g, " "));
+
+/** Presses at the first point and drags through the others. */
+async function dragTo(page: Page, ...points: [number, number][]) {
+  await page.evaluate(() => getSelection()!.removeAllRanges());
+  await page.mouse.move(...points[0]);
+  await page.mouse.down();
+  for (const p of points.slice(1)) {
+    await page.mouse.move(...p, { steps: 5 });
+  }
+  await page.mouse.up();
+}
+
+/** Points in the first line of `block`, `dx` from its start. */
+async function inLine(page: Page, block: string, dx: number): Promise<[number, number]> {
+  const b = await boxOf(page.locator(`${block} p`));
+  return [b.x + dx, b.y + 14];
+}
+
+test("a drag past the text's edge over the column selects to the line's end, over a card too", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 8);
+  await expect(cards(shell)).toHaveCount(1);
+  await scrollTo(shell, paraBlock(8), "center");
+  const c = await boxOf(cards(shell).first());
+  const x = c.x + c.width / 2;
+  for (const [name, i] of [
+    ["the empty column above the card", 4],
+    ["the empty column below it", 14],
+    ["the card", 9],
+  ] as const) {
+    const from = await inLine(shell, paraBlock(i), 1);
+    expect(from[1] > c.y && from[1] < c.y + c.height, name).toBe(i === 9);
+    await dragTo(shell, from, [from[0] + 100, from[1]], [x, from[1]]);
+    expect(await selected(shell), name).toBe(para(i));
+    await expect(bar(shell).getByRole("button", { name: "詳しく" }), name).toBeVisible();
+    // Two lines down on the way.
+    await dragTo(shell, from, [x, from[1]], [x, (await inLine(shell, paraBlock(i + 2), 0))[1]]);
+    expect(await selected(shell), name).toBe([para(i), para(i + 1), para(i + 2)].join(" "));
+  }
+  // Let go outside the window, and the cards are there to press again.
+  const from = await inLine(shell, paraBlock(9), 1);
+  await dragTo(shell, from, [x, from[1]], [1600, from[1]]);
+  expect(await selected(shell)).toBe(para(9));
+  await cards(shell).first().getByRole("button", { name: "付箋を削除" }).click();
+  await expect(shell.getByRole("alertdialog")).toBeVisible();
+});
+
+test("in a narrow pane a drag over a card selects the text on both sides of it alone", async ({ shell }) => {
+  await startNarrow(shell);
+  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 8);
+  await expect(cards(shell)).toHaveCount(1);
+  await scrollTo(shell, paraBlock(8), "center");
+  const c = await boxOf(cards(shell).first());
+  const over: [number, number] = [c.x + 60, c.y + c.height / 2];
+  const from = await inLine(shell, paraBlock(7), 1);
+  await dragTo(shell, from, over);
+  expect(await selected(shell)).toMatch(/^Paragraph 7 of the long article\. Paragr/);
+  expect(await selected(shell)).not.toContain("Paragraph 9");
+  await expect(bar(shell).getByRole("button", { name: "詳しく" })).toBeVisible();
+  const { width } = await boxOf(shell.locator(`${paraBlock(9)} p`));
+  await dragTo(shell, from, over, await inLine(shell, paraBlock(9), width - 1));
+  expect(await selected(shell)).toBe([para(7), para(8), para(9)].join(" "));
+  await bar(shell).getByRole("button", { name: "用語" }).click();
+  await expect.poll(async () => (await asked(shell)).at(-1)!.quote.split(/\n+/)).toEqual([para(7), para(8), para(9)]);
+});
+
+for (const layout of ["wide", "narrow"] as const) {
+  test(`a drag that starts in a card selects none of the article (${layout})`, async ({ shell }) => {
+    await (layout === "wide" ? startLong(shell) : startNarrow(shell));
+    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 8, "the quote of the card");
+    await expect(cards(shell)).toHaveCount(1);
+    await scrollTo(shell, paraBlock(8), "center");
+    const answer = await boxOf(cards(shell).first().locator(".answer"));
+    const from: [number, number] = [answer.x + 4, answer.y + 12];
+    for (const i of [4, 14]) {
+      await dragTo(shell, from, [from[0] + 60, from[1]], await inLine(shell, paraBlock(i), 90));
+      expect(await selected(shell)).not.toBe("");
+      expect(await selected(shell)).not.toContain("Paragraph");
+      await expect(bar(shell)).toHaveCount(0);
+    }
+    // And the article's text is to select again.
+    await dragTo(shell, await inLine(shell, paraBlock(14), 1), await inLine(shell, paraBlock(14), 90));
+    expect(await selected(shell)).toContain("Paragraph");
+  });
+}
 
 test("the other language of a sentence, shown under its block, and a block's label are not in the passage", async ({ app }) => {
   await openSnapshot(app);
