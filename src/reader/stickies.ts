@@ -15,18 +15,17 @@ export const STICKY_KINDS = ["question", "detail", "term"] as const satisfies re
 export type Ask = {
   /** Names it in this window. */
   key: number;
-  blockId: number | null;
+  blockId: number;
   kind: StickyKind;
   quote: string;
   question: string;
 } & ({ step: "writing" } | { step: "pending" } | { step: "failed"; error: string });
 
-export type Card = { key: string; blockId: number | null } & ({ sticky: Sticky } | { ask: Ask });
+type Card = { key: string; blockId: number | null } & ({ sticky: Sticky } | { ask: Ask });
 
 /** The cards down the article, those without a block of it first. On one block: the saved ones, then the asks, each oldest first. */
 export function cardsOf(saved: Sticky[], asks: Ask[], blocks: { id: number }[]): Card[] {
-  const ordinals = new Map(blocks.map((b, i) => [b.id, i]));
-  const ordinal = (c: Card) => (c.blockId == null ? undefined : ordinals.get(c.blockId)) ?? -1;
+  const ordinal = (c: Card) => blocks.findIndex((b) => b.id === c.blockId);
   const cards: Card[] = [
     ...saved.map((sticky) => ({ key: `s${sticky.id}`, blockId: sticky.block_id, sticky })),
     ...asks.map((ask) => ({ key: `a${ask.key}`, blockId: ask.blockId, ask })),

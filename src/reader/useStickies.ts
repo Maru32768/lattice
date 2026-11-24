@@ -56,20 +56,16 @@ export function useStickies(article: number): Stickies {
   return useSyncExternalStore(subscribe, () => of(article));
 }
 
-const replace = (article: number, ask: Ask) => put(article, { asks: of(article).asks.map((a) => (a.key === ask.key ? ask : a)) });
+export const replaceAsk = (article: number, ask: Ask) => put(article, { asks: of(article).asks.map((a) => (a.key === ask.key ? ask : a)) });
 
 export function dropAsk(article: number, key: number) {
   put(article, { asks: of(article).asks.filter((a) => a.key !== key) });
 }
 
-export function setQuestion(article: number, ask: Ask, question: string) {
-  replace(article, { ...ask, question });
-}
-
 /** Sends it; the answer takes its place. One that failed can be sent again. */
 export async function sendAsk(article: number, ask: Ask) {
   const { key, blockId, kind, quote, question } = ask;
-  replace(article, { key, blockId, kind, quote, question, step: "pending" });
+  replaceAsk(article, { ...ask, step: "pending" });
   try {
     const sticky = await api.stickyAsk({ articleId: article, blockId, kind, quote, question });
     const { saved, asks, answers } = of(article);
@@ -79,7 +75,7 @@ export async function sendAsk(article: number, ask: Ask) {
       answers: new Map(answers).set(key, sticky.id),
     });
   } catch (e) {
-    replace(article, { key, blockId, kind, quote, question, step: "failed", error: String(e) });
+    replaceAsk(article, { ...ask, step: "failed", error: String(e) });
   }
 }
 

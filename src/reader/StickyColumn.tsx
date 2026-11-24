@@ -1,20 +1,14 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import type { Block, Sticky, StickyKind, StickyMessage } from "../api";
+import type { Block, Sticky, StickyMessage } from "../api";
 import { splitCitations } from "../chat/chat";
 import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
-import { useT, type PlainKey } from "../i18n";
+import { useT } from "../i18n";
 import { GAP, ROOM, cardsOf, stack, type Ask } from "./stickies";
-import { deleteSticky, dropAsk, sendAsk, setQuestion } from "./useStickies";
+import { deleteSticky, dropAsk, replaceAsk, sendAsk, useStickies } from "./useStickies";
 import "./stickies.css";
-
-export const STICKY_LABELS = {
-  question: "stickies.question",
-  detail: "stickies.detail",
-  term: "stickies.term",
-} as const satisfies Record<StickyKind, PlainKey>;
 
 /** A pane narrower than this has no room for a column beside the text. */
 const COLUMN_FROM = 560;
@@ -25,17 +19,14 @@ const COLUMN_FROM = 560;
  */
 function place(column: HTMLElement, room = true) {
   const scroller = column.parentElement!;
-  // Hidden (under a zoomed pane): nothing to measure, and coming back is a resize.
-  if (scroller.clientWidth === 0) {
+  // An article without stickies is left alone, once the last one's room is gone. Hidden (under a zoomed pane) there is
+  // nothing to measure, and coming back is a resize.
+  if ((column.children.length === 0 && !column.hasAttribute("data-placed")) || scroller.clientWidth === 0) {
     return;
   }
   const article = scroller.querySelector<HTMLElement>(".blocks")!;
   const cards = (Array.from(column.children) as HTMLElement[]).map((el) => ({ el, block: article.querySelector<HTMLElement>(`#b-${el.dataset.block}`) }));
   const beside = cards.length > 0 && scroller.clientWidth >= COLUMN_FROM;
-  // An article without stickies is left alone, once the last one's room is gone.
-  if (cards.length === 0 && !column.hasAttribute("data-placed")) {
-    return;
-  }
 
   // The browser's scroll anchoring lets go of text whose own styles change, as they do here.
   const viewTop = scroller.getBoundingClientRect().top;
@@ -80,19 +71,11 @@ function place(column: HTMLElement, room = true) {
 export function StickyColumn({
   article,
   blocks,
-  saved,
-  asks,
-  answers,
-  error,
   opened,
   onSource,
 }: {
   article: number;
   blocks: Block[];
-  saved: Sticky[];
-  asks: Ask[];
-  answers: ReadonlyMap<number, number>;
-  error: string | null;
   /** The ask this Reader opened last, to bring into view and to keep at its block's height, its answer too: the same article may be open in another pane. */
   opened: number | null;
   /** Shows a block that an answer cites. */
@@ -100,6 +83,7 @@ export function StickyColumn({
 }) {
   const t = useT();
   const root = useRef<HTMLElement>(null);
+  const { saved, asks, answers, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
   // On each render, as any may add a card or move a block.
   useLayoutEffect(() => {
@@ -204,7 +188,7 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = useRef<HTMLButtonElement>(null);
-  const label = t(STICKY_LABELS[sticky.kind]);
+  const label = t(`stickies.${sticky.kind}`);
   // At once: the dialog holds the focus while it is there, and leaves it nowhere.
   const close = () => flushSync(() => setDeleting(false));
   return (
@@ -252,7 +236,7 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
 function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: boolean }) {
   const t = useT();
   const sendKey = useSendKey();
-  const label = t(STICKY_LABELS[ask.kind]);
+  const label = t(`stickies.${ask.kind}`);
   const failed = ask.step === "failed";
   const writing = ask.kind === "question" && ask.step !== "pending";
   const blank = ask.kind === "question" && !ask.question.trim();
@@ -267,7 +251,7 @@ function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: 
     dropAsk(article, ask.key);
   };
   return (
-    <section className="sticky" aria-label={label} data-block={ask.blockId ?? undefined} data-opened={opened || undefined}>
+    <section className="sticky" aria-label={label} data-block={ask.blockId} data-opened={opened || undefined}>
       <div className="sticky-h">
         <span className="sticky-kind">{label}</span>
       </div>
@@ -278,7 +262,7 @@ function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: 
           value={ask.question}
           aria-label={t("stickies.questionLabel")}
           placeholder={t("stickies.placeholder")}
-          onChange={(e) => setQuestion(article, ask, e.target.value)}
+          onChange={(e) => replaceAsk(article, { ...ask, question: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === "Escape" && !e.nativeEvent.isComposing) {
               e.preventDefault();

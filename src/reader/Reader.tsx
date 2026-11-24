@@ -11,25 +11,18 @@ import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
-import { STICKY_LABELS, StickyColumn } from "./StickyColumn";
+import { StickyColumn } from "./StickyColumn";
 import { MAX_QUOTE, STICKY_KINDS } from "./stickies";
-import { openAsk, useStickies } from "./useStickies";
+import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
 import { useLatest } from "../lib/useLatest";
 import { captureIn, isWord } from "../vocab/vocab";
-import { locale, useT, type PlainKey } from "../i18n";
+import { locale, useT } from "../i18n";
 import "../vocab/vocab.css";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "./BlockView";
 
 export { WordMarksContext } from "./BlockView";
-
-/** What can show a block of the article as its source, and how the block is then marked. */
-export const SOURCE_LABELS = {
-  summary: "reader.summarySource",
-  quiz: "reader.quizSource",
-  sticky: "stickies.source",
-} as const satisfies Record<string, PlainKey>;
 
 /** A block to scroll to and mark: a search hit or a chat citation. `seq` re-triggers the scroll. */
 export interface Focus {
@@ -300,7 +293,7 @@ export interface DocActions {
   /** Asks for confirmation, then removes the article from the Index. */
   onDelete: () => void;
   /** Shows a block in the Reader, marked as the source of a summary item, a quiz answer or a sticky's. */
-  onFocusBlock: (block: number, from: keyof typeof SOURCE_LABELS) => void;
+  onFocusBlock: (block: number, from: "summary" | "quiz" | "sticky") => void;
   /** Quiz cards were added to or removed from review. */
   onReviewChanged: () => void;
 }
@@ -873,14 +866,13 @@ export function Reader({
   const blocksEl = useRef<HTMLDivElement>(null);
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
-    passage: { blockId: number; quote: string } | null;
-    capture: VocabCapture | null;
+    passage?: { blockId: number; quote: string };
+    capture?: VocabCapture;
     x: number;
     y: number;
     status?: string;
     error?: string;
   } | null>(null);
-  const stickies = useStickies(a.id);
   /** The ask opened here last. */
   const [opened, setOpened] = useState<number | null>(null);
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
@@ -956,7 +948,7 @@ export function Reader({
     const sel = window.getSelection();
     const root = blocksEl.current;
     const view = scrollEl.current;
-    if (!sel || !root || !view) {
+    if (!sel || sel.isCollapsed || !root || !view) {
       return null;
     }
     root.toggleAttribute("data-quoting", true);
@@ -983,13 +975,12 @@ export function Reader({
     return { passage: { blockId: block.id, quote }, x: r.left + r.width / 2, y: Math.min(r.bottom, view.getBoundingClientRect().bottom - BAR_HEIGHT) };
   }
 
-  async function saveWord({ capture, x, y }: { capture: VocabCapture; x: number; y: number }) {
+  async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
     clearTimeout(timers.current.cap);
-    const c = { passage: null, capture, x, y };
     await api
-      .vocabAdd(capture)
+      .vocabAdd(c.capture)
       .then((r) => {
-        setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: capture.surface }) });
+        setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
         onVocabChanged();
       })
       .catch((e: unknown) => setCap({ ...c, error: String(e) }));
@@ -999,7 +990,7 @@ export function Reader({
   const offerBar = () => {
     clearTimeout(timers.current.cap);
     const selected = selectionPassage();
-    setCap(selected && { ...selected, capture: selectionCapture()?.capture ?? null });
+    setCap(selected && { ...selected, capture: selectionCapture()?.capture });
   };
   /** On a sticky or its dialog, whose events come to the scroller too. */
   const onSticky = (e: React.SyntheticEvent) => {
@@ -1318,16 +1309,7 @@ export function Reader({
               </div>
             </OpenLink.Provider>
           </article>
-          <StickyColumn
-            article={a.id}
-            blocks={blocks}
-            saved={stickies.saved}
-            asks={stickies.asks}
-            answers={stickies.answers}
-            error={stickies.error}
-            opened={opened}
-            onSource={(b) => act.onFocusBlock(b, "sticky")}
-          />
+          <StickyColumn article={a.id} blocks={blocks} opened={opened} onSource={(b) => act.onFocusBlock(b, "sticky")} />
         </div>
         {panel === "quiz" && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, "quiz")} onReviewChanged={act.onReviewChanged} onClose={closePanel} />}
         {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}
@@ -1352,11 +1334,11 @@ export function Reader({
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => ask(kind, passage)}
                     >
-                      {t(STICKY_LABELS[kind])}
+                      {t(`stickies.${kind}`)}
                     </button>
                   ))}
                 {capture && (
-                  <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord({ capture, x: cap.x, y: cap.y })}>
+                  <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord({ ...cap, capture })}>
                     {t("vocab.save")}
                     <ActionKey id="saveWord" />
                   </button>

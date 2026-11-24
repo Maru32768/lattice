@@ -678,7 +678,6 @@ export const ja = {
   "stickies.term": "用語",
   "stickies.questionLabel": "選んだ箇所への質問",
   "stickies.placeholder": "選んだ箇所について質問…",
-  "stickies.source": "付箋の出典",
   "stickies.delete": "付箋を削除",
   "stickies.confirmDelete": "付箋を削除しますか？",
   "stickies.deleteDesc": "質問と回答も消えます。元に戻せません。",
@@ -1028,6 +1027,7 @@ export const ja = {
   "reader.flipHint": "Enterで原文／訳文を切替",
   "reader.flipPop": "クリック / {kbd}で反転",
   "reader.quizSource": "クイズの出典",
+  "reader.stickySource": "付箋の出典",
   "reader.confirmRetranslate": "訳し直しますか？",
   "reader.confirmRetranslateDesc":
     "この記事の訳文{done} blockを捨てて、今のプロバイダと設定で訳し直します。同じ段落を含むほかの記事やページ表示も新しい訳になります。",

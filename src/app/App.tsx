@@ -44,7 +44,7 @@ import {
 } from "../library/library";
 import { terms } from "../search/search";
 import { MATCH_LABEL, SearchPane } from "../search/SearchPane";
-import { Reader, SOURCE_LABELS, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
+import { Reader, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
 import { Nav, NavRail, type AddActions, type Screen } from "../library/Nav";
 import type { OrganizeTab } from "../library/OrganizeView";
 import { ListPane, ListRail, type Grouping } from "../library/ListPane";
@@ -1236,7 +1236,7 @@ export default function App() {
         onDelete: () => setDeleting({ article: a, page }),
         onReviewChanged: () => void loadReview(),
         onFocusBlock: (block, from) =>
-          openReader(a.id, { block, label: t(SOURCE_LABELS[from]), terms: [], tone: "cite", summary: from === "summary" }, "active", pane.id),
+          openReader(a.id, { block, label: t(`reader.${from}Source`), terms: [], tone: "cite", summary: from === "summary" }, "active", pane.id),
       };
     };
     if (tab.kind === "page") {

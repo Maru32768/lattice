@@ -688,7 +688,6 @@ export const en = {
   "stickies.term": "Term",
   "stickies.questionLabel": "Question about the selected passage",
   "stickies.placeholder": "Ask about the selected passage…",
-  "stickies.source": "Sticky source",
   "stickies.delete": "Delete the sticky",
   "stickies.confirmDelete": "Delete the sticky?",
   "stickies.deleteDesc": "Its question and answer go with it. This cannot be undone.",
@@ -1043,6 +1042,7 @@ export const en = {
   "reader.flipHint": "Enter switches between original and translation",
   "reader.flipPop": "Click / {kbd} to flip",
   "reader.quizSource": "Quiz source",
+  "reader.stickySource": "Sticky source",
   "reader.confirmRetranslate": "Translate again?",
   "reader.confirmRetranslateDesc":
     "Drops this article's {done} translated blocks and translates it again with the current provider and settings. Other articles and pages sharing the same paragraphs get the new translation too.",
