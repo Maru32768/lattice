@@ -1823,12 +1823,15 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             _ if is_bullet(&l.text) => Some(Kind::Item),
             _ => None,
         };
+        // A line that is mostly code is set a little smaller than the next one of its paragraph.
+        let code = |n: &&Line| l.size < n.size && l.size >= 0.85 * n.size && self::flows(l, n, pitch);
+        let size = lines.get(i + 1).filter(code).map_or(l.size, |n| n.size);
         // Across a column or page: only a draft that ran to the column's edge, into a line of its size that stands where
-        // its next one would, not into an aside's title. A line that is mostly code is set a little smaller.
+        // its next one would, not into an aside's title.
         let across = cur.is_some_and(|(d, prev, _)| {
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
             let hyphen = prev.text.ends_with('-');
-            let same = (prev.size - l.size).abs() < 0.5 || hyphen && l.text.starts_with(char::is_lowercase);
+            let same = (prev.size - size).abs() < 0.5 || hyphen && l.text.starts_with(char::is_lowercase);
             let cut = hyphen || prev.x1 >= prev.right - 2. * prev.size;
             across && same && cut && aligned(d, l) && !lines.get(i + 1).is_some_and(|below| heads(l, below, body))
         });
@@ -1855,7 +1858,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             });
         if continues {
             drafts.last_mut().expect("continues a draft").lines.push(l);
-        } else if let Some(i) = start.is_none().then(|| interrupted(&drafts, l, body)).flatten() {
+        } else if let Some(i) = start.is_none().then(|| interrupted(&drafts, l, size, body)).flatten() {
             // The figure goes before the paragraph it interrupted, as a float would.
             let mut d = drafts.remove(i);
             d.lines.push(l);
@@ -1916,12 +1919,12 @@ fn heads(l: &Line, below: &Line, body: f64) -> bool {
 /// A line that carries on a sentence (lowercase, where its next line would be) after a caption or a footnote, the stray
 /// labels around a figure, or an aside at the top of the page: the paragraph or the item it continues, if one before
 /// them is unfinished.
-fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
-    let in_body = |l: &Line| (l.size - body).abs() < 0.5;
+fn interrupted(drafts: &[Draft], l: &Line, size: f64, body: f64) -> Option<usize> {
+    let in_body = |size: f64| (size - body).abs() < 0.5;
     let word = l.text.trim_start_matches(['(', '“', '‘']);
     // "(a)" opens a part of its own.
     let part = word.len() < l.text.len() && word.split_whitespace().next().is_some_and(|w| w.ends_with(')'));
-    if !word.starts_with(char::is_lowercase) || part || l.tabular() || !in_body(l) {
+    if !word.starts_with(char::is_lowercase) || part || l.tabular() || !in_body(size) {
         return None;
     }
     let small = |d: &Draft, than: f64| d.lines.iter().all(|x| x.size < body * than);
@@ -1934,7 +1937,7 @@ fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     let i = drafts.iter().rposition(|d| !(skipped(d) || asides && is_title(d, body)))?;
     let floats = drafts[i + 1..].iter().any(float);
     let last = drafts[i].lines.last()?;
-    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && in_body(last) && !last.text.ends_with(['.', '!', '?', ':']);
+    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && in_body(last.size) && !last.text.ends_with(['.', '!', '?', ':']);
     (unfinished && (floats || asides) && (!asides || last.page < l.page) && aligned(&drafts[i], l)).then_some(i)
 }
 
@@ -2670,6 +2673,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_line_of_code_type_carries_on_the_sentence_after_a_figure() {
+        let body = |from: f64| (0..4).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+        let caption = [(L, 170., 9., "Figure 1: The log."), (L, 200., 9., "node_self_current_idx that it has given to them, and after that")];
+        let ir = to_ir(&pdf(&[body(100.).chain(caption).chain(body(212.)).collect()], None), None).unwrap();
+        let k = kinds(&ir);
+        assert_eq!(k.iter().map(|k| k.0).collect::<Vec<_>>(), ["caption", "paragraph"], "{k:?}");
+        assert!(k[1].1.contains("and then waits for them node_self_current_idx that it has given to them, and after that the leader"), "{k:?}");
+    }
+
+    #[test]
     fn a_sentence_after_displayed_code_stays_under_its_heading() {
         let first = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
         let second = vec![
@@ -2771,11 +2784,12 @@ pub(crate) mod tests {
             ("to answer with the same stored value, which is the one that is the mem-", L, 9., "node_self_current_idx that it has given to them."),
             ("to answer with the same stored value, which is the one that is the mem", L + 7., 10., "that it has given to them."),
             ("to answer with the same stored value, which is the one that is the mem", L + 7., 10., "300 of them have been given."),
+            ("to answer with the same stored value, which is the one that is the mem", L, 9., "node_self_current_idx that it has given to them."),
         ] {
             let second = (0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY));
             let second = [(x, 100., size, next)].into_iter().chain(second).collect();
             let ir = to_ir(&pdf(&[first(last), second], None), None).unwrap();
-            assert!(ir.blocks[0].text.contains(next), "{:?}", kinds(&ir));
+            assert!(ir.blocks[0].text.starts_with(BODY) && ir.blocks[0].text.contains(next), "{:?}", kinds(&ir));
         }
     }
 
