@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { paperColor } from "./paper.ts";
+import { paperColor, pixelsUnder } from "./paper.ts";
 
 /** RGBA pixels: `count` of each colour, in turn. */
 function pixels(...runs: [count: number, rgb: [number, number, number]][]) {
@@ -25,4 +25,15 @@ test("dark paper gives nothing, as the translation is set in dark type", () => {
 
 test("no pixels give nothing", () => {
   assert.equal(paperColor(new Uint8ClampedArray()), null);
+});
+
+test("a box's pixels are those of it on the page", () => {
+  assert.deepEqual(pixelsUnder({ left: 0.1, top: 0.25, width: 0.5, height: 0.25 }, 100, 200), [10, 50, 50, 50]);
+  assert.deepEqual(pixelsUnder({ left: -0.1, top: 0.9, width: 0.2, height: 0.2 }, 100, 200), [0, 180, 10, 20]);
+  assert.deepEqual(pixelsUnder({ left: 0.5, top: 0.5, width: 1e9, height: 0.001 }, 100, 200), [50, 100, 50, 1]);
+});
+
+test("a box off the page has no pixels", () => {
+  assert.equal(pixelsUnder({ left: 1e9, top: 0, width: 0.1, height: 0.1 }, 100, 200), null);
+  assert.equal(pixelsUnder({ left: 0, top: -2, width: 0.1, height: 0.1 }, 100, 200), null);
 });

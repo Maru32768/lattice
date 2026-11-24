@@ -8,7 +8,7 @@
 import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import { bookmarkTree, headingTree, topOf, webLink, type Entry, type Target } from "./outline.ts";
 import { pageAction } from "./pageAction.ts";
-import { paperColor } from "./paper.ts";
+import { paperColor, pixelsUnder } from "./paper.ts";
 import { onViewport } from "./regionBox.ts";
 import { widen } from "./widen.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -458,13 +458,12 @@ function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
   for (const el of regionsOf(host)) {
     const box = boxes.get(el);
-    if (!context || !box || el.style.getPropertyValue("--paper")) {
+    const under = box && pixelsUnder(box, canvas.width, canvas.height);
+    if (!context || !under || el.style.getPropertyValue("--paper")) {
       continue;
     }
-    const [x, y] = [Math.floor(box.left * canvas.width), Math.floor(box.top * canvas.height)];
-    const [w, h] = [Math.max(1, Math.ceil(box.width * canvas.width)), Math.max(1, Math.ceil(box.height * canvas.height))];
     // Set where `paperColor` gives nothing too, so that a page drawn again does not read it again.
-    el.style.setProperty("--paper", paperColor(context.getImageData(x, y, w, h).data) ?? "#fff");
+    el.style.setProperty("--paper", paperColor(context.getImageData(...under).data) ?? "#fff");
   }
 }
 

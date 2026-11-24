@@ -35,3 +35,14 @@ export function paperColor(pixels: Uint8ClampedArray): string | null {
   const [r, g, b] = [Math.round(best.r / n), Math.round(best.g / n), Math.round(best.b / n)];
   return 0.299 * r + 0.587 * g + 0.114 * b >= LIGHT ? `rgb(${r}, ${g}, ${b})` : null;
 }
+
+/**
+ * The pixels of a canvas under a box given in fractions of it: left, top, width and height. `null` for a box off the
+ * page, which a PDF can place anywhere and `getImageData` refuses.
+ */
+export function pixelsUnder(box: { left: number; top: number; width: number; height: number }, width: number, height: number) {
+  const on = (at: number, length: number) => Math.min(Math.max(at, 0), length);
+  const [x0, x1] = [on(Math.floor(box.left * width), width), on(Math.ceil((box.left + box.width) * width), width)];
+  const [y0, y1] = [on(Math.floor(box.top * height), height), on(Math.ceil((box.top + box.height) * height), height)];
+  return x1 > x0 && y1 > y0 ? ([x0, y0, x1 - x0, y1 - y0] as const) : null;
+}
