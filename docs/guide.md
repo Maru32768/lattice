@@ -888,11 +888,11 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles or a collection), genre, tag, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images the PC has stored show in the text while the phone reads from the PC. Read from the snapshot, they appear as links, and the phone does not load them.
 
-Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread and copy an article's URL from the article's **Menu** (⋯), save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
+Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, have the PC translate the article and copy its URL from the article's **Menu** (⋯), save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 
 The phone keeps your place. When it loads the page again, as phones do with pages left in the background, the list comes back with the same filters, where you left it. Each article opens where you left it on that phone.
 
-- The QR code contains a token. Anyone with the token and the address can read your library, change what is read and favorite, save URLs and add words, which spends your AI provider's usage. Don't show the code to others. **Regenerate the token** makes the old token stop working at once on the PC, and within a few minutes on a snapshot's Worker while the app is running. Then scan the new code. Articles already saved on the old phone stay readable there.
+- The QR code contains a token. Anyone with the token and the address can read your library, change what is read and favorite, save URLs, translate articles and add words. Translating and adding words spend your AI provider's usage. Don't show the code to others. **Regenerate the token** makes the old token stop working at once on the PC, and within a few minutes on a snapshot's Worker while the app is running. Then scan the new code. Articles already saved on the old phone stay readable there.
 - Serving to the network is not encrypted, so anyone on the same Wi-Fi may be able to read what is sent, the token included. Use it on a network you trust.
 
 ### Read away from home
