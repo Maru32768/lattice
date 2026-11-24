@@ -258,8 +258,11 @@ fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
     if r.room_left > 0. || r.room_right > 0. {
         let base = r.y1 - 0.3 * r.size;
         let beside = |g: &&Glyph| (g.y - base).abs() < 0.6 * r.size && !g.text.trim().is_empty();
-        r.room_left = page.glyphs.iter().filter(beside).filter(|g| g.end <= r.x0).map(|g| r.x0 - g.end).fold(r.room_left, f64::min);
-        r.room_right = page.glyphs.iter().filter(beside).filter(|g| g.x >= r.x1).map(|g| g.x - r.x1).fold(r.room_right, f64::min);
+        let level = || page.tables.iter().map(|t| t.at).filter(|&[_, y0, _, y1]| y0 < r.y1 && y1 > r.y0);
+        let left = page.glyphs.iter().filter(beside).filter(|g| g.end <= r.x0).map(|g| r.x0 - g.end);
+        r.room_left = left.chain(level().filter(|t| t[2] <= r.x0).map(|t| r.x0 - t[2])).fold(r.room_left, f64::min);
+        let right = page.glyphs.iter().filter(beside).filter(|g| g.x >= r.x1).map(|g| g.x - r.x1);
+        r.room_right = right.chain(level().filter(|t| t[0] >= r.x1).map(|t| t[0] - r.x1)).fold(r.room_right, f64::min);
     }
 }
 
@@ -3122,6 +3125,16 @@ pub(crate) mod tests {
         let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
         // The text's box runs from 290 to 303.
         assert_eq!(r.iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>(), [(90., 97.)]);
+    }
+
+    #[test]
+    fn a_line_beside_a_table_has_no_room_over_it() {
+        let cells = shown(306., 130., "One") + &shown(406., 130., "Two") + &shown(306., 180., "Three") + &shown(406., 180., "Four");
+        let prose = shown(72., 250., "A sentence of prose that runs along the whole width of the page from margin to margin.");
+        let ops = shown(72., 130., "Aside.") + &ruled(&[300., 400., 540.], &[110., 160., 200.], "strokes") + &cells + &prose;
+        let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
+        let aside = r.iter().find(|r| r.text == "Aside.").unwrap();
+        assert!(aside.room_right > 0. && aside.x1 + aside.room_right <= 300., "{} + {}", aside.x1, aside.room_right);
     }
 
     #[test]
