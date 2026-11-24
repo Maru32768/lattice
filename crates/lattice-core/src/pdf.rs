@@ -1710,13 +1710,15 @@ fn running_key(text: &str) -> String {
     k
 }
 
-/// The tables with their pages, less those in the top or bottom margin that repeat (digits aside) on at least a third of
-/// the pages, as `drop_running_lines` drops a running header: one ruled round.
+/// The tables with their pages, less those in the top or bottom margin, or a turned page's sides, that repeat (digits
+/// aside) on at least a third of the pages, as `drop_running_lines` drops a running header: one ruled round.
 fn body_tables(pages: &[Page]) -> Vec<(usize, &Table)> {
     let all = || pages.iter().enumerate().flat_map(|(i, p)| p.tables.iter().map(move |t| (i, t)));
+    // Wholly in it: a report's table of the body, one a page with only its numbers changed, can reach into the margin.
     let key = |&(i, t): &(usize, &Table)| {
-        let height = pages[i].height;
-        (t.at[1] < height * 0.08 || t.at[3] > height * 0.92).then(|| running_key(&t.rows.concat().join("\t")))
+        let (p, [x0, y0, x1, y1]) = (&pages[i], t.at);
+        let margin = y1 < p.height * 0.08 || y0 > p.height * 0.92 || p.vertical && (x1 < p.width * 0.08 || x0 > p.width * 0.92);
+        margin.then(|| running_key(&t.rows.concat().join("\t")))
     };
     let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
     for t in all() {
@@ -3290,6 +3292,22 @@ pub(crate) mod tests {
             to_ir(&with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &ops[0]), (1, &ops[1]), (2, &ops[2])]), None).unwrap()
         };
         assert_eq!(read(&ruled(&[72., 294., 540.], &[18., 40., 60.], "strokes")).blocks, read("").blocks);
+    }
+
+    #[test]
+    fn a_table_on_each_page_that_reaches_into_the_margin_is_kept() {
+        // The same table on each of three pages, its labels the same and its numbers not, as a report sets one table a
+        // page: from 50pt down, past the top 8% of the page, and from 640pt to 740pt, past the bottom 8%.
+        for ys in [[50., 100., 150.], [640., 690., 740.]] {
+            let page = |n: usize| {
+                let (a, b) = ((ys[0] + ys[1]) / 2. + 4., (ys[1] + ys[2]) / 2. + 4.);
+                let cells = shown(78., a, "Year") + &shown(178., a, "Count") + &shown(78., b, &format!("20{n}0")) + &shown(178., b, &format!("{n}5"));
+                ruled(&[72., 172., 540.], &ys, "strokes") + &cells + &shown(72., 300., &format!("Body text of page {n} runs on as a sentence of prose."))
+            };
+            let ops: Vec<String> = (1..=3).map(page).collect();
+            let ir = to_ir(&with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &ops[0]), (1, &ops[1]), (2, &ops[2])]), None).unwrap();
+            assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Table).count(), 3, "{ys:?}: {:?}", kinds(&ir));
+        }
     }
 
     #[test]
