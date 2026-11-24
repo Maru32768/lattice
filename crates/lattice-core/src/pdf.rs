@@ -555,12 +555,12 @@ struct Drawn {
     y1: f64,
 }
 
-/// The styles, the images and the rules `walk` finds on a page.
-type Walked = (Vec<Style>, Vec<Drawn>, Vec<Bounds>);
+/// The styles, the images and the grids `walk` finds on a page.
+type Walked = (Vec<Style>, Vec<Drawn>, Vec<Grid>);
 
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
-/// style of each string, in the order pdf-extract shows them, and the images and the rules (each line stroked, and each
-/// bar filled thinner than `RULE_SLACK`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
+/// style of each string, in the order pdf-extract shows them, and the images and the grids its rules make (each line
+/// stroked, and each bar filled thinner than `RULE_SLACK`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
 /// so the styles line up with what it reports. Images inside forms, and inline images, are not followed. A clip counts
 /// by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
@@ -685,7 +685,7 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
     if invisible {
         drawn.clear();
     }
-    (styles, drawn, rules)
+    (styles, drawn, grids(rules.into_iter()))
 }
 
 /// A box as x0, y0, x1 and y1, in the PDF's own coordinates.
@@ -708,7 +708,8 @@ fn intersect(a: Bounds, b: Bounds) -> Bounds {
 }
 
 /// A table ruled round every one of its cells: its box, the x of its column edges, left to right, and the y of its row
-/// edges, top to bottom, in points from the page's top left.
+/// edges, top to bottom, in points from the page's top left. `walk` finds it in the PDF's own coordinates, its rows bottom
+/// to top.
 struct Grid {
     at: Bounds,
     xs: Vec<f64>,
@@ -991,7 +992,7 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let (doc, walked) = prepared(bytes, skip_forms, true)?;
-    let (styles, drawn, rules): (Vec<_>, Vec<_>, Vec<_>) = walked.into_iter().collect();
+    let (styles, drawn, grids): (Vec<_>, Vec<_>, Vec<_>) = walked.into_iter().collect();
     let mut out = Glyphs { styles, ..Default::default() };
     match catch_unwind(AssertUnwindSafe(|| pdf_extract::output_doc(&doc, &mut out))) {
         Ok(read) => read.map_err(|e| unreadable(&e))?,
@@ -1021,9 +1022,19 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             }
         }
     }
-    for ((page, drawn), rules) in out.pages.iter_mut().zip(drawn).zip(rules) {
-        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
-        let grids = grids(rules.into_iter().map(|[x0, y0, x1, y1]| [x0 - page.left, page.top - y1, x1 - page.left, page.top - y0]));
+    for ((page, drawn), grids) in out.pages.iter_mut().zip(drawn).zip(grids) {
+        let (left, top) = (page.left, page.top);
+        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - left, y0: top - d.y1, x1: d.x1 - left, y1: top - d.y0, ..d }).collect();
+        let mut grids: Vec<Grid> = grids
+            .into_iter()
+            .map(|Grid { at: [x0, y0, x1, y1], xs, ys }| Grid {
+                at: [x0 - left, top - y1, x1 - left, top - y0],
+                xs: xs.into_iter().map(|x| x - left).collect(),
+                ys: ys.into_iter().rev().map(|y| top - y).collect(),
+            })
+            .collect();
+        // Down the page, as tables with no text between them are read.
+        grids.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
         page.tables = take_tables(page, grids);
         let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty());
         let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
@@ -3123,6 +3134,20 @@ pub(crate) mod tests {
         let labels = shown(110., 138., "Yes") + &shown(162., 138., "No") + &shown(108., 188., "Wait") + &shown(160., 188., "Stop");
         let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
         assert_eq!(read(&(diamonds + &labels)), read(&labels));
+    }
+
+    #[test]
+    fn a_table_on_a_page_whose_mediabox_is_off_the_origin_goes_where_it_is_printed() {
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let page = shown(72., 100., "Pros and cons") + &ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
+        let ops = format!("q 1 0 0 1 100 200 cm {page}{} Q", shown(72., 300., "Then a paragraph of prose follows the table."));
+        let mut doc = Document::load_mem(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
+        let id = *doc.get_pages().values().next().unwrap();
+        doc.get_dictionary_mut(id).unwrap().set("MediaBox", Object::Array([100, 200, 712, 992].map(Object::Integer).to_vec()));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let want = [("paragraph", "Pros and cons"), ("table", "Strong\tLasting\nCostly\tEasy"), ("paragraph", "Then a paragraph of prose follows the table.")];
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), want);
     }
 
     #[test]
