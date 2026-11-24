@@ -397,10 +397,10 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front, Vec<ReadAt<'_>>) {
     let body_tables = body_tables(&doc.pages);
     let (mut all, mut tables) = (Vec::new(), Vec::new());
     for (i, (lines, page)) in lines.into_iter().zip(&doc.pages).enumerate() {
-        let (lines, at) = order(lines, page);
-        let kept = at.into_iter().zip(&page.tables).enumerate().filter(|(j, _)| body_tables.contains(&(i, *j)));
-        tables.extend(kept.map(|(_, (at, t))| (all.len() + at, i, t)));
-        all.extend(lines);
+        let read = order(lines, page);
+        let kept = read.tables.into_iter().filter(|&(_, table)| body_tables.contains(&(i, table)));
+        tables.extend(kept.map(|(at, table)| (all.len() + at, i, &page.tables[table])));
+        all.extend(read.lines);
     }
     let body = body_size(&all);
     let half = doc.pages.first().map_or(0., |p| p.height / 2.);
@@ -411,7 +411,6 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front, Vec<ReadAt<'_>>) {
             *at = at.saturating_sub(front.taken.len()).max(front.taken.start);
         }
     }
-    tables.sort_by_key(|&(at, ..)| at);
     (all, body, front, tables)
 }
 
@@ -1104,7 +1103,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     for ((page, drawn), grids) in out.pages.iter_mut().zip(drawn).zip(grids) {
         let (left, top) = (page.left, page.top);
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - left, y0: top - d.y1, x1: d.x1 - left, y1: top - d.y0, ..d }).collect();
-        let mut grids: Vec<Grid> = grids
+        let grids: Vec<Grid> = grids
             .into_iter()
             .map(|Grid { at: [x0, y0, x1, y1], xs, ys }| Grid {
                 at: [x0 - left, top - y1, x1 - left, top - y0],
@@ -1112,8 +1111,6 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
                 ys: ys.into_iter().rev().map(|y| top - y).collect(),
             })
             .collect();
-        // Down the page, as tables with no text between them are read.
-        grids.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
         // Glyphs set across in a grid have no say: a table set across on a page of vertical writing can hold more glyphs
         // than its columns. Vertical writing in a grid has, as a page that is all one table of it turns. The page's turn is
         // known before its tables are taken, so that a turned glyph goes into its cell.
@@ -1127,6 +1124,8 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         } else {
             page.glyphs.retain(|g| !g.turned);
         }
+        // Down the page as it is read, as `order` takes them.
+        page.tables.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
     }
     Ok((doc, out.pages))
 }
@@ -1843,11 +1842,11 @@ fn spans(lines: &[Line]) -> impl Iterator<Item = (f64, f64, usize)> + '_ {
     lines.iter().map(|l| (l.x0, l.x1, l.text.chars().count()))
 }
 
-/// Reading order of one page, and where each of its tables is read in it: before the line at that index. In two columns
-/// (`in_two_columns`), lines and tables across the middle (title, wide figures) split the page into bands, read left
-/// column then right, and a table in a column is read where its top is in it. Otherwise the content order stands, and a
-/// table goes before the first line under it and across from it, as a figure goes before its caption.
-fn order(mut lines: Vec<Line>, page: &Page) -> (Vec<Line>, Vec<usize>) {
+/// Reading order of one page and its tables. In two columns (`in_two_columns`), lines and tables across the middle (title,
+/// wide figures) split the page into bands, read left column then right, and a table in a column is read where its top is
+/// in it. Otherwise the content order stands, and a table goes before the first line under it and across from it, as a
+/// figure goes before its caption.
+fn order(mut lines: Vec<Line>, page: &Page) -> Read {
     let width = page.width;
     let side = |l: &Line| Side::of(l.x0, l.x1, width);
     let tables = page.tables.iter().map(|t| (t.at[0], t.at[2], t.rows.iter().flatten().map(|c| c.chars().count()).sum()));
@@ -1870,70 +1869,63 @@ fn order(mut lines: Vec<Line>, page: &Page) -> (Vec<Line>, Vec<usize>) {
     }
     if !two {
         let under = |[x0, _, x1, y1]: Bounds| lines.iter().position(|l| l.y >= y1 && l.x0 < x1 && l.x1 > x0).unwrap_or(lines.len());
-        let at = page.tables.iter().map(|t| under(t.at)).collect();
-        return (lines, at);
+        let mut tables: Vec<(usize, usize)> = page.tables.iter().enumerate().map(|(i, t)| (under(t.at), i)).collect();
+        tables.sort_unstable();
+        return Read { lines, tables };
     }
     lines.sort_by(|a, b| a.y.total_cmp(&b.y));
-    let mut tables: Vec<(usize, &Table)> = page.tables.iter().enumerate().collect();
-    tables.sort_by(|a, b| a.1.at[1].total_cmp(&b.1.at[1]));
-    let mut tables = tables.into_iter().peekable();
-    let (mut out, mut at) = (Vec::with_capacity(lines.len()), vec![0; page.tables.len()]);
-    let mut band = Band::default();
+    let mut tables = page.tables.iter().enumerate().peekable();
+    let mut columns = Columns::default();
     for l in lines {
         while let Some((i, t)) = tables.next_if(|(_, t)| t.at[1] < l.y) {
-            band.table(i, Side::of(t.at[0], t.at[2], width), &mut out, &mut at);
+            columns.on(Side::of(t.at[0], t.at[2], width)).table(i);
         }
-        match l.side {
-            Side::Left => band.left.push(l),
-            Side::Right => band.right.push(l),
-            Side::Full => {
-                band.read_into(&mut out, &mut at);
-                out.push(l);
-            }
-        }
+        columns.on(l.side).lines.push(l);
     }
     for (i, t) in tables {
-        band.table(i, Side::of(t.at[0], t.at[2], width), &mut out, &mut at);
+        columns.on(Side::of(t.at[0], t.at[2], width)).table(i);
     }
-    band.read_into(&mut out, &mut at);
-    (out, at)
+    std::mem::take(columns.on(Side::Full))
 }
 
-/// A band of a page set in two columns, as `order` reads it down the page: the lines of each column so far, and the
-/// tables in them, each with the number of its column's lines over it.
+/// Lines in reading order, and the tables among them: the index of the line each is read before, and its own on the page.
 #[derive(Default)]
-struct Band {
-    left: Vec<Line>,
-    right: Vec<Line>,
-    tables: Vec<(usize, Side, usize)>,
+struct Read {
+    lines: Vec<Line>,
+    tables: Vec<(usize, usize)>,
 }
 
-impl Band {
-    /// The page's table `i`, in the column `side`, or across both, which ends the band.
-    fn table(&mut self, i: usize, side: Side, out: &mut Vec<Line>, at: &mut [usize]) {
+impl Read {
+    fn table(&mut self, i: usize) {
+        self.tables.push((self.lines.len(), i));
+    }
+
+    fn append(&mut self, next: &mut Read) {
+        self.tables.extend(next.tables.drain(..).map(|(at, i)| (self.lines.len() + at, i)));
+        self.lines.append(&mut next.lines);
+    }
+}
+
+/// A page set in two columns, read so far: whole down to the last line or table across the middle, and the columns under it.
+#[derive(Default)]
+struct Columns {
+    above: Read,
+    left: Read,
+    right: Read,
+}
+
+impl Columns {
+    /// What the next line or table on `side` is read after. One across the middle is read after both columns above it.
+    fn on(&mut self, side: Side) -> &mut Read {
         match side {
-            Side::Left => self.tables.push((i, side, self.left.len())),
-            Side::Right => self.tables.push((i, side, self.right.len())),
+            Side::Left => &mut self.left,
+            Side::Right => &mut self.right,
             Side::Full => {
-                self.read_into(out, at);
-                at[i] = out.len();
+                self.above.append(&mut self.left);
+                self.above.append(&mut self.right);
+                &mut self.above
             }
         }
-    }
-
-    /// Reads the band into `out`, left column then right, and puts where each of its tables is read in `at`.
-    fn read_into(&mut self, out: &mut Vec<Line>, at: &mut [usize]) {
-        for (i, side, over) in self.tables.drain(..) {
-            at[i] = out.len()
-                + over
-                + if side == Side::Right {
-                    self.left.len()
-                } else {
-                    0
-                };
-        }
-        out.append(&mut self.left);
-        out.append(&mut self.right);
     }
 }
 
@@ -5454,5 +5446,45 @@ pub(crate) mod tests {
             assert!(k.iter().any(|b| b.1.contains("of the page right column line 00")), "{pitch} {interleaved}: {k:?}");
             assert!(regions(&bytes).unwrap().iter().any(|r| r.text.starts_with("The left column ends")), "{pitch} {interleaved}");
         }
+    }
+
+    /// A table of two rows and columns ruled round every cell, a word in each.
+    fn two_by_two(xs: [f64; 3], ys: [f64; 3], words: [&str; 4]) -> String {
+        let word = |(i, w): (usize, &str)| shown(xs[i % 2] + 6., (ys[i / 2] + ys[i / 2 + 1]) / 2. + 3., w);
+        ruled(&xs, &ys, "strokes") + &words.into_iter().enumerate().map(word).collect::<String>()
+    }
+
+    fn texts_of(ops: &str) -> Vec<String> {
+        to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap().blocks.into_iter().map(|b| b.text).collect()
+    }
+
+    const LEFT: [f64; 3] = [72., 172., 290.];
+    const RIGHT: [f64; 3] = [322., 422., 540.];
+    const PROS: [&str; 4] = ["Strong", "Lasting", "Costly", "Easy"];
+    const CONS: [&str; 4] = ["Fast", "Cheap", "Slow", "Dear"];
+
+    #[test]
+    fn a_table_at_the_foot_of_the_left_column_is_read_before_one_atop_the_right_column() {
+        let mut ops = shown(72., 350., "Table 1: The left one.") + &two_by_two(LEFT, [360., 410., 450.], PROS);
+        for i in 0..20 {
+            ops += &shown(72., 100. + 12. * i as f64, &format!("Left column line {i} of the body runs on."));
+        }
+        ops += &(two_by_two(RIGHT, [100., 150., 190.], CONS) + &shown(322., 205., "Table 2: The right one."));
+        for i in 0..25 {
+            ops += &shown(322., 225. + 12. * i as f64, &format!("Right column line {i} of the body runs on."));
+        }
+        let texts = texts_of(&ops);
+        let left = texts.iter().position(|t| t == "Strong\tLasting\nCostly\tEasy").unwrap();
+        assert!(texts[left - 1].starts_with("Table 1") && texts[left + 1] == "Fast\tCheap\nSlow\tDear" && texts[left + 2].starts_with("Table 2"), "{texts:?}");
+    }
+
+    #[test]
+    fn tables_side_by_side_on_a_page_of_vertical_writing_are_read_from_the_right() {
+        let columns = "BT /F3 10 Tf 1 0 0 1 520 700 Tm <034B034D034F03510353> Tj 1 0 0 1 80 700 Tm <03540356034B034D034F> Tj ET\n";
+        let table = |x: f64, words| two_by_two([x, x + 60., x + 120.], [100., 140., 180.], words);
+        let ops = columns.to_string() + &table(330., ["Pros", "Long", "Cons", "Slow"]) + &table(130., ["Fast", "Free", "Dear", "Big"]);
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+        let tables: Vec<&str> = kinds(&ir).into_iter().filter(|k| k.0 == "table").map(|k| k.1).collect();
+        assert_eq!(tables, ["Pros\tLong\nCons\tSlow", "Fast\tFree\nDear\tBig"]);
     }
 }
