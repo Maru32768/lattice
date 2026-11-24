@@ -1558,15 +1558,24 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
             Some(_) => (long().map(|l| l.x0).fold(f64::MAX, f64::min), long().map(|l| l.x1).fold(f64::MIN, f64::max)),
             None => (of_side().map(|l| l.x0).fold(f64::MAX, f64::min), of_side().map(|l| l.x1).fold(f64::MIN, f64::max)),
         };
-        // A box set wider than the body (a book's aside) would make every body line look short of the edge. Justified
-        // lines end at one place, ragged ones nowhere in particular: where a fifth of the lines of prose end is a
-        // block's edge. Rows of a table or of code end together too, with cells across them or well short of the column.
-        let mut ends: Vec<f64> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo)).map(|l| l.x1).collect();
-        ends.sort_by(f64::total_cmp);
-        let edges: Vec<f64> =
-            ends.chunk_by(|a, b| b - a < 0.25).filter(|at| at.len() >= 4 && at.len() * 5 >= ends.len()).filter_map(|at| at.last().copied()).collect();
+        // A box set wider than the body (a book's aside) would make every body line look short of the edges. Justified
+        // lines end at one place, ragged ones nowhere in particular: where a fifth of the lines of prose of one size end
+        // is a block's edge, and the block reaches left to where the first of those starts. Only lines of its size are in
+        // it: rows of code beside it end anywhere. Rows of a table end together too, with cells across them or well short
+        // of the column.
+        let size = |l: &Line| (l.size * 10.).round() as i64;
+        let mut prose: Vec<&Line> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo)).collect();
+        prose.sort_by(|a, b| size(a).cmp(&size(b)).then(a.x1.total_cmp(&b.x1)));
+        let blocks: Vec<(i64, f64, f64)> = prose
+            .chunk_by(|a, b| size(a) == size(b))
+            .flat_map(|of_size| {
+                let ends = of_size.chunk_by(|a, b| b.x1 - a.x1 < 0.25).filter(|at| at.len() >= 4 && at.len() * 5 >= of_size.len());
+                ends.map(|at| (size(at[0]), at.iter().map(|l| l.x0).fold(f64::MAX, f64::min), at[at.len() - 1].x1))
+            })
+            .collect();
         for l in lines.iter_mut().filter(|l| l.side == s) {
-            (l.left, l.right) = (lo, edges.iter().copied().find(|e| *e >= l.x1 - 0.25).unwrap_or(hi));
+            (l.left, l.right) =
+                blocks.iter().find(|(of, _, right)| *of == size(l) && *right >= l.x1 - 0.25).map_or((lo, hi), |&(_, left, right)| (left, right));
         }
     }
     if !two {
@@ -1807,10 +1816,10 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                     !indented && !ended
                 }
                 // Across a column or page: only a paragraph that ran to the column's edge, into
-                // a line that is not indented.
+                // a line at the other edge: an aside's title is indented, or sticks out of the body.
                 Kind::Paragraph => {
                     let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-                    across && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && l.x0 <= l.left + 0.8 * l.size
+                    across && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && (l.x0 - l.left).abs() <= 0.8 * l.size
                 }
             });
         if continues {
@@ -2448,6 +2457,21 @@ pub(crate) mod tests {
         let r = regions(&bytes).unwrap();
         let pages: Vec<usize> = r.iter().filter(|x| x.text.starts_with(BODY) || x.text.ends_with("the end of it.")).map(|x| x.page).collect();
         assert_eq!(pages, [0, 1], "and both of its pieces are translated");
+    }
+
+    #[test]
+    fn an_aside_out_to_the_left_leaves_the_body_its_own_left_edge() {
+        const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let body = |from: f64, n: usize| (0..n).map(move |i| (150., from + 12. * i as f64, 10., BODY));
+        let first: Vec<Run> = body(100., 6).collect();
+        let aside = [(L, 100., 10., "Aside The progress of machines")].into_iter().chain((0..25).map(|i| (L, 118. + 11.5 * i as f64, 9.5, ASIDE)));
+        let second: Vec<Run> = aside.chain(body(440., 5)).collect();
+        let bytes = pdf(&[first, second], None);
+        let ir = to_ir(&bytes, None).unwrap();
+        assert!(kinds(&ir).contains(&("paragraph", "Aside The progress of machines")), "the first page's text does not run on into it: {:?}", kinds(&ir));
+        let r = regions(&bytes).unwrap();
+        assert!(r.iter().any(|x| x.page == 1 && x.y0 > 420.), "the body's lines reach its edges: {r:?}");
     }
 
     #[test]
