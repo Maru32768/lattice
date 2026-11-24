@@ -55,7 +55,7 @@ test("gg, G and half a screen in the Reader", async ({ app }) => {
   await expect.poll(() => scrollTop(app)).toBe(max);
   await press(app, "g", "g");
   await expect.poll(() => scrollTop(app)).toBe(0);
-  const half = await app.locator(".doc-scroll").evaluate((el) => el.clientHeight / 2);
+  const half = await app.locator(".doc-scroll").evaluate((el) => Math.round(el.clientHeight / 2));
   await app.keyboard.press("d");
   await expect.poll(() => scrollTop(app)).toBe(half);
   await app.keyboard.press("Control+u");
