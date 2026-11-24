@@ -952,6 +952,18 @@ test("a passage extended by the keyboard is asked about as it is then", async ({
   expect((await asked(app))[0].quote).toBe(whole.slice(0, -4));
 });
 
+test("the print of an article with a column of stickies has the text as without it", async ({ shell }) => {
+  await startLong(shell);
+  await shell.emulateMedia({ media: "print" });
+  const before = await boxOf(shell.locator(paraBlock(1)));
+  await shell.emulateMedia({ media: "screen" });
+  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 1);
+  await expect(shell.locator(".stickies[data-beside] > .sticky")).toBeVisible();
+  await shell.emulateMedia({ media: "print" });
+  await expect(shell.locator(".stickies")).toBeHidden();
+  expect(await boxOf(shell.locator(paraBlock(1)))).toEqual(before);
+});
+
 test("the print of an article leaves its stickies out, and the room that the text of a narrow pane makes for them", async ({ shell }) => {
   await startNarrow(shell);
   const pages = async () => (await shell.pdf()).toString("latin1").match(/[/]Type [/]Page[^s]/g)!.length;

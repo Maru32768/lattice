@@ -7,10 +7,10 @@
 @media screen {
   .reader .blocks { padding-top: var(--sticky-room); }
   .reader .blk { margin-bottom: var(--sticky-room); }
+  /* The text and the column, centered together. The text's lines stay about as long as without the column. */
+  .doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(200px, 30%, 300px); justify-content: center; }
+  .doc-scroll:has(> .stickies[data-beside]) > .reader { align-self: start; width: 100%; max-width: none; margin: 0; padding-right: 28px; }
 }
-/* The text and the column, centered together. The text's lines stay about as long as without the column. */
-.doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(200px, 30%, 300px); justify-content: center; }
-.doc-scroll:has(> .stickies[data-beside]) > .reader { align-self: start; width: 100%; max-width: none; margin: 0; padding-right: 28px; }
 /* The browser keeps what it anchors on in place as heights above it change: the text, not a card. Out of the flow, or a
    selection dragged past the text's edge would go on to the nearest card. */
 .stickies { overflow-anchor: none; position: absolute; top: 0; left: 48px; right: 48px; }
