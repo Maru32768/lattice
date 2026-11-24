@@ -277,7 +277,7 @@ fn reads_as_words(t: &str) -> bool {
     let word = |w: &&str| !w.is_empty() && w.chars().all(char::is_alphabetic);
     let words = t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count();
     let (letters, ink) = t.chars().filter(|c| !c.is_whitespace()).fold((0, 0), |(l, n), c| (l + usize::from(c.is_alphabetic()), n + 1));
-    t.starts_with(char::is_uppercase) && words >= 3 && letters * 5 >= ink * 4
+    t.starts_with(char::is_uppercase) && words >= 3 && letters * 4 >= ink * 3
 }
 
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
@@ -2428,7 +2428,7 @@ pub(crate) mod tests {
         let page: Vec<Run> = vec![
             (L, 100., 10., "A long line of body text that runs across the whole of the column and on to its end,"),
             (L, 112., 10., "with a second line that is nearly as long as the first one and then comes to a stop."),
-            (L, 140., 10., "Aside The progress of machines"),
+            (L, 140., 10., "Aside Comparing x86-64 to Y86-64 instruction encodings"),
             (L, 158., 9.5, "A sentence of the aside that is set a little smaller than the body text around it,"),
             (L, 169.5, 9.5, "and that ends on its second line."),
             (200., 200., 8., "RF: Program registers"),
@@ -2438,7 +2438,7 @@ pub(crate) mod tests {
         ];
         let r = regions(&pdf(&[page], None)).unwrap();
         let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
-        assert!(texts.contains(&"Aside The progress of machines"), "{texts:?}");
+        assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
         assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq")), "{texts:?}");
     }
 
