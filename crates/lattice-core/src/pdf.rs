@@ -4306,6 +4306,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_table_on_a_turned_page_goes_before_the_column_under_it() {
+        // A column right of the table and one left of it: read down the columns from the right, the table comes between.
+        let columns = "BT /F3 10 Tf 1 0 0 1 520 700 Tm <034B034D034F03510353> Tj 1 0 0 1 200 700 Tm <03540356034B034D034F> Tj ET\n";
+        let cells = shown(306., 125., "Pros") + &shown(386., 125., "Long") + &shown(306., 165., "Cons") + &shown(386., 165., "Slow");
+        let bytes = japanese(&[vec![]], "Identity-V", &(columns.to_string() + &ruled(&[300., 380., 460.], &[100., 140., 180.], "strokes") + &cells));
+        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえお"), ("table", "Pros\tLong\nCons\tSlow"), ("paragraph", "かきあいう")]);
+    }
+
+    #[test]
     fn vertical_writing_in_a_table_goes_to_the_cells_its_columns_are_in() {
         // Two columns of body text, then a table whose columns start just under the rules above them.
         let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
