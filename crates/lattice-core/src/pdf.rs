@@ -1408,13 +1408,18 @@ fn push_clean(out: &mut String, s: &str) {
 /// Drops page numbers and the running headers and footers: lines in the top or bottom margin
 /// that repeat (digits aside) on at least a third of the pages. A footer that names the current
 /// section repeats on few, but its number goes up with the page: those are the lines whose number
-/// is as far from the page's index on at least a third of the pages.
+/// is as far from the page's index on at least a third of the pages. A book page placed inside a larger
+/// sheet has its header and footer further in than any margin: there they are the page's first or last
+/// baseline, set apart from the text. A number alone on such a baseline is a page number only when it is
+/// in step with the numbers of the other pages' headers, which a figure's axis tick is not.
 fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     // A turned page has the top and the bottom of the page at its sides.
-    let margin = |l: &Line| {
+    let outer = |l: &Line| {
         let p = &pages[l.page];
         l.y < p.height * 0.08 || l.y > p.height * 0.92 || p.vertical && (l.x1 < p.width * 0.08 || l.x0 > p.width * 0.92)
     };
+    let apart: Vec<[Option<f64>; 2]> = lines.iter().zip(pages).map(|(page, p)| [true, false].map(|top| set_apart(page, top).filter(|_| !p.vertical))).collect();
+    let margin = |l: &Line| outer(l) || apart[l.page].iter().flatten().any(|y| (l.y - y).abs() < 0.5 * l.size);
     let key = |l: &Line| {
         margin(l).then(|| {
             let mut k = String::new();
@@ -1435,8 +1440,11 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
             return None;
         }
         let mut tokens = l.text.split_whitespace();
-        let (first, second) = (tokens.next()?, tokens.next()?);
+        let first = tokens.next()?;
         let number = |t: &str| t.parse::<i64>().ok().filter(|_| t.bytes().all(|b| b.is_ascii_digit()));
+        let Some(second) = tokens.next() else {
+            return number(first).filter(|_| !outer(l)).map(|n| n - l.page as i64);
+        };
         let start = number(first).filter(|_| !second.starts_with(char::is_alphabetic));
         let n = start.or_else(|| number(tokens.next_back().unwrap_or(second)))?;
         Some(n - l.page as i64)
@@ -1453,13 +1461,27 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     }
     let n = pages.len();
     let often = |on: Option<&HashSet<usize>>| on.is_some_and(|p| p.len() >= 2 && p.len() * 3 >= n);
-    let running = |k: &str| {
+    let running = |k: &str, l: &Line| {
         let number = k.chars().all(|c| c == '#' || !c.is_alphanumeric()) || (k.len() <= 6 && k.chars().all(|c| matches!(c, 'i' | 'v' | 'x')));
-        number || often(seen.get(k))
+        number && outer(l) || often(seen.get(k))
     };
     for page in lines.iter_mut() {
-        page.retain(|l| key(l).is_none_or(|k| !running(&k)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))));
+        page.retain(|l| key(l).is_none_or(|k| !running(&k, l)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))));
     }
+}
+
+/// The page's first (`top`) or last baseline, when the nearest other line is more than twice its size away: a
+/// header or a footer. A page's first or last line of text has the next line of its paragraph one pitch away.
+fn set_apart(lines: &[Line], top: bool) -> Option<f64> {
+    let edge = lines.iter().min_by(|a, b| {
+        if top {
+            a.y.total_cmp(&b.y)
+        } else {
+            b.y.total_cmp(&a.y)
+        }
+    })?;
+    let nearest = lines.iter().map(|l| (l.y - edge.y).abs()).filter(|d| *d >= 0.5 * edge.size).fold(f64::MAX, f64::min);
+    (nearest > 2. * edge.size).then_some(edge.y)
 }
 
 /// Reading order of one page. Two columns when each half holds a fifth of the text: lines across
@@ -2260,6 +2282,37 @@ pub(crate) mod tests {
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
         assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 5].join(" ").as_str())], "two pages of five carry it, more than a third");
+    }
+
+    /// A book page set inside a Letter sheet: its header and footer are further in than the sheet's margin.
+    fn book_pages<'a>(heads: &[&'a [Run<'a>]]) -> Vec<Vec<Run<'a>>> {
+        heads.iter().map(|h| h.iter().copied().chain([(L, 134., 10., SPREAD[0].3), (L, 146., 10., SPREAD[1].3)]).collect()).collect()
+    }
+
+    #[test]
+    fn headers_and_page_numbers_set_apart_inside_the_sheet_are_dropped() {
+        let pages = book_pages(&[
+            &[(500., 692., 9.5, "387")],
+            &[(40., 110., 8.5, "388 Chapter 4 Making Things")],
+            &[(400., 110., 8.5, "Section 4.1 The First Part 389")],
+            &[(40., 110., 8.5, "390 Chapter 4 Making Things")],
+            &[(400., 110., 8.5, "Section 4.2 The Second Part 391")],
+        ]);
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
+        assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 5].join(" ").as_str())], "the paragraph runs on across each page break");
+    }
+
+    #[test]
+    fn a_number_set_apart_from_the_text_out_of_step_with_the_pages_is_kept() {
+        let pages = book_pages(&[
+            &[],
+            &[(40., 110., 8.5, "388 Chapter 4 Making Things")],
+            &[(300., 400., 10., "40")],
+            &[(40., 110., 8.5, "390 Chapter 4 Making Things")],
+        ]);
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        assert!(kinds(&ir).contains(&("paragraph", "40")), "an axis tick, not a page number: {:?}", kinds(&ir));
     }
 
     #[test]
