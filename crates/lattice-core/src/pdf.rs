@@ -3068,6 +3068,13 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_drawing_of_more_rules_than_the_cap_makes_no_grid() {
+        let across = (0..1001).map(|i| [0., 3. * i as f64, 3000., 3. * i as f64]);
+        let down = (0..1000).map(|j| [3. * j as f64, 0., 3. * j as f64, 3003.]);
+        assert!(grids(across.chain(down)).is_empty());
+    }
+
+    #[test]
     fn rules_drawn_under_a_transform_are_tables_where_they_show() {
         // Moved down by a `cm`, and flipped and scaled as Chrome's printing writes a page.
         let moved = |x: f64, y: f64| (x, 892. - y);
