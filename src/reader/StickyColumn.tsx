@@ -128,6 +128,8 @@ export function StickyColumn({
   const t = useT();
   const root = useRef<HTMLElement>(null);
   const kept = useRef<Kept | null>(null);
+  /** The scrollTop before the last card opened, and with it. */
+  const moved = useRef({ from: 0, to: 0 });
   const { saved, asks, answers, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
   // On each render, as any may add a card or move a block.
@@ -176,11 +178,21 @@ export function StickyColumn({
     return () => scroller.removeEventListener("scroll", read);
   }, []);
   useLayoutEffect(() => {
-    const card = opened == null ? null : root.current?.querySelector("[data-opened]");
+    const scroller = root.current!.parentElement!;
+    const from = scroller.scrollTop;
+    const card = opened == null ? null : root.current!.querySelector("[data-opened]");
     // Focus by itself would scroll the card to the middle of the view.
     card?.querySelector("textarea")?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: "nearest" });
+    moved.current = { from, to: scroller.scrollTop };
   }, [opened]);
+  /** The view goes back from the card opened last, unless the reader has scrolled on. */
+  const goBack = () => {
+    const scroller = root.current!.parentElement!;
+    if (scroller.scrollTop === moved.current.to) {
+      scroller.scrollTop = moved.current.from;
+    }
+  };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
     <aside className="stickies" ref={root} hidden={cards.length === 0 && !error} aria-label={t("stickies.title")}>
@@ -193,7 +205,7 @@ export function StickyColumn({
         "sticky" in c ? (
           <SavedCard key={c.key} sticky={c.sticky} opened={opened != null && answers.get(opened) === c.sticky.id} blocks={blocks} onSource={onSource} />
         ) : (
-          <AskCard key={c.key} article={article} ask={c.ask} opened={c.ask.key === opened} />
+          <AskCard key={c.key} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={goBack} />
         ),
       )}
     </aside>
@@ -291,7 +303,7 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
 }
 
 /** A card without an answer: the question being written, the wait, or what went wrong. */
-function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: boolean }) {
+function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask; opened: boolean; onCancel: () => void }) {
   const t = useT();
   const sendKey = useSendKey();
   const label = t(`stickies.${ask.kind}`);
@@ -306,6 +318,9 @@ function AskCard({ article, ask, opened }: { article: number; ask: Ask; opened: 
   };
   const cancel = (from: HTMLElement) => {
     leave(from);
+    if (opened) {
+      onCancel();
+    }
     dropAsk(article, ask.key);
   };
   return (

@@ -476,13 +476,28 @@ test("in a narrow pane a card is right under its passage, and neither asking nor
 test("in a narrow pane a card that opens at the bottom of the view moves the text no further than shows the card", async ({ shell }) => {
   await startNarrow(shell);
   await scrollTo(shell, paraBlock(40), "end");
+  // A drag at the view's edge scrolls it by itself.
+  await drag(shell, paraBlock(40), paraBlock(40));
+  const ask = bar(shell).getByRole("button", { name: "質問", exact: true });
+  await expect(ask).toBeVisible();
   const top = await scrollTop(shell);
-  await askAbout(shell, "質問", paraBlock(40));
+  await ask.click();
   await expect(field(shell)).toBeInViewport({ ratio: 1 });
   const [c, view] = [await boxOf(cards(shell).first()), await boxOf(doc(shell))];
   expect(c.y + c.height).toBeCloseTo(view.y + view.height, 0);
   expect((await scrollTop(shell)) - top).toBeLessThan(c.height + 20);
   await expect(shell.locator(paraBlock(40))).toBeInViewport();
+  // Closed, it gives the view back where it was, unless the reader has gone on.
+  await shell.keyboard.press("Escape");
+  await expect(cards(shell)).toHaveCount(0);
+  expect(await scrollTop(shell)).toBe(top);
+  await askAbout(shell, "質問", paraBlock(40));
+  await expect(field(shell)).toBeInViewport({ ratio: 1 });
+  const opened = await scrollTop(shell);
+  await doc(shell).evaluate((el) => (el.scrollTop += 30));
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(0);
+  expect(await scrollTop(shell)).toBe(opened + 30);
 });
 
 test("the line being read stays at the top of the view through a narrow pane and a wide one, however often", async ({ shell }) => {
