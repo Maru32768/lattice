@@ -1508,7 +1508,11 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     let often = |on: Option<&HashSet<usize>>| on.is_some_and(|p| p.len() >= 2 && p.len() * 3 >= n);
     let running = |k: &str, l: &Line| {
         let number = k.chars().all(|c| c == '#' || !c.is_alphanumeric()) || (k.len() <= 6 && k.chars().all(|c| matches!(c, 'i' | 'v' | 'x')));
-        number && outer(l) || often(seen.get(k))
+        if number {
+            outer(l)
+        } else {
+            often(seen.get(k))
+        }
     };
     for page in lines.iter_mut() {
         page.retain(|l| key(l).is_none_or(|k| !running(&k, l)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))));
@@ -2358,13 +2362,14 @@ pub(crate) mod tests {
     #[test]
     fn a_number_set_apart_from_the_text_out_of_step_with_the_pages_is_kept() {
         let pages = book_pages(&[
-            &[],
-            &[(40., 110., 8.5, "388 Chapter 4 Making Things")],
-            &[(300., 400., 10., "40")],
-            &[(40., 110., 8.5, "390 Chapter 4 Making Things")],
+            &[(300., 760., 10., "1")],
+            &[(40., 110., 8.5, "388 Chapter 4 Making Things"), (300., 760., 10., "2")],
+            &[(300., 70., 10., "40"), (300., 760., 10., "3")],
+            &[(40., 110., 8.5, "390 Chapter 4 Making Things"), (300., 760., 10., "4")],
         ]);
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
-        assert!(kinds(&ir).contains(&("paragraph", "40")), "an axis tick, not a page number: {:?}", kinds(&ir));
+        let numbers: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).filter(|t| t.len() < 3).collect();
+        assert_eq!(numbers, ["40"], "an axis tick, not one of the page numbers in the margin");
     }
 
     #[test]
