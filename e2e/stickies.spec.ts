@@ -36,7 +36,8 @@ async function startLong(shell: Page, sentences = 1) {
 }
 
 /** The block of `para(i)`. */
-const paraBlock = (i: number) => `#b-${LONG_ID * 100 + 5 + i}`;
+const paraId = (i: number) => LONG_ID * 100 + 5 + i;
+const paraBlock = (i: number) => `#b-${paraId(i)}`;
 const doc = (page: Page) => page.locator(".doc-scroll");
 const scrollTop = (page: Page) => doc(page).evaluate((el) => el.scrollTop);
 const scrollTo = (page: Page, block: string, where: ScrollLogicalPosition) => page.locator(block).evaluate((el, block) => el.scrollIntoView({ block }), where);
@@ -60,6 +61,20 @@ const ANSWERED = /選んだ箇所の説明です/;
 
 const boxOf = async (l: Locator) => (await l.boundingBox())!;
 
+const selected = (page: Page) => page.evaluate(() => getSelection()!.toString().trim().replace(/\s+/g, " "));
+
+/** Presses at the first point and drags through the others. */
+async function dragTo(page: Page, ...points: [number, number][]) {
+  // A press on selected text would drag it.
+  await page.evaluate(() => getSelection()!.removeAllRanges());
+  await page.mouse.move(...points[0]);
+  await page.mouse.down();
+  for (const p of points.slice(1)) {
+    await page.mouse.move(...p, { steps: 5 });
+  }
+  await page.mouse.up();
+}
+
 /** Drags from the start of `from`'s text to the end of `to`'s, and lets go `beyond` pixels past that. */
 async function drag(page: Page, from: string, to: string, beyond = 0) {
   const [start, end] = await page.evaluate(
@@ -73,14 +88,7 @@ async function drag(page: Page, from: string, to: string, beyond = 0) {
       }),
     [from, to],
   );
-  await page.mouse.move(start.x + 1, start.y);
-  await page.mouse.down();
-  await page.mouse.move((start.x + end.x) / 2, (start.y + end.y) / 2);
-  await page.mouse.move(end.x - 1, end.y);
-  if (beyond) {
-    await page.mouse.move(end.x + beyond, end.y);
-  }
-  await page.mouse.up();
+  await dragTo(page, [start.x + 1, start.y], [end.x - 1, end.y], [end.x - 1 + beyond, end.y]);
 }
 
 /** Selects from the start of `from` to the end of `to` and lets the mouse go there, without moving it. */
@@ -105,15 +113,23 @@ async function askAbout(page: Page, kind: "質問" | "詳しく" | "用語", blo
 }
 
 /** As another window would: nothing in this one asked. */
-const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere") =>
+const invoke = (page: Page, cmd: string, args: object) =>
   page.evaluate(
-    (args) =>
-      (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke(
-        "sticky_ask",
-        args,
-      ),
-    { articleId, blockId, kind: "term", quote, question: "" },
+    ([cmd, args]) =>
+      (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke(cmd, args),
+    [cmd, args] as const,
   );
+const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere") =>
+  invoke(page, "sticky_ask", { articleId, blockId, kind: "term", quote, question: "" });
+
+/** `n` more stickies on a block, there as it returns. */
+async function askMany(page: Page, articleId: number, blockId: number, n: number) {
+  const before = await cards(page).count();
+  for (let i = 0; i < n; i++) {
+    await askElsewhere(page, articleId, blockId, `card ${i}`);
+  }
+  await expect(cards(page)).toHaveCount(before + n);
+}
 
 const hold = (shell: Page, cmd: string) => shell.addInitScript((c) => void (window.__e2eHold = [c]), cmd);
 
@@ -326,11 +342,7 @@ test("a sticky asked or deleted in another window shows here", async ({ app }) =
   await askElsewhere(app, SNAPSHOT_ID, 103);
   await expect(card(app, "用語").locator(".sticky-quote")).toHaveText("elsewhere");
   expect(await reads(), "another article's is none of this one's").toBe(before + 1);
-  await app.evaluate(() =>
-    (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke("delete_sticky", {
-      id: 2,
-    }),
-  );
+  await invoke(app, "delete_sticky", { id: 2 });
   await expect(app.locator(".stickies")).toBeHidden();
 });
 
@@ -378,7 +390,7 @@ test("the card just asked is at its block's height, and stays there with its ans
   await startLong(shell);
   // Six cards on one block: down the column past the blocks that follow.
   for (let i = 0; i < 6; i++) {
-    void askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 30, `card ${i}`);
+    void askElsewhere(shell, LONG_ID, paraId(30), `card ${i}`);
   }
   await expect.poll(async () => (await asked(shell)).length).toBe(6);
   await shell.evaluate(() => window.__e2e.release("sticky_ask", 6));
@@ -419,10 +431,7 @@ test("the card just asked is at its block's height, and stays there with its ans
 
 test("the column goes on below a short article, and scrolls with it", async ({ app }) => {
   await openSnapshot(app);
-  for (let i = 0; i < 8; i++) {
-    await askElsewhere(app, SNAPSHOT_ID, 107, `card ${i}`);
-  }
-  await expect(cards(app)).toHaveCount(8);
+  await askMany(app, SNAPSHOT_ID, 107, 8);
   await doc(app).evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(cards(app).last()).toBeInViewport({ ratio: 1 });
   const [last, view] = [await boxOf(cards(app).last()), await boxOf(doc(app))];
@@ -503,7 +512,7 @@ test("in a narrow pane stickies that come all at once leave the text at the top 
   await hold(shell, "list_stickies");
   await startNarrow(shell);
   // One is on the block at the top, whose own styles change with it, and one has no block.
-  for (const block of [null, LONG_ID * 100 + 2, LONG_ID * 100 + 5 + 10, LONG_ID * 100 + 5 + 40]) {
+  for (const block of [null, LONG_ID * 100 + 2, paraId(10), paraId(40)]) {
     await askElsewhere(shell, LONG_ID, block);
   }
   await doc(shell).evaluate((el) => (el.scrollTop += 5));
@@ -531,8 +540,8 @@ test("the cards are under their block in a narrow pane, and beside it in a wider
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
   const plain = await boxOf(shell.locator(paraBlock(10)));
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5, "one");
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5, "two");
+  await askElsewhere(shell, LONG_ID, paraId(0), "one");
+  await askElsewhere(shell, LONG_ID, paraId(0), "two");
   const [one, two] = [cards(shell).first(), cards(shell).nth(1)];
   const beside = async () => {
     const [c, r] = [await boxOf(one), await boxOf(shell.locator(".reader"))];
@@ -621,7 +630,6 @@ test("what is in a sticky is not the article's text: the find, link labels, visu
   await shell.locator(".art-title").click();
   await expect(shell.locator(".doc-scroll")).toBeFocused();
   const drawn = shell.locator("[data-lattice-ui]");
-  const selected = () => shell.evaluate(() => getSelection()!.toString());
 
   await shell.keyboard.press("/");
   await shell.keyboard.type("zymurgy");
@@ -631,13 +639,13 @@ test("what is in a sticky is not the article's text: the find, link labels, visu
   await shell.keyboard.type("closely");
   await expect(drawn, "the last paragraph's alone").toContainText("1/1");
   await shell.keyboard.press("Enter");
-  expect(await selected()).toBe("closely");
+  expect(await selected(shell)).toBe("closely");
   await shell.keyboard.press("Escape");
 
   await shell.keyboard.press("v");
   await shell.keyboard.press("v");
   await shell.keyboard.press("Shift+G");
-  expect(await selected(), "from the match to the end of the article").toBe(".");
+  expect(await selected(shell), "from the match to the end of the article").toBe(".");
   await shell.keyboard.press("Escape");
   await shell.keyboard.press("Escape");
 
@@ -664,36 +672,25 @@ test("a selection that is not of the article's text offers nothing to ask", asyn
   await card(app, "詳しく")
     .locator(".answer")
     .dblclick({ position: { x: 20, y: 10 } });
-  expect(await app.evaluate(() => getSelection()!.toString())).not.toBe("");
+  expect(await selected(app)).not.toBe("");
   await expect(bar(app)).toHaveCount(0);
   // From the title.
   await drag(app, ".reader", "#b-102");
-  expect(await app.evaluate(() => getSelection()!.toString())).toContain("Every transaction");
+  expect(await selected(app)).toContain("Every transaction");
   await expect(bar(app)).toHaveCount(0);
   // From the text, by the keyboard, to the end of all there is.
   await app.locator("#b-106 p").click();
   await drag(app, "#b-106", "#b-106");
   await expect(bar(app)).toBeVisible();
   await app.keyboard.press("Control+Shift+End");
-  expect(await app.evaluate(() => getSelection()!.toString())).toContain("選んだ箇所の説明です");
+  expect(await selected(app)).toContain("選んだ箇所の説明です");
   await expect(bar(app)).toHaveCount(0);
+  // A tooltip of the paragraph above would cover it.
+  await app.locator(".art-title").hover();
   // A triple click on the last paragraph ends its selection after the blocks, with no text there.
   await app.locator("#b-107 p").click({ clickCount: 3 });
   await expect(bar(app).getByRole("button", { name: "詳しく" })).toBeVisible();
 });
-
-const selected = (page: Page) => page.evaluate(() => getSelection()!.toString().trim().replace(/\s+/g, " "));
-
-/** Presses at the first point and drags through the others. */
-async function dragTo(page: Page, ...points: [number, number][]) {
-  await page.evaluate(() => getSelection()!.removeAllRanges());
-  await page.mouse.move(...points[0]);
-  await page.mouse.down();
-  for (const p of points.slice(1)) {
-    await page.mouse.move(...p, { steps: 5 });
-  }
-  await page.mouse.up();
-}
 
 /** Points in the first line of `block`, `dx` from its start. */
 async function inLine(page: Page, block: string, dx: number): Promise<[number, number]> {
@@ -704,7 +701,7 @@ async function inLine(page: Page, block: string, dx: number): Promise<[number, n
 test("a drag past the text's edge over the column selects to the line's end, over a card too", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 8);
+  await askElsewhere(shell, LONG_ID, paraId(8));
   await expect(cards(shell)).toHaveCount(1);
   await scrollTo(shell, paraBlock(8), "center");
   const c = await boxOf(cards(shell).first());
@@ -733,7 +730,7 @@ test("a drag past the text's edge over the column selects to the line's end, ove
 
 test("in a narrow pane a drag over a card selects the text on both sides of it alone", async ({ shell }) => {
   await startNarrow(shell);
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 8);
+  await askElsewhere(shell, LONG_ID, paraId(8));
   await expect(cards(shell)).toHaveCount(1);
   await scrollTo(shell, paraBlock(8), "center");
   const c = await boxOf(cards(shell).first());
@@ -765,8 +762,6 @@ test("a press on a sticky takes the bar away, and the selection that stays does 
     },
     () => card(app, "詳しく").locator(".cite").click(),
   ]) {
-    // A press on selected text would drag it.
-    await app.evaluate(() => getSelection()!.removeAllRanges());
     await drag(app, "#b-103", "#b-103");
     await expect(bar(app)).toBeVisible();
     await press();
@@ -780,7 +775,7 @@ test("a press on a sticky takes the bar away, and the selection that stays does 
 for (const layout of ["wide", "narrow"] as const) {
   test(`a drag that starts in a card selects none of the article (${layout})`, async ({ shell }) => {
     await (layout === "wide" ? startLong(shell) : startNarrow(shell));
-    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 8, "the quote of the card");
+    await askElsewhere(shell, LONG_ID, paraId(8), "the quote of the card");
     await expect(cards(shell)).toHaveCount(1);
     await scrollTo(shell, paraBlock(8), "center");
     const answer = await boxOf(cards(shell).first().locator(".answer"));
@@ -863,7 +858,7 @@ test("a passage over the limit cannot be asked about", async ({ app }) => {
 
 test("the bar of a passage that ends below the view, or at its edge, is in the window", async ({ shell }) => {
   await startLong(shell);
-  await selectFrom(shell, `#b-${LONG_ID}05`, `#b-${LONG_ID}80`);
+  await selectFrom(shell, paraBlock(0), paraBlock(75));
   await expect(bar(shell)).toBeInViewport({ ratio: 1 });
 });
 
@@ -882,10 +877,7 @@ test("the reading place is the article's while the view is among the cards that 
   await startLong(shell);
   await scrollTo(shell, paraBlock(40), "start");
   await expect.poll(() => placeText(shell)).toBe(para(40));
-  for (let i = 0; i < 12; i++) {
-    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 70, `card ${i}`);
-  }
-  await expect(cards(shell)).toHaveCount(12);
+  await askMany(shell, LONG_ID, paraId(70), 12);
   await doc(shell).evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(shell.locator(paraBlock(79))).not.toBeInViewport();
   await expect.poll(() => placeText(shell)).toBe(para(79));
@@ -895,10 +887,7 @@ test("the reading place is the article's while the view is among the cards that 
 
 test("the reading place among the cards under a block is the block's end, and the article opens there again", async ({ shell }) => {
   await startNarrow(shell);
-  for (let i = 0; i < 4; i++) {
-    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 40, `card ${i}`);
-  }
-  await expect(cards(shell)).toHaveCount(4);
+  await askMany(shell, LONG_ID, paraId(40), 4);
   await cards(shell)
     .nth(2)
     .evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -915,10 +904,7 @@ test("the reading place among the cards under a block is the block's end, and th
   await expect.poll(end).toBeLessThan(3);
   await expect(cards(shell).first()).toBeInViewport();
   // Past the last block too.
-  for (let i = 0; i < 6; i++) {
-    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 79, `card ${i}`);
-  }
-  await expect(cards(shell)).toHaveCount(10);
+  await askMany(shell, LONG_ID, paraId(79), 6);
   await doc(shell).evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(shell.locator(paraBlock(79))).not.toBeInViewport();
   await expect.poll(() => placeText(shell)).toBe(para(79));
@@ -927,10 +913,7 @@ test("the reading place among the cards under a block is the block's end, and th
 test("the place that the Page view gets of a code block leaves out the cards between it and the next paragraph", async ({ shell }) => {
   await startNarrow(shell);
   await openSnapshot(shell);
-  for (let i = 0; i < 6; i++) {
-    await askElsewhere(shell, SNAPSHOT_ID, 105, `card ${i}`);
-  }
-  await expect(cards(shell)).toHaveCount(6);
+  await askMany(shell, SNAPSHOT_ID, 105, 6);
   await scrollTo(shell, "#b-105", "start");
   await expect.poll(async () => (await placeOf(shell, SNAPSHOT_ID))?.text).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ;");
   const { page } = (await placeOf(shell, SNAPSHOT_ID))!;
@@ -957,7 +940,7 @@ test("the print of an article with a column of stickies has the text as without 
   await shell.emulateMedia({ media: "print" });
   const before = await boxOf(shell.locator(paraBlock(1)));
   await shell.emulateMedia({ media: "screen" });
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 1);
+  await askElsewhere(shell, LONG_ID, paraId(1));
   await expect(shell.locator(".stickies[data-beside] > .sticky")).toBeVisible();
   await shell.emulateMedia({ media: "print" });
   await expect(shell.locator(".stickies")).toBeHidden();
@@ -968,10 +951,7 @@ test("the print of an article leaves its stickies out, and the room that the tex
   await startNarrow(shell);
   const pages = async () => (await shell.pdf()).toString("latin1").match(/[/]Type [/]Page[^s]/g)!.length;
   const before = await pages();
-  for (let i = 0; i < 12; i++) {
-    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 1, `card ${i}`);
-  }
-  await expect(cards(shell)).toHaveCount(12);
+  await askMany(shell, LONG_ID, paraId(1), 12);
   expect(await pages()).toBe(before);
   await shell.emulateMedia({ media: "print" });
   await expect(shell.locator(".stickies")).toBeHidden();
