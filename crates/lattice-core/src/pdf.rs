@@ -427,7 +427,7 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     let two = !turns && !grids.is_empty() && {
         let outside: Vec<&Glyph> = p.glyphs.iter().filter(|g| !grids.iter().any(|grid| grid.cell(g).is_some())).collect();
         let inside = |grid: &Grid| p.glyphs.iter().filter(|g| grid.cell(g).is_some()).map(|g| g.text.chars().count()).sum();
-        in_two_columns(spans(&page_lines(0, &outside, p.width)).chain(grids.iter().map(|grid| (grid.at[0], grid.at[2], inside(grid)))), p.width)
+        in_two_columns(&page_lines(0, &outside, p.width), grids.iter().map(|grid| (grid.at, inside(grid))), p.width)
     };
     for grid in &grids {
         let cell = |g: &Glyph| grid.cell(g).filter(|_| turns || !g.turned);
@@ -1828,12 +1828,15 @@ fn body_tables(pages: &[Page]) -> HashSet<(usize, usize)> {
     all().filter(|&(i, _, t)| key(i, t).is_none_or(|k| !running(&k))).map(|(i, j, _)| (i, j)).collect()
 }
 
-/// Whether a page is set in two columns: each half holds a fifth of the text. `text` is each line's or table's span across
-/// the page and its number of characters: a table's text counts in its column, as it would as lines.
-fn in_two_columns(text: impl Iterator<Item = (f64, f64, usize)>, width: f64) -> bool {
+/// Whether a page is set in two columns: each half holds a fifth of the text. A table, given as its box and its number of
+/// characters, counts in its column, as its text would as lines. One across the middle does not count: its rows, as lines,
+/// part at a gap there.
+fn in_two_columns(lines: &[Line], tables: impl Iterator<Item = (Bounds, usize)>, width: f64) -> bool {
+    let lines = lines.iter().map(|l| (Side::of(l.x0, l.x1, width), l.text.chars().count()));
+    let tables = tables.map(|([x0, _, x1, _], chars)| (Side::of(x0, x1, width), chars)).filter(|&(side, _)| side != Side::Full);
     let (mut left, mut right, mut total) = (0, 0, 0);
-    for (x0, x1, chars) in text {
-        match Side::of(x0, x1, width) {
+    for (side, chars) in lines.chain(tables) {
+        match side {
             Side::Left => left += chars,
             Side::Right => right += chars,
             Side::Full => {}
@@ -1841,11 +1844,6 @@ fn in_two_columns(text: impl Iterator<Item = (f64, f64, usize)>, width: f64) -> 
         total += chars;
     }
     left * 5 >= total && right * 5 >= total
-}
-
-/// The span across the page and the number of characters of each line, as `in_two_columns` counts them.
-fn spans(lines: &[Line]) -> impl Iterator<Item = (f64, f64, usize)> + '_ {
-    lines.iter().map(|l| (l.x0, l.x1, l.text.chars().count()))
 }
 
 /// Reading order of one page and its tables. In two columns (`in_two_columns`), lines and tables across the middle (title,
@@ -1857,8 +1855,7 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Read {
     let side = |l: &Line| Side::of(l.x0, l.x1, width);
     // Not on a turned page, where a table set across under columns that stop short of it would make two tiers of one.
     let tables = page.tables.iter().filter(|_| !page.vertical);
-    let tables = tables.map(|t| (t.at[0], t.at[2], t.rows.iter().flatten().map(|c| c.chars().count()).sum()));
-    let two = in_two_columns(spans(&lines).chain(tables), width);
+    let two = in_two_columns(&lines, tables.map(|t| (t.at, t.rows.iter().flatten().map(|c| c.chars().count()).sum())), width);
     if two {
         for l in &mut lines {
             l.side = side(l);
@@ -5610,5 +5607,42 @@ pub(crate) mod tests {
         let ir = to_ir(&bytes, None).unwrap();
         let read: Vec<&str> = kinds(&ir)[2..].iter().map(|k| k.1).collect();
         assert_eq!(read.concat(), format!("Table 5Pros and cons{}\t{}\n{}\t{}", words[0], words[1], words[2], words[3]), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_table_across_a_page_of_two_columns_leaves_it_in_two_columns() {
+        // The table holds more than three times what each column does.
+        let (xs, ys) = ([72., 189., 306., 423., 540.], (0..=24).map(|r| 80. + 18. * r as f64).collect::<Vec<_>>());
+        let table: String = (0..24).flat_map(|r| (0..4).map(move |c| shown(xs[c] + 4., 94. + 18. * r as f64, &format!("value {r:02} {c} here")))).collect();
+        let table = ruled(&xs, &ys, "strokes") + &table;
+        let left = |i: usize| shown(72., 540. + 12. * i as f64, &format!("left line {i} of the body runs on and on and"));
+        let right = |i: usize| shown(320., 540. + 12. * i as f64, &format!("right line {i} of the body runs on and on and"));
+        let columns: Vec<String> =
+            ["left", "right"].map(|s| (0..8).map(|i| format!("{s} line {i} of the body runs on and on and")).collect::<Vec<_>>().join(" ")).into();
+        // The columns drawn a line of each at a time, as if their lines ran on, and one after the other.
+        for body in [(0..8).map(|i| left(i) + &right(i)).collect::<String>(), (0..8).map(left).chain((0..8).map(right)).collect()] {
+            let bytes = with_contents(&pdf(&[vec![]], None), &[(0, &(table.clone() + &body))]);
+            let ir = to_ir(&bytes, None).unwrap();
+            assert_eq!(ir.blocks[0].kind, BlockKind::Table);
+            assert_eq!(ir.blocks[1..].iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join(" "), columns.join(" "));
+            assert_eq!(regions(&bytes).unwrap().into_iter().map(|r| r.text).collect::<Vec<_>>(), columns);
+        }
+    }
+
+    #[test]
+    fn a_table_in_one_column_under_one_across_both_is_a_table() {
+        // The one across both holds most of the page's text, and the right column's lines are on the other's baselines.
+        let (xs, ys) = ([72., 189., 306., 423., 540.], (0..=12).map(|r| 60. + 24. * r as f64).collect::<Vec<_>>());
+        let wide: String =
+            (0..12).flat_map(|r| (0..4).map(move |c| shown(xs[c] + 4., 74. + 24. * r as f64, &format!("cell {r} {c} with some words")))).collect();
+        let mut ops = ruled(&xs, &ys, "strokes") + &wide + &two_by_two(LEFT, [448., 484., 520.], PROS);
+        for i in 0..6 {
+            ops += &shown(72., 378. + 12. * i as f64, &format!("left line {i} of the body runs on and on and"));
+        }
+        for i in 0..14 {
+            ops += &shown(320., 385. + 12. * i as f64, &format!("right line {i} of the body runs on and on and"));
+        }
+        let texts = texts_of(&ops);
+        assert!(texts.iter().any(|t| t == "Strong\tLasting\nCostly\tEasy"), "{texts:?}");
     }
 }
