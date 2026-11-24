@@ -3068,6 +3068,14 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_grid_with_text_in_exactly_half_its_cells_is_a_table() {
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "It lasts.");
+        let ops = shown(72., 100., "Pros of passion") + &ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "Pros of passion"), ("table", "Strong\tIt lasts.\n\t")]);
+    }
+
+    #[test]
     fn a_drawing_of_more_rules_than_the_cap_makes_no_grid() {
         let across = (0..1001).map(|i| [0., 3. * i as f64, 3000., 3. * i as f64]);
         let down = (0..1000).map(|j| [3. * j as f64, 0., 3. * j as f64, 3003.]);
