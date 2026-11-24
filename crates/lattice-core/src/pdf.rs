@@ -1802,12 +1802,14 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             _ if is_bullet(&l.text) => Some(Kind::Item),
             _ => None,
         };
-        // Across a column or page: only a draft that ran to the column's edge, into a line that stands where its next
-        // one would. An aside's title is indented, or sticks out of the body.
+        // Across a column or page: only a draft that ran to the column's edge, into a line of its size that stands where
+        // its next one would. An aside's title is indented, or sticks out of the body. A line that is mostly code is set
+        // a little smaller.
         let across = drafts.last().is_some_and(|d| {
             let prev = d.lines[d.lines.len() - 1];
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-            let same = (prev.size - l.size).abs() < 0.5;
+            let in_word = prev.text.ends_with('-') && l.text.starts_with(char::is_lowercase);
+            let same = (prev.size - l.size).abs() < 0.5 || in_word;
             across && same && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && aligned(d, l)
         });
         let continues = start.is_none()
@@ -1885,6 +1887,8 @@ fn aligned(d: &Draft, l: &Line) -> bool {
     match (d.kind, d.lines.as_slice()) {
         (Kind::Item, [first]) => (0.3 * l.size..3. * l.size).contains(&further_in(first, l)),
         (Kind::Item, [.., last]) => further_in(last, l).abs() <= 0.5 * l.size,
+        // An aside's title is indented by as little as 0.8, and starts with a capital.
+        _ if l.text.starts_with(char::is_lowercase) => (l.x0 - l.left).abs() <= 0.8 * l.size,
         _ => (l.x0 - l.left).abs() <= 0.5 * l.size,
     }
 }
@@ -2640,6 +2644,21 @@ pub(crate) mod tests {
         ];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         assert_eq!(ir.blocks.len(), 2, "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_paragraph_runs_on_to_the_next_page_into_a_line_of_code_type_or_a_little_off_its_edge() {
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let first = |last: &'static str| (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 160., 10., last)]).collect::<Vec<Run>>();
+        for (last, x, size, next) in [
+            ("to answer with the same stored value, which is the one that is the mem-", L, 9., "node_self_current_idx that it has given to them."),
+            ("to answer with the same stored value, which is the one that is the mem", L + 7., 10., "that it has given to them."),
+        ] {
+            let second = (0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY));
+            let second = [(x, 100., size, next)].into_iter().chain(second).collect();
+            let ir = to_ir(&pdf(&[first(last), second], None), None).unwrap();
+            assert!(ir.blocks[0].text.contains(next), "{:?}", kinds(&ir));
+        }
     }
 
     #[test]
