@@ -585,7 +585,7 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 
 - Follow-up questions are answered with the last three exchanges in mind.
 - Chats are saved. The menu on the chat's title opens a saved chat, starts a **New chat** or runs **Delete this chat**.
-- **Ask** in the Reader starts a chat about that article.
+- **Ask** in the Reader's toolbar starts a chat about that article.
 - **Open in a new window** in the chat pane moves the chat to its own window (see [Open a tab in its own window](#open-a-tab-in-its-own-window)).
 
 **Chat settings** are in **Settings › Summaries & chat**.
@@ -594,7 +594,7 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
 | **Context per question** | The limit on how much is sent per question. See "How much is sent" above. [Stickies](#stickies) use this limit too. |
-| **Send key** | The key that sends a question from the chat box and from a [sticky](#stickies): **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Enter` in insert mode is a new line, and `Enter` in normal mode follows this setting. `Ctrl+Enter` and `:w` always send. |
+| **Send key** | The key that sends a question from the chat box and from a [sticky](#stickies): **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. `Ctrl+Enter` always sends. In the chat box with Vim key bindings, `Enter` in insert mode is a new line, `Enter` in normal mode follows this setting, and `:w` always sends. |
 
 ## Learn from what you read
 
@@ -614,18 +614,18 @@ When you have answered every question, **Add to review** puts them in [Today's r
 
 ### Stickies
 
-When you don't understand a passage, select it in the Reader. A bar with three buttons appears. Click one, and the answer stays beside the passage as a sticky. Your chats do not change.
+When you don't understand a passage, select it in the Reader. Click **Ask**, **Explain** or **Term** in the bar that appears, and the answer stays beside the passage as a sticky. Your chats do not change.
 
 - **Ask**: type a question on the sticky and send it with the key set in **Send key** (`Ctrl+Enter` always sends). `Esc` closes the sticky without sending.
 - **Explain**: explains the passage in detail.
 - **Term**: explains what the selected words mean in this article.
 
-Stickies appear in a column to the right of the text, each at the height of its passage. In a narrow pane, each sticky is directly under the paragraph that its passage starts in, and the text below moves down to make room.
+Stickies appear in a column to the right of the text, each at the height of the paragraph that its passage starts in. Where they would overlap, they move up or down. In a narrow pane, each sticky is directly under the paragraph that its passage starts in, and the text below moves down to make room.
 
 - The numbers in an answer are citations. Click a number to go to the passage it cites. The AI can add general knowledge, and it says which part goes beyond the article.
-- If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. Until the answer comes, a sticky is kept only while Lattice runs.
+- If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. A sticky without an answer is kept only in the window where you asked, while Lattice runs.
 - You can select up to 2,000 characters, and a question can have up to 4,000.
-- **Delete the sticky** on a sticky deletes it. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage is no longer in the article appears at the top.
+- **Delete the sticky** on a sticky deletes it. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
 - Stickies are in the JSON export and in backups.
 
 ### Notes
