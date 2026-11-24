@@ -53,10 +53,14 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     } else if (!wentToStored && mine) {
       view.scrollTop = mine.top;
     }
-    const placeAt = (prose: boolean) =>
-      placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
-        shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))),
-      );
+    const placeAt = (prose: boolean) => {
+      const els = [...view.querySelectorAll<HTMLElement>("[id^='b-']")];
+      const blockAt = (el: HTMLElement) => shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind)));
+      const top = view.getBoundingClientRect().top;
+      // Stickies can go on below the article, and the view with them, past its last block: the place is then that block's end.
+      const end = prose ? undefined : els.findLast((el) => blockAt(el)?.text.trim())?.getBoundingClientRect().bottom;
+      return placeIn(els, end === undefined ? top : Math.min(top, end - 1), blockAt);
+    };
     // A place this Reader could not show (the Page view's, from a part of the page it lacks; or an article without
     // text) is still the article's until the reader moves to another block: leaving at once must not put this Reader's
     // top over it. By the block, not the scrollTop, which moves by itself as blocks above grow (a translation arriving);

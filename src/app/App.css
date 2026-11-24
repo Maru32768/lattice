@@ -349,7 +349,8 @@
 .blk.flip:hover, .blk.flip:focus-visible { background: var(--blk-hover); }
 .blk.is-hit { padding: 8px 14px; background: var(--tr-soft); }
 .blk.is-cite { padding: 8px 14px; background: var(--cite-blk); }
-.blk-label { font: 11px var(--sans); letter-spacing: .04em; color: var(--tr-ink); margin-bottom: 2px; }
+/* Not the block's text: a selection across blocks passes over it (and the tooltip below), also as the text it asks about. */
+.blk-label { font: 11px var(--sans); letter-spacing: .04em; color: var(--tr-ink); margin-bottom: 2px; user-select: none; }
 .blk.is-cite .blk-label { color: var(--acc-ink); }
 .blk p, .blk blockquote, .blk h2, .blk h3, .blk h4, .blk h5, .blk h6, .blk figure { margin: 0; }
 .blk h2 { font-size: 21px; line-height: 1.4; font-weight: 600; margin-top: 14px; }
@@ -375,7 +376,7 @@
 .mk.ja i { background: var(--tr); }
 .mk.en i { width: 1px; height: 12px; border: 1px solid var(--tr); background: transparent; }
 .mk.pend i { background: repeating-linear-gradient(180deg, var(--tr-dot) 0 2px, transparent 2px 4px); }
-.pop { position: absolute; left: 14px; right: 14px; top: calc(100% + 4px); z-index: 5; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 10px 30px var(--shadow); font: 13.5px/1.65 var(--sans); color: var(--ink2); cursor: pointer; }
+.pop { position: absolute; left: 14px; right: 14px; top: calc(100% + 4px); z-index: 5; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 10px 30px var(--shadow); font: 13.5px/1.65 var(--sans); color: var(--ink2); cursor: pointer; user-select: none; }
 /* The sentence a tooltip will speak for: the block already shades on hover, so the sentence gets a line. */
 .sent:hover { text-decoration: underline dotted var(--tr); text-underline-offset: 4px; }
 .pop-h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 11px; color: var(--ink3); }

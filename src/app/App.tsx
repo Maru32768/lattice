@@ -871,7 +871,8 @@ export default function App() {
   const docNav = useDocNav({
     root: () => {
       const pane = docPane();
-      return pane?.querySelector(".doc-scroll") ?? pane;
+      // The article alone: the stickies in the same scroller are not its text.
+      return pane?.querySelector(".doc-scroll > .reader") ?? pane;
     },
     scroller: () => {
       const pane = docPane();
