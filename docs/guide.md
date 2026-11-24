@@ -593,7 +593,7 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 | Setting | What it does |
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
-| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. [Stickies](#stickies) use it too. |
+| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. [Stickies](#stickies) use this limit too. |
 | **Send key** | The key that sends a question from the chat box and from a [sticky](#stickies): **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Enter` in insert mode is a new line, and `Enter` in normal mode follows this setting. `Ctrl+Enter` and `:w` always send. |
 
 ## Learn from what you read
@@ -614,18 +614,18 @@ When you have answered every question, **Add to review** puts them in [Today's r
 
 ### Stickies
 
-When you don't follow a passage, select it in the Reader. A bar with three buttons appears, and the answer stays beside the passage as a sticky. No chat changes.
+When you don't understand a passage, select it in the Reader. A bar with three buttons appears. Click one, and the answer stays beside the passage as a sticky. Your chats do not change.
 
-- **Ask**: type a question on the sticky and send it with the key set in **Send key** (`Ctrl+Enter` always sends). `Esc` closes it without sending.
+- **Ask**: type a question on the sticky and send it with the key set in **Send key** (`Ctrl+Enter` always sends). `Esc` closes the sticky without sending.
 - **Explain**: explains the passage in detail.
 - **Term**: explains what the selected words mean in this article.
 
-Stickies are in a column right of the text, at the height of their passages. In a narrow pane each is right under the paragraph its passage starts in, and the text below makes room.
+Stickies appear in a column to the right of the text, each at the height of its passage. In a narrow pane, each sticky is directly under the paragraph that its passage starts in, and the text below moves down to make room.
 
-- The numbers in an answer are citations. Click one to go to its passage. The AI can add general knowledge, and says which part goes beyond the article.
-- If asking fails, the sticky stays with the error and **Retry**, and a question you typed is kept. You can go to another article while you wait. Until the answer comes, a sticky is kept only while Lattice runs.
+- The numbers in an answer are citations. Click a number to go to the passage it cites. The AI can add general knowledge, and it says which part goes beyond the article.
+- If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. Until the answer comes, a sticky is kept only while Lattice runs.
 - You can select up to 2,000 characters, and a question can have up to 4,000.
-- **Delete the sticky** on a sticky deletes it. Deleting an article deletes its stickies, and re-extracting it keeps them. A sticky whose passage is no longer in the article is at the top.
+- **Delete the sticky** on a sticky deletes it. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage is no longer in the article appears at the top.
 - Stickies are in the JSON export and in backups.
 
 ### Notes
@@ -1175,7 +1175,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 | Word meanings | The word and the sentence you saved it with |
 | LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |
 | Chat | Your question, the text of the articles in scope, the last three exchanges, **About you** and your chat instructions |
-| Stickies | The text you selected, your question, and the article's title and text (only the part around the selection when the article is longer than **Context per question**) |
+| Stickies | The text you selected, your question, and the article's title and text (only the part of the text around the selection when the article is longer than **Context per question**) |
 
 Semantic search, reading aloud and text extraction run only on your computer. The Claude CLI and Codex CLI providers use the accounts you signed in to those CLIs with.
 

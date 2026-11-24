@@ -13,7 +13,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **More ways to change the library from `lattice-cli`.** With `--allow-write`, the CLI can remove a tag, a read mark or a favorite; rename articles and put them in genres; add and rename genres and delete empty ones; create and rename collections and add or remove their articles; subscribe to feeds, rename them and move them; and rename folders. With `--allow-delete`, it can also delete articles, collections and folders, unsubscribe from feeds, and merge genres. Agents get the same tools, depending on their role.
 - **Choose the style of Japanese translations.** In **Settings › Translation**, **Japanese style** sets translations into Japanese to **Plain (da, de aru)** or **Polite (desu, masu)**. It works with the AI providers and with the local translation server. Translations are stored per style, so translate an article again to read it in the style you chose.
 - **Sort the article list by title.** **Sort and group** has **Title, A to Z**.
-- **Stickies.** Select a passage in the Reader and click **Ask**, **Explain** or **Term**. The answer stays beside the passage, with its sources, and no chat changes.
+- **Stickies.** Select a passage in the Reader and click **Ask**, **Explain** or **Term**. The answer and its sources stay beside the passage, and your chats do not change.
 
 ### Changed
 
