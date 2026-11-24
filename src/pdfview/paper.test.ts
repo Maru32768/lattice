@@ -4,13 +4,7 @@ import { paperColor } from "./paper.ts";
 
 /** RGBA pixels: `count` of each colour, in turn. */
 function pixels(...runs: [count: number, rgb: [number, number, number]][]) {
-  const out: number[] = [];
-  for (const [count, [r, g, b]] of runs) {
-    for (let i = 0; i < count; i++) {
-      out.push(r, g, b, 255);
-    }
-  }
-  return new Uint8ClampedArray(out);
+  return new Uint8ClampedArray(runs.flatMap(([count, rgb]) => Array.from({ length: count }, () => [...rgb, 255]).flat()));
 }
 
 test("text on white paper gives white", () => {
