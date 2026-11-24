@@ -1488,7 +1488,9 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
         l.y < p.height * 0.08 || l.y > p.height * 0.92 || p.vertical && (l.x1 < p.width * 0.08 || l.x0 > p.width * 0.92)
     };
     let apart: Vec<Vec<f64>> = lines.iter().map(|page| set_apart(page)).collect();
-    let margin = |l: &Line| outer(l) || !pages[l.page].vertical && apart[l.page].iter().any(|y| (l.y - y).abs() < 0.5 * l.size);
+    // A chapter's title, a slide's and a page's one exercise stand alone there too, set like the body or larger.
+    let body = body_size(lines.iter().flatten());
+    let margin = |l: &Line| outer(l) || !pages[l.page].vertical && l.size < 0.97 * body && apart[l.page].iter().any(|y| (l.y - y).abs() < 0.5 * l.size);
     let key = |l: &Line| {
         margin(l).then(|| {
             let mut k = String::new();
@@ -1614,7 +1616,7 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
 }
 
 /// The size most of the text is set in.
-fn body_size(lines: &[Line]) -> f64 {
+fn body_size<'a>(lines: impl IntoIterator<Item = &'a Line>) -> f64 {
     let mut sizes: HashMap<i64, usize> = HashMap::new();
     for l in lines {
         *sizes.entry((l.size * 10.).round() as i64).or_default() += l.text.chars().count();
@@ -2438,6 +2440,21 @@ pub(crate) mod tests {
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
         assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 5].join(" ").as_str())], "the paragraph runs on across each page break");
+    }
+
+    #[test]
+    fn a_title_or_a_heading_alone_at_the_top_of_a_page_is_no_header() {
+        let problems = ["Problem 1", "Problem 2", "Problem 3"].map(|t| (L, 100., 12., t));
+        let pages: Vec<Vec<Run>> = problems.into_iter().map(|head| [head, (L, 150., 10., SPREAD[0].3), (L, 162., 10., SPREAD[1].3)].to_vec()).collect();
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
+        assert_eq!(headings, ["Problem 1", "Problem 2", "Problem 3"]);
+
+        let cover = [(L, 120., 28., "Quarterly Report"), (L, 190., 10., SPREAD[0].3), (L, 202., 10., SPREAD[1].3)];
+        let running = [(L, 40., 9., "Quarterly Report"), (L, 100., 10., SPREAD[0].3), (L, 112., 10., SPREAD[1].3)];
+        let ir = to_ir(&pdf(&[cover.to_vec(), running.to_vec(), running.to_vec()], None), None).unwrap();
+        assert_eq!(ir.meta.title.as_deref(), Some("Quarterly Report"));
+        assert!(!texts(&ir).contains(&"Quarterly Report"), "the running headers are dropped: {:?}", texts(&ir));
     }
 
     #[test]
