@@ -1487,8 +1487,8 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
         let p = &pages[l.page];
         l.y < p.height * 0.08 || l.y > p.height * 0.92 || p.vertical && (l.x1 < p.width * 0.08 || l.x0 > p.width * 0.92)
     };
-    let apart: Vec<[Option<f64>; 2]> = lines.iter().zip(pages).map(|(page, p)| [true, false].map(|top| set_apart(page, top).filter(|_| !p.vertical))).collect();
-    let margin = |l: &Line| outer(l) || apart[l.page].iter().flatten().any(|y| (l.y - y).abs() < 0.5 * l.size);
+    let apart: Vec<Vec<f64>> = lines.iter().map(|page| set_apart(page)).collect();
+    let margin = |l: &Line| outer(l) || !pages[l.page].vertical && apart[l.page].iter().any(|y| (l.y - y).abs() < 0.5 * l.size);
     let key = |l: &Line| {
         margin(l).then(|| {
             let mut k = String::new();
@@ -1509,13 +1509,10 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
             return None;
         }
         let mut tokens = l.text.split_whitespace();
-        let first = tokens.next()?;
+        let (first, second) = (tokens.next()?, tokens.next());
         let number = |t: &str| t.parse::<i64>().ok().filter(|_| t.bytes().all(|b| b.is_ascii_digit()));
-        let Some(second) = tokens.next() else {
-            return number(first).filter(|_| !outer(l)).map(|n| n - l.page as i64);
-        };
-        let start = number(first).filter(|_| !second.starts_with(char::is_alphabetic));
-        let n = start.or_else(|| number(tokens.next_back().unwrap_or(second)))?;
+        let start = number(first).filter(|_| second.map_or(!outer(l), |s| !s.starts_with(char::is_alphabetic)));
+        let n = start.or_else(|| number(tokens.next_back().or(second)?))?;
         Some(n - l.page as i64)
     };
     let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
@@ -1543,18 +1540,13 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     }
 }
 
-/// The page's first (`top`) or last baseline, when the nearest other line is more than twice its size away: a
+/// The page's first and last baselines, each when the nearest other line is more than twice its size away: a
 /// header or a footer. A page's first or last line of text has the next line of its paragraph one pitch away.
-fn set_apart(lines: &[Line], top: bool) -> Option<f64> {
-    let edge = lines.iter().min_by(|a, b| {
-        if top {
-            a.y.total_cmp(&b.y)
-        } else {
-            b.y.total_cmp(&a.y)
-        }
-    })?;
-    let nearest = lines.iter().map(|l| (l.y - edge.y).abs()).filter(|d| *d >= 0.5 * edge.size).fold(f64::MAX, f64::min);
-    (nearest > 2. * edge.size).then_some(edge.y)
+fn set_apart(lines: &[Line]) -> Vec<f64> {
+    let first = lines.iter().min_by(|a, b| a.y.total_cmp(&b.y));
+    let last = lines.iter().min_by(|a, b| b.y.total_cmp(&a.y));
+    let apart = |edge: &&Line| !lines.iter().any(|l| (0.5 * edge.size..=2. * edge.size).contains(&(l.y - edge.y).abs()));
+    first.into_iter().chain(last).filter(apart).map(|l| l.y).collect()
 }
 
 /// Reading order of one page. Two columns when each half holds a fifth of the text: lines across
