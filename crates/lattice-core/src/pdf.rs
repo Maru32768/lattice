@@ -5228,6 +5228,35 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_table_ruled_round_only_its_first_columns_is_left_as_text() {
+        // The third column, on the right of the ruled ones, is not ruled round.
+        let cells = shown(78., 130., "Cell one") + &shown(178., 130., "Cell two") + &shown(420., 130., "Cell three");
+        let cells = cells + &shown(78., 180., "Cell four") + &shown(178., 180., "Cell five") + &shown(420., 180., "Cell six");
+        let text = shown(72., 100., "Some prose above the cells.") + &cells;
+        let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
+        assert_eq!(read(&(ruled(&[72., 172., 400.], &[110., 160., 200.], "strokes") + &text)), read(&text));
+    }
+
+    #[test]
+    fn a_table_beside_another_on_the_same_baselines_is_a_table() {
+        let a = ruled(&[72., 172., 380.], &[110., 160., 200.], "strokes") + &shown(78., 130., "Strong") + &shown(178., 130., "Lasting");
+        let a = a + &shown(78., 180., "Costly") + &shown(178., 180., "Easy");
+        let b = ruled(&[400., 470., 540.], &[110., 160., 200.], "strokes") + &shown(406., 130., "Fast") + &shown(476., 130., "Cheap");
+        let b = b + &shown(406., 180., "Slow") + &shown(476., 180., "Dear");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &(a + &b))]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Strong\tLasting\nCostly\tEasy"), ("table", "Fast\tCheap\nSlow\tDear")]);
+    }
+
+    #[test]
+    fn a_note_beside_a_table_off_its_baselines_leaves_it_a_table() {
+        let table = ruled(&[72., 172., 380.], &[110., 160., 200.], "strokes") + &shown(78., 130., "Strong") + &shown(178., 130., "Lasting");
+        let table = table + &shown(78., 180., "Costly") + &shown(178., 180., "Easy");
+        let note = shown(400., 145., "A note set") + &shown(400., 157., "beside the") + &shown(400., 169., "table.");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &(table + &note))]), None).unwrap();
+        assert!(kinds(&ir).contains(&("table", "Strong\tLasting\nCostly\tEasy")), "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn a_table_in_the_right_column_that_starts_in_the_gutter_keeps_the_left_column_whole() {
         // Its left border 4pt before the middle of the page, and the left column's lines on its cells' baselines.
         let mut ops = String::new();
@@ -5277,5 +5306,42 @@ pub(crate) mod tests {
             ("paragraph", "Then a paragraph of prose follows the table."),
         ];
         assert_eq!(kinds(&ir), want);
+    }
+
+    #[test]
+    fn latin_turned_down_a_cell_from_just_under_its_rule_stays_in_it() {
+        // 1pt under the rule over its cell, as a column of vertical writing can start.
+        let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
+        let body = column(580., 100., "034B034D034F035103530354035603580359035A") + &column(566., 100., "034B034D034F035103530354035603580359035A");
+        let cells = column(490., 102., "034B034D034F") + &column(430., 102., "03510353") + &column(490., 162., "03540356") + &column(430., 162., "034B034D");
+        let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
+        let latin = format!("BT /F1 10 Tf 0 -1 1 0 472 {} Tm (API) Tj ET\n", 792. - 101.);
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(ops + &latin)), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう API\nあい\tかき")]);
+    }
+
+    #[test]
+    fn a_number_set_across_in_a_cell_of_vertical_writing_is_read_in_its_place() {
+        // As `a_number_set_sideways_in_a_column_is_read_in_its_place` holds for the body.
+        let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
+        let body = column(580., 100., "034B034D034F035103530354035603580359035A") + &column(566., 100., "034B034D034F035103530354035603580359035A");
+        let cells = column(490., 102., "034B034D034F") + &column(430., 102., "03510353") + &column(490., 162., "03540356") + &column(430., 162., "034B034D");
+        let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
+        let number = format!("BT /F1 10 Tf 1 0 0 1 484.4 {} Tm (25) Tj ET\n", 792. - 190.8);
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(ops + &number)), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう\nあい\tかき25")]);
+    }
+
+    #[test]
+    fn a_running_footer_ruled_round_is_dropped_as_one_that_is_not() {
+        let page = |n: usize, rules: &str| {
+            let foot = shown(78., 755., "Spec 42") + &shown(300., 755., "Rev 3") + &shown(78., 777., &format!("Page {n}")) + &shown(300., 777., "Confidential");
+            rules.to_string() + &shown(72., 120., &format!("Body text of page {n} runs on as a sentence of prose.")) + &foot
+        };
+        let read = |rules: &str| {
+            let ops: Vec<String> = (1..=3).map(|n| page(n, rules)).collect();
+            to_ir(&with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &ops[0]), (1, &ops[1]), (2, &ops[2])]), None).unwrap()
+        };
+        assert_eq!(read(&ruled(&[72., 294., 540.], &[740., 762., 782.], "strokes")).blocks, read("").blocks);
     }
 }
