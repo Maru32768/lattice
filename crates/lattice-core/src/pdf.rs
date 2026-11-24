@@ -1587,19 +1587,16 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
         // is a block's edge, and the block reaches left to where the first of those starts. Only lines of its size are in
         // it: rows of code beside it end anywhere. Rows of a table end together too, with cells across them, well short of
         // the column or with numbers in them.
-        let size = |l: &Line| (l.size * 10.).round() as i64;
         let mut prose: Vec<&Line> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo) && mostly_letters(&l.text)).collect();
-        prose.sort_by(|a, b| size(a).cmp(&size(b)).then(a.x1.total_cmp(&b.x1)));
-        let blocks: Vec<(i64, f64, f64)> = prose
-            .chunk_by(|a, b| size(a) == size(b))
-            .flat_map(|of_size| {
-                let ends = of_size.chunk_by(|a, b| b.x1 - a.x1 < 0.25).filter(|at| at.len() >= 4 && at.len() * 5 >= of_size.len());
-                ends.map(|at| (size(at[0]), at.iter().map(|l| l.x0).fold(f64::MAX, f64::min), at[at.len() - 1].x1))
-            })
+        prose.sort_by(|a, b| a.size.total_cmp(&b.size).then(a.x1.total_cmp(&b.x1)));
+        let blocks: Vec<(f64, f64, f64)> = prose
+            .chunk_by(|a, b| a.size == b.size && b.x1 - a.x1 < 0.25)
+            .filter(|at| at.len() >= 4 && at.len() * 5 >= prose.iter().filter(|l| l.size == at[0].size).count())
+            .map(|at| (at[0].size, at.iter().map(|l| l.x0).fold(f64::MAX, f64::min), at[at.len() - 1].x1))
             .collect();
         for l in lines.iter_mut().filter(|l| l.side == s) {
             (l.left, l.right) =
-                blocks.iter().find(|(of, _, right)| *of == size(l) && *right >= l.x1 - 0.25).map_or((lo, hi), |&(_, left, right)| (left, right));
+                blocks.iter().find(|(size, _, right)| *size == l.size && *right >= l.x1 - 0.25).map_or((lo, hi), |&(_, left, right)| (left, right));
         }
     }
     if !two {
