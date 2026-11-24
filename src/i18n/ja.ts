@@ -1298,6 +1298,7 @@ export const ja = {
   "library.relevance5": "必読",
   "library.relevanceNone": "未判定",
   "listPane.relevanceDesc": "重要度・高い順",
+  "listPane.titleAsc": "タイトル順",
   "listPane.importance": "重要{score}",
   "listPane.rescore": "重要度を付け直す",
   "listPane.markRead": "すべて既読にする",

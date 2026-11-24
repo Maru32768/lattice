@@ -496,7 +496,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
-**Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
+**Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first**, **Most important first** or **Title, A to Z**. The same menu can divide the list into sections by source or by genre.
 
 **Where you left off.** Each list opens where you left it, for each set of filters and grouping. This holds when you come back from another list or the settings, open the closed list again, or start Lattice again.
 

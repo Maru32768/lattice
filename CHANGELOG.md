@@ -11,6 +11,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **The app serves AI agents over MCP.** AI agents such as Claude Code can use your library through an MCP server in Lattice. Turn the server on in **Settings › AI agents (MCP)**. For each agent, make a registration with the role **Read**, **Edit** or **Delete**, then copy its Claude Code command and run it. The same screen lists each agent's sessions and recent calls. Lattice asks you before each deletion that an agent requests. Changes that an agent makes show in the app at once.
 - **More ways to change the library from `lattice-cli`.** With `--allow-write`, the CLI can remove a tag, a read mark or a favorite; rename articles and put them in genres; add and rename genres and delete empty ones; create and rename collections and add or remove their articles; subscribe to feeds, rename them and move them; and rename folders. With `--allow-delete`, it can also delete articles, collections and folders, unsubscribe from feeds, and merge genres. Agents get the same tools, depending on their role.
 - **Choose the style of Japanese translations.** In **Settings › Translation**, **Japanese style** sets translations into Japanese to **Plain (da, de aru)** or **Polite (desu, masu)**. It works with the AI providers and with the local translation server. Translations are stored per style, so translate an article again to read it in the style you chose.
+- **Sort the article list by title.** **Sort and group** has **Title, A to Z**.
 
 ### Changed
 
