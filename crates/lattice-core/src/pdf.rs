@@ -262,14 +262,18 @@ fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
 /// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
 /// them would wreck the drawing. They are what is left as a paragraph with no full line and no
 /// punctuation to end it, or a line with cells across it. The Reader keeps them, as text to search.
-/// A line of words set like the body is none of those: a title that is no heading, as over a book's aside.
+/// A title that is no heading is none of those.
 fn laid_out_text(d: &Draft, body: f64) -> bool {
     let Some(last) = d.lines.last() else {
         return false;
     };
     let short = !last.text.ends_with(['.', '!', '?', ':', ';', ',', '。', '！', '？', '、']) && d.lines.iter().all(|l| l.x1 - l.x0 < 0.85 * (l.right - l.left));
-    let title = d.lines.len() == 1 && last.size > 0.97 * body && reads_as_words(&last.text);
-    d.kind == Kind::Paragraph && (short && !title || d.lines.iter().any(|l| l.tabular()))
+    d.kind == Kind::Paragraph && (short && !is_title(d, body) || d.lines.iter().any(|l| l.tabular()))
+}
+
+/// A line of words set like the body, with no full stop: a title that is no heading, as over a book's aside.
+fn is_title(d: &Draft, body: f64) -> bool {
+    matches!(d.lines.as_slice(), [l] if l.size > 0.97 * body && !l.text.ends_with('.') && reads_as_words(&l.text))
 }
 
 /// Starts with a capital and has three words or more, with little but letters: not code, a formula or a label.
@@ -1798,6 +1802,14 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             _ if is_bullet(&l.text) => Some(Kind::Item),
             _ => None,
         };
+        // Across a column or page: only a draft that ran to the column's edge, into a line that stands where its next
+        // one would. An aside's title is indented, or sticks out of the body.
+        let across = drafts.last().is_some_and(|d| {
+            let prev = d.lines[d.lines.len() - 1];
+            let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
+            let same = (prev.size - l.size).abs() < 0.5;
+            across && same && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && aligned(d, l)
+        });
         let continues = start.is_none()
             && cur.is_some_and(|(kind, prev, first)| match kind {
                 // Entries start by number, edge or space; one ending in a full stop does not run
@@ -1806,7 +1818,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                 // A title too long for one line.
                 Kind::Heading(_) => flows && (prev.size - l.size).abs() < 0.3 && (l.size >= body * 1.1 || prev.x1 >= prev.right - 3. * prev.size),
                 Kind::Caption => flows && (prev.size - l.size).abs() < 0.3,
-                Kind::Item => flows && l.x0 > first.x0 + 0.3 * l.size,
+                Kind::Item if flows => further_in(first, l) > 0.3 * l.size,
+                Kind::Item => across && !l.tabular(),
                 // A table's widest row would carry the short ones past `laid_out_text`.
                 Kind::Paragraph if prev.tabular() || l.tabular() => false,
                 Kind::Paragraph if (prev.size - l.size).abs() > 0.15 * prev.size.max(l.size) => false,
@@ -1815,13 +1828,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                     let ended = prev.x1 < prev.right - 2. * prev.size && prev.text.ends_with(['.', '!', '?', ':']);
                     !indented && !ended
                 }
-                // Across a column or page: only a paragraph that ran to the column's edge, into
-                // a line of its size at the other edge: an aside's title is indented, or sticks out of the body.
-                Kind::Paragraph => {
-                    let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-                    let same = (prev.size - l.size).abs() < 0.5;
-                    across && same && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && (l.x0 - l.left).abs() <= 0.8 * l.size
-                }
+                Kind::Paragraph => across,
             });
         if continues {
             drafts.last_mut().expect("continues a draft").lines.push(l);
@@ -1845,20 +1852,51 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     drafts
 }
 
-/// A line that carries on a sentence (lowercase, not indented) after a caption or a footnote,
-/// and the stray labels around a figure: the paragraph it continues, if one before them is
-/// unfinished.
+/// How much further in than `first` a line starts. On another page or in another column, from the edges of the two.
+fn further_in(first: &Line, l: &Line) -> f64 {
+    if first.page == l.page && first.side == l.side {
+        l.x0 - first.x0
+    } else {
+        (l.x0 - l.left) - (first.x0 - first.left)
+    }
+}
+
+/// Whether the line stands where the draft's next one would on another page or in another column: at the column's edge,
+/// or as far in as an item's text.
+fn aligned(d: &Draft, l: &Line) -> bool {
+    match (d.kind, d.lines.as_slice()) {
+        (Kind::Item, [first]) => (0.3 * l.size..3. * l.size).contains(&further_in(first, l)),
+        (Kind::Item, [.., last]) => further_in(last, l).abs() <= 0.5 * l.size,
+        _ => (l.x0 - l.left).abs() <= 0.5 * l.size,
+    }
+}
+
+/// A line that carries on a sentence (lowercase, where its next line would be) after a caption or a footnote, the stray
+/// labels around a figure, or an aside at the top of the page: the paragraph or the item it continues, if one before
+/// them is unfinished.
 fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     let in_body = |l: &Line| (l.size - body).abs() < 0.5;
-    if !l.text.starts_with(char::is_lowercase) || l.x0 > l.left + 0.8 * l.size || l.tabular() || !in_body(l) {
+    if !l.text.starts_with(char::is_lowercase) || l.tabular() || !in_body(l) {
         return None;
     }
-    let float = |d: &Draft| d.kind == Kind::Caption || d.kind == Kind::Paragraph && d.lines.iter().all(|x| x.size < body * 0.95);
-    let skipped: Vec<&Draft> = drafts.iter().rev().take_while(|d| float(d) || fragment(d)).collect();
-    let i = drafts.len().checked_sub(skipped.len() + 1)?;
+    let small = |d: &Draft, than: f64| d.lines.iter().all(|x| x.size < body * than);
+    let float = |d: &Draft| d.kind == Kind::Caption || d.kind == Kind::Paragraph && small(d, 0.95);
+    // Code displayed within a sentence is set at an aside's size too, but that stands on the sentence's page.
+    let aside = |d: &Draft| matches!(d.kind, Kind::Paragraph | Kind::Item) && small(d, 0.97) && d.lines[0].page == l.page && !laid_out_text(d, body);
+    let (mut floats, mut asides) = (false, false);
+    let i = drafts.iter().rposition(|d| {
+        if float(d) {
+            floats = true;
+        } else if aside(d) {
+            asides = true;
+        } else {
+            return !(fragment(d) || asides && is_title(d, body));
+        }
+        false
+    })?;
     let last = drafts[i].lines.last()?;
-    let unfinished = drafts[i].kind == Kind::Paragraph && in_body(last) && !last.text.ends_with(['.', '!', '?', ':']);
-    (unfinished && skipped.iter().any(|d| float(d))).then_some(i)
+    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && in_body(last) && !last.text.ends_with(['.', '!', '?', ':']);
+    (unfinished && (floats || asides) && (!asides || last.page < l.page) && aligned(&drafts[i], l)).then_some(i)
 }
 
 /// A short line on its own with no full stop, or one with cells: a figure's label, or an equation.
@@ -2487,6 +2525,49 @@ pub(crate) mod tests {
             assert!(k.contains(&("paragraph", label)), "{k:?}");
             assert!(k.iter().any(|(_, t)| t.starts_with(BODY) && t.ends_with("then waits for them until a majority of them has answered.")), "{k:?}");
         }
+    }
+
+    #[test]
+    fn what_an_aside_at_the_top_of_a_page_cuts_is_joined() {
+        const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        const ITEM: &str = "it copies every write to all of the replicas and then waits for each of";
+        let aside = || [(80., 100., 10., "Aside The progress of machines")].into_iter().chain((0..5).map(|i| (80., 118. + 11.5 * i as f64, 9.5, ASIDE)));
+        let body = |from: f64| (0..5).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+
+        let second: Vec<Run> = aside().chain(body(200.)).chain([(L, 260., 10., "and that is the end of it.")]).collect();
+        let ir = to_ir(&pdf(&[body(100.).collect(), second], None), None).unwrap();
+        let k = kinds(&ir);
+        assert!(k.contains(&("paragraph", "Aside The progress of machines")), "{k:?}");
+        assert!(k.iter().any(|(_, t)| *t == format!("{} and that is the end of it.", [BODY; 10].join(" "))), "{k:?}");
+
+        let item = [(81., 170., 10., "•"), (90., 170., 10., ITEM), (90., 182., 10., ITEM)];
+        let rest = [(90., 200., 10., "them, however far away from the leader they are placed, before the"), (90., 212., 10., "client is told.")];
+        let second: Vec<Run> = aside().chain(rest).chain(body(230.)).collect();
+        let bytes = pdf(&[body(100.).chain(item).collect(), second], None);
+        let ir = to_ir(&bytes, None).unwrap();
+        let k = kinds(&ir);
+        let whole = format!("• {ITEM} {ITEM} them, however far away from the leader they are placed, before the client is told.");
+        assert!(k.contains(&("list_item", whole.as_str())), "{k:?}");
+        let pages: Vec<usize> =
+            regions(&bytes).unwrap().iter().filter(|r| r.text.starts_with("• it copies") || r.text.ends_with("is told.")).map(|r| r.page).collect();
+        assert_eq!(pages, [0, 1], "each page has its piece");
+    }
+
+    #[test]
+    fn code_displayed_within_a_sentence_stays_where_it_is() {
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let page = (0..5)
+            .map(|i| (L, 100. + 12. * i as f64, 10., BODY))
+            .chain([(L, 170., 9.5, "bool Eq = (A == B);"), (L, 192., 10., "where A and B are the two words that are compared with each other.")])
+            .collect();
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        let k = kinds(&ir);
+        assert_eq!(
+            k[1..],
+            [("paragraph", "bool Eq = (A == B);"), ("paragraph", "where A and B are the two words that are compared with each other.")],
+            "{k:?}"
+        );
     }
 
     #[test]
