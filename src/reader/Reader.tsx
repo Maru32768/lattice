@@ -971,7 +971,7 @@ export function Reader({
     // A block's tooltip is its last child: from there on the passage is the next block's.
     const el = start?.closest(".pop") ? blk?.nextElementSibling : blk;
     const block = el && root.contains(el) ? blocks.find((b) => el.id === `b-${b.id}`) : undefined;
-    // Text after the article in the selection (a drag out of a sticky) is none of the passage. A triple click on the
+    // Text after the article in the selection (Ctrl+Shift+End) is none of the passage. A triple click on the
     // last paragraph ends there too, before any text.
     const beyond = document.createRange();
     beyond.setStartAfter(root);

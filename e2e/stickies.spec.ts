@@ -662,6 +662,13 @@ test("a selection that is not of the article's text offers nothing to ask", asyn
   await drag(app, ".reader", "#b-102");
   expect(await app.evaluate(() => getSelection()!.toString())).toContain("Every transaction");
   await expect(bar(app)).toHaveCount(0);
+  // From the text, by the keyboard, to the end of all there is.
+  await app.locator("#b-106 p").click();
+  await drag(app, "#b-106", "#b-106");
+  await expect(bar(app)).toBeVisible();
+  await app.keyboard.press("Control+Shift+End");
+  expect(await app.evaluate(() => getSelection()!.toString())).toContain("選んだ箇所の説明です");
+  await expect(bar(app)).toHaveCount(0);
   // A triple click on the last paragraph ends its selection after the blocks, with no text there.
   await app.locator("#b-107 p").click({ clickCount: 3 });
   await expect(bar(app).getByRole("button", { name: "詳しく" })).toBeVisible();
