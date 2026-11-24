@@ -850,13 +850,13 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
 fn set_down_drop_caps(glyphs: &mut [Glyph]) {
     let ink = |g: &&Glyph| !g.text.trim().is_empty();
     let first_line = |glyphs: &[Glyph], i: usize| {
-        let cap = &glyphs[i];
+        let cap = glyphs.get(i).filter(|cap| cap.text.starts_with(char::is_uppercase))?;
         let alone = glyphs[..i].iter().rev().find(ink).is_none_or(|before| before.size < SCRIPT * cap.size);
-        let mut after = glyphs[i + 1..].iter().filter(ink);
-        let first = after.next()?;
-        let second = after.find(|g| g.y != first.y)?;
         let beside = |g: &Glyph| 2. * g.size <= cap.size && g.y > cap.y - cap.size && g.y < cap.y + 0.5 * g.size && g.x >= cap.end - 0.5 * g.size;
-        (cap.text.starts_with(char::is_uppercase) && alone && beside(first) && beside(second) && second.y > first.y).then_some((first.y, first.size))
+        let mut after = glyphs[i + 1..].iter().filter(ink);
+        let first = after.next().filter(|g| beside(g))?;
+        let second = after.find(|g| g.y != first.y)?;
+        (alone && beside(second) && second.y > first.y).then_some((first.y, first.size))
     };
     for i in 0..glyphs.len() {
         if let Some((y, size)) = first_line(glyphs, i) {
