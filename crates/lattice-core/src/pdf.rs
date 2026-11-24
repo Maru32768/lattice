@@ -425,6 +425,10 @@ struct Table {
 /// in the cell its middle is in. A turned glyph is left to the page unless it `turns`, as the page drops it as a label.
 fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     let mut tables = Vec::new();
+    let two = !turns && !grids.is_empty() && {
+        let outside: Vec<&Glyph> = p.glyphs.iter().filter(|g| !grids.iter().any(|grid| grid.cell(g).is_some())).collect();
+        in_two_columns(&page_lines(0, &outside, p.width), p.width)
+    };
     for grid in &grids {
         let cell = |g: &Glyph| grid.cell(g).filter(|_| turns || !g.turned);
         let Grid { at, xs, ys } = grid;
@@ -437,7 +441,7 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
         // shortcut: a page that turns keeps every grid that holds enough text, as numbers set across in the columns beside
         // a table (縦中横) sit on its baselines by chance; tell them from a row's other cells if a partly ruled table turns
         // up in vertical writing.
-        if !turns && runs_on(p, grid, &grids, &cells) {
+        if !turns && runs_on(p, grid, &grids, &cells, two) {
             continue;
         }
         // The first band is the head, one row: a head's cells may each set a unit under their name, which breaks as rows do.
@@ -452,11 +456,11 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     tables
 }
 
-/// Whether a grid's rows go on past its rules, as a table ruled round only some of its columns does: text beside it, in its
-/// half of the page and in no other grid, set on the baseline of a line in one of its cells. Taken alone, the ruled
-/// columns would leave the rest of each row before them, which as text reads on along the row. The other column of a page
-/// set in two is not beside a table in one of them.
-fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>]) -> bool {
+/// Whether a grid's rows go on past its rules, as a table ruled round only some of its columns does: text beside it, in no
+/// other grid, set on the baseline of a line in one of its cells. Taken alone, the ruled columns would leave the rest of
+/// each row before them, which as text reads on along the row. On a page set in `two` columns, the other column is not
+/// beside a table in one of them.
+fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], two: bool) -> bool {
     let [x0, y0, x1, y1] = grid.at;
     let table = Side::of(x0, x1, p.width);
     let across = |g: &Glyph| !g.vertical && !g.turned && !g.text.trim().is_empty();
@@ -465,8 +469,8 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>]) ->
     let on_a_baseline = |g: &Glyph| baselines.get(baselines.partition_point(|&y| y < g.y - 0.3 * g.size)).is_some_and(|&y| y < g.y + 0.3 * g.size);
     let beside = |g: &Glyph| {
         let (y, side) = (g.y - 0.3 * g.size, Side::of(g.x, g.end, p.width));
-        let left = g.end <= x0 && (table != Side::Right || side == Side::Right);
-        y > y0 && y < y1 && (left || g.x >= x1 && (table != Side::Left || side == Side::Left))
+        let left = g.end <= x0 && (!two || table != Side::Right || side == Side::Right);
+        y > y0 && y < y1 && (left || g.x >= x1 && (!two || table != Side::Left || side == Side::Left))
     };
     p.glyphs.iter().any(|g| across(g) && beside(g) && on_a_baseline(g) && !grids.iter().any(|other| other.cell(g).is_some()))
 }
@@ -3380,7 +3384,8 @@ pub(crate) mod tests {
     fn a_line_beside_a_table_has_no_room_over_it() {
         let cells = shown(306., 130., "One") + &shown(406., 130., "Two") + &shown(306., 180., "Three") + &shown(406., 180., "Four");
         let prose = shown(72., 250., "A sentence of prose that runs along the whole width of the page from margin to margin.");
-        let ops = shown(72., 130., "Aside.") + &ruled(&[300., 400., 540.], &[110., 160., 200.], "strokes") + &cells + &prose;
+        // Between the rows' baselines: on one, it would be the rest of that row.
+        let ops = shown(72., 155., "Aside.") + &ruled(&[300., 400., 540.], &[110., 160., 200.], "strokes") + &cells + &prose;
         let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
         let aside = r.iter().find(|r| r.text == "Aside.").unwrap();
         assert!(aside.room_right > 0. && aside.x1 + aside.room_right <= 300., "{} + {}", aside.x1, aside.room_right);
@@ -3441,6 +3446,9 @@ pub(crate) mod tests {
         let mut ops = ruled(&[72., 172., 290.], &[110., 160., 200.], "strokes") + &cells;
         for i in 0..12 {
             ops += &shown(322., 106. + 12. * i as f64, &format!("Line {i} of the right column runs on."));
+        }
+        for (i, y) in [60., 72., 84., 220., 232., 244.].into_iter().enumerate() {
+            ops += &shown(72., y, &format!("Line {i} of the left column runs on."));
         }
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert!(kinds(&ir).contains(&("table", "Strong\tLasting\nCostly\tEasy")), "{:?}", kinds(&ir));
@@ -3622,7 +3630,8 @@ pub(crate) mod tests {
     fn a_line_beside_a_table_on_its_left_has_no_room_over_it() {
         let cells = shown(78., 130., "One") + &shown(178., 130., "Two") + &shown(78., 180., "Three") + &shown(178., 180., "Four");
         let prose = shown(72., 250., "A sentence of prose that runs along the whole width of the page from margin to margin.");
-        let ops = shown(400., 130., "Aside.") + &ruled(&[72., 172., 272.], &[110., 160., 200.], "strokes") + &cells + &prose;
+        // Between the rows' baselines: on one, it would be the rest of that row.
+        let ops = shown(400., 155., "Aside.") + &ruled(&[72., 172., 272.], &[110., 160., 200.], "strokes") + &cells + &prose;
         let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
         let aside = r.iter().find(|r| r.text == "Aside.").unwrap();
         assert!(aside.room_left > 0. && aside.x0 - aside.room_left >= 272., "{} - {}", aside.x0, aside.room_left);
@@ -5194,6 +5203,17 @@ pub(crate) mod tests {
         let ir = to_ir(&draw(&bytes, rgb(30, 10, [200, 0, 0]), &[(0, L, 500., 300., 100.)]), None).unwrap();
         let placed: Vec<&str> = kinds(&ir).iter().map(|k| k.0).filter(|k| *k != "paragraph").collect();
         assert_eq!(placed, ["image", "table"], "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_table_ruled_round_its_right_columns_on_a_page_of_one_column_is_left_as_text() {
+        // Its ruled columns in the right half of the page and its labels, unruled, in the left.
+        let mut text = shown(72., 80., "A paragraph of prose runs on across the whole width of the page, as one column does.");
+        text += &(shown(78., 130., "Signs documents on any device") + &shown(316., 130., "Yes") + &shown(426., 130., "No"));
+        text += &(shown(78., 182., "Keeps an audit trail of each step") + &shown(316., 182., "Yes") + &shown(426., 182., "Yes"));
+        text += &shown(72., 240., "Another paragraph of prose runs on across the whole width of the page, as one column does.");
+        let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
+        assert_eq!(read(&(ruled(&[310., 420., 540.], &[110., 160., 200.], "strokes") + &text)), read(&text));
     }
 
     #[test]
