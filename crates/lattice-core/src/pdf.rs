@@ -2557,6 +2557,8 @@ pub(crate) mod tests {
             (L, 230., 10., "2.2.3 Encodings of the integers 100"),
             (L, 260., 10., "3.11.4 Linux 5.15 x86 64 bit"),
             (L, 290., 10., "10.0.0.1 Gateway 2001 eth0 up"),
+            (L, 320., 10., "3 Machines hold 2048 copies in all"),
+            (L, 350., 10., "2.1 Nodes with 1024 cores each"),
         ];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
