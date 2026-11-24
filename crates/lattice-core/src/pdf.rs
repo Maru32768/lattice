@@ -205,14 +205,14 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
 
 fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let doc = read(bytes)?;
-    let (lines, body, ..) = lay_out(&doc);
+    let (lines, body, _, tables) = lay_out(&doc);
     let vocab = vocabulary(&lines);
     let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
     let mut out = Vec::new();
     // shortcut: a turned page has no regions, as a box over a column would need turning back and a translation set
     // down it; give them one when vertical text turns up for the Page view to translate.
     let on_upright_page = |piece: &[&Line]| doc.pages.get(piece[0].page).is_some_and(|p| !p.vertical);
-    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
+    for (block, d) in drafts(&lines, body, &tables).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
         } else {
@@ -1999,7 +1999,7 @@ struct Draft<'a> {
 /// under it on its page, or in the column after its own. The figures' `src` starts with `prefix`.
 fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[ReadAt], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
-    let drafts = drafts(lines, body);
+    let drafts = drafts(lines, body, tables);
     let figures: Vec<(usize, usize, f64, Block)> = figures
         .iter()
         .map(|&(page, f)| {
@@ -2014,7 +2014,7 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[R
     // figure it goes before, then the draft.
     let mut out: Vec<((usize, usize), Block)> = Vec::new();
     for &(read, page, t) in tables {
-        let at = drafts.iter().position(|d| d.start >= read).unwrap_or(drafts.len());
+        let at = read_before(&drafts, read);
         // A table at the foot of one column is read before all that opens the next, figures over their caption as well.
         let column = drafts.get(at).map(|d| d.lines[0]).filter(|l| l.page == page);
         let beside = column.is_some_and(|l| t.at[2] <= l.left || t.at[0] >= l.right);
@@ -2118,6 +2118,11 @@ fn figures(doc: &Parsed) -> Vec<(usize, &Drawn)> {
         .collect()
 }
 
+/// The draft a table `lay_out` reads before the line at `read` goes before: the first to start there or later.
+fn read_before(drafts: &[Draft], read: usize) -> usize {
+    drafts.partition_point(|d| d.start < read)
+}
+
 /// The draft a figure goes before: the first that starts under it on its page and across from it (its caption, and in a
 /// right-hand column that column's next draft), else the first of a later page, else none.
 fn place(drafts: &[Draft], page: usize, f: &Drawn) -> usize {
@@ -2128,7 +2133,7 @@ fn place(drafts: &[Draft], page: usize, f: &Drawn) -> usize {
     drafts.iter().position(under).or_else(|| drafts.iter().position(|d| d.lines[0].page > page)).unwrap_or(drafts.len())
 }
 
-fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
+fn drafts<'a>(lines: &'a [Line], body: f64, tables: &[ReadAt]) -> Vec<Draft<'a>> {
     let pitch = pitch(lines, body);
     let mut drafts: Vec<Draft> = Vec::new();
     let mut refs: Option<RefStyle> = None;
@@ -2197,7 +2202,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             });
         }
     }
-    drop_figure_labels(&mut drafts);
+    drop_figure_labels(&mut drafts, tables);
     drafts
 }
 
@@ -2223,12 +2228,14 @@ fn fragment(d: &Draft) -> bool {
 }
 
 /// Drops the fragments next to a figure caption: labels drawn as page text, not inside the figure.
-fn drop_figure_labels(drafts: &mut Vec<Draft>) {
+fn drop_figure_labels(drafts: &mut Vec<Draft>, tables: &[ReadAt]) {
+    let parted: HashSet<usize> = tables.iter().map(|&(read, ..)| read_before(drafts, read)).collect();
     let mut junk = vec![false; drafts.len()];
     for (c, d) in drafts.iter().enumerate().filter(|(_, d)| d.kind == Kind::Caption && d.lines[0].text.starts_with("Fig")) {
         let page = d.lines[0].page;
         let near = |j: &usize| fragment(&drafts[*j]) && drafts[*j].lines[0].page == page;
-        for j in (0..c).rev().take_while(near).chain((c + 1..drafts.len()).take_while(near)) {
+        let over = (0..c).rev().take_while(|j| !parted.contains(&(j + 1)) && near(j));
+        for j in over.chain((c + 1..drafts.len()).take_while(|j| !parted.contains(j) && near(j))) {
             junk[j] = true;
         }
     }
@@ -5695,5 +5702,16 @@ pub(crate) mod tests {
         let right = two_by_two(RIGHT, [90., 130., 170.], CONS);
         let under = read(&(ops + &right + &shown(320., 320., "Figure 1: A chart.")), (0, 320., 190., 200., 100.));
         assert_eq!(under, ["Table 1: Pros and cons.", left, "Fast\tCheap\nSlow\tDear", "image", "Figure 1: A chart."]);
+    }
+
+    #[test]
+    fn a_short_line_beyond_a_table_from_a_figure_caption_is_no_label_of_the_figure() {
+        let table = two_by_two([72., 172., 540.], [220., 260., 300.], PROS);
+        let prose = shown(72., 120., "A paragraph of prose comes before the table and it runs along the width of the page.");
+        let end = |y: f64| shown(72., y, "A paragraph of prose comes after the table and it runs along the width of the page.");
+        let after = shown(72., 200., "Figure 1: The machine.") + &table + &shown(72., 330., "Source: the maker of the machine");
+        assert!(texts_of(&(prose.clone() + &after + &end(370.))).iter().any(|t| t == "Source: the maker of the machine"));
+        let before = shown(72., 200., "Parts of the machine") + &table + &shown(72., 450., "Figure 1: The machine.");
+        assert!(texts_of(&(prose + &before + &end(490.))).iter().any(|t| t == "Parts of the machine"));
     }
 }
