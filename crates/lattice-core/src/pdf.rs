@@ -273,7 +273,7 @@ fn laid_out_text(d: &Draft, body: f64) -> bool {
 
 /// A title that is no heading, as over a book's aside.
 fn is_title(d: &Draft, body: f64) -> bool {
-    matches!(d.lines.as_slice(), [l] if titles(l, body))
+    d.kind == Kind::Paragraph && matches!(d.lines.as_slice(), [l] if titles(l, body))
 }
 
 /// A line that starts with a capital, with little but letters and no full stop: set larger than the body, or three words
@@ -2667,6 +2667,21 @@ pub(crate) mod tests {
         let pages: Vec<usize> =
             regions(&bytes).unwrap().iter().filter(|r| r.text.starts_with("• it copies") || r.text.ends_with("is told.")).map(|r| r.page).collect();
         assert_eq!(pages, [0, 1], "each page has its piece");
+    }
+
+    #[test]
+    fn a_sentence_after_displayed_code_stays_under_its_heading() {
+        let first = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
+        let second = vec![
+            (L, 100., 12., "The results of the test"),
+            (L, 130., 9.6, "return f(a, b);"),
+            (L, 160., 10., "where a and b are the two words that are compared with each other."),
+            (L, 172., 10., BODY),
+        ];
+        let ir = to_ir(&pdf(&[first, second], None), None).unwrap();
+        let k = kinds(&ir);
+        assert_eq!(k.iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "heading", "paragraph", "paragraph"], "{k:?}");
+        assert!(k[3].1.starts_with("where a and b"), "{k:?}");
     }
 
     #[test]
