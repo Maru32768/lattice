@@ -3009,6 +3009,23 @@ pub(crate) mod tests {
         ops
     }
 
+    /// Each cell of the grid outlined as a path of its own, ended by `end` (`h S`, `s`, `b`, `h f`), its corners (`x`, `y`
+    /// from the top of the page) given through `to`, which puts them in the content's own coordinates under its `cm`.
+    fn outlined(xs: &[f64], ys: &[f64], to: &dyn Fn(f64, f64) -> (f64, f64), end: &str) -> String {
+        let mut ops = String::new();
+        for x in xs.windows(2) {
+            for y in ys.windows(2) {
+                let [a, b, c, d] = [to(x[0], y[0]), to(x[1], y[0]), to(x[1], y[1]), to(x[0], y[1])];
+                ops += &format!(
+                    "{} {} m {} {} l {} {} l {} {} l {end}
+",
+                    a.0, a.1, b.0, b.1, c.0, c.1, d.0, d.1
+                );
+            }
+        }
+        ops
+    }
+
     /// Two tables, each under its caption, drawn as the book that set them does: both captions first, then each table's
     /// rules and the text of its cells, one of which runs over two lines.
     fn tables_page(how: &str) -> Vec<u8> {
@@ -3052,9 +3069,48 @@ pub(crate) mod tests {
         let chart = ruled(&[72., 172., 272., 372., 540.], &[110., 160., 200., 250.], "strokes");
         let one_column = ruled(&[72., 540.], &[110., 160., 200.], "strokes");
         let empty = ruled(&[72., 172., 540.], &[300., 350., 400.], "strokes");
-        for (shape, rules) in
-            [("rules across", across), ("a box round it all", boxed), ("a chart's grid", chart), ("one column", one_column), ("no text", empty)]
-        {
+        let one_row = ruled(&[72., 172., 540.], &[110., 160.], "strokes");
+        // The top row one cell across the table: the rule between the columns runs down the second row only.
+        let mut merged: String = [110., 160., 200.]
+            .iter()
+            .map(|&y| {
+                format!(
+                    "72 {y} m 540 {y} l S
+",
+                    y = 792. - y
+                )
+            })
+            .collect();
+        merged += &[72., 540.]
+            .map(|x| {
+                format!(
+                    "{x} 682 m {x} 592 l S
+"
+                )
+            })
+            .concat();
+        merged += "172 632 m 172 592 l S
+";
+        // Each cell clipped to its box, as a report writer keeps its text in, or shaded, with nothing stroked.
+        let clipped = [(72., 172.), (172., 540.)]
+            .map(|(x0, x1)| {
+                [(110., 160.), (160., 200.)]
+                    .map(|(y0, y1)| {
+                        format!(
+                            "q {x0} {} {} {} re W n Q
+",
+                            792. - y1,
+                            x1 - x0,
+                            y1 - y0
+                        )
+                    })
+                    .concat()
+            })
+            .concat();
+        let shaded = outlined(&[72., 172., 540.], &[110., 160., 200.], &|x, y| (x, 792. - y), "h f");
+        let shapes = [("rules across", across), ("a box round it all", boxed), ("a chart's grid", chart), ("one column", one_column), ("no text", empty)];
+        let more = [("one row", one_row), ("a merged cell", merged), ("clipped cells", clipped), ("shaded cells", shaded)];
+        for (shape, rules) in shapes.into_iter().chain(more) {
             assert_eq!(read(&(rules + &text)), plain, "{shape}");
         }
     }
