@@ -13,6 +13,8 @@ const para = (i: number) => `Paragraph ${i} of the long article.`;
 async function open(page: Page, id: number) {
   await (await listRow(page, titleOf(id))).click();
   await expect(page.locator(".art-title")).toHaveText(titleOf(id));
+  // A font that comes late scrolls the view by a pixel or two.
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
 }
 
 /** The article with blocks of every kind, in the original language. */
