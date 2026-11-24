@@ -189,12 +189,18 @@ export const toggleZoom = (l: Workspace): Workspace => ({ ...l, zoomed: l.zoomed
 
 export const unzoom = (l: Workspace): Workspace => (l.zoomed == null ? l : { ...l, zoomed: undefined });
 
+/**
+ * Numbers the Reader's jump requests across this window. A tab's Reader keeps its place under the seq it was asked for
+ * (useReadingPlace) and goes back there for an equal one, and a tab that was a page in between no longer has the seq its
+ * Reader had. A focus is not saved, so a window's own count never meets one from before a restart.
+ */
+let jumps = 0;
+
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   // A page still loading is not yet known to be the tab's article: its `saved` is the one it is leaving.
   const kept = prev?.kind === "page" ? { key: prev.key, seq: prev.seq, url: prev.url, saved: prev.loading ? null : prev.saved } : prev?.page;
   if (doc.kind === "reader") {
-    const seq = (prev?.kind === "reader" ? (prev.focus?.seq ?? 0) : 0) + 1;
-    return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq }, page: kept };
+    return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq: ++jumps }, page: kept };
   }
   // A page replacing a page, or a Reader that replaced one, keeps the webview; one arriving from another window brings its own.
   const own = doc.key && prev?.kind !== "page" ? undefined : kept;
