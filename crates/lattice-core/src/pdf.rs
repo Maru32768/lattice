@@ -3425,6 +3425,158 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_cell_set_lower_than_the_one_beside_it_keeps_its_band_one_row() {
+        // Ruled round the box, under the header and between the columns. The body's first cell holds three short lines,
+        // the second two lines centred lower down: one row, each cell holding lines of its own.
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Notes"));
+        ops += &(shown(78., 146., "Short") + &shown(78., 158., "Lines") + &shown(78., 170., "Here"));
+        ops += &(shown(206., 158., "Centered") + &shown(206., 170., "Text"));
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Design\tNotes\nShort Lines Here\tCentered Text")]);
+    }
+
+    #[test]
+    fn vertical_writing_by_the_left_rule_of_its_cells_is_not_split_into_rows() {
+        // `vertical_writing_in_a_table_goes_to_the_cells_its_columns_are_in` with each cell's column 5pt from its left
+        // rule, so a one-glyph line has room after it for the next.
+        let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
+        let body = column(580., 100., "034B034D034F035103530354035603580359035A") + &column(566., 100., "034B034D034F035103530354035603580359035A");
+        let cells = column(465., 102., "034B034D034F") + &column(405., 102., "03510353") + &column(465., 162., "03540356") + &column(405., 162., "034B034D");
+        let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう\nあい\tかき")]);
+    }
+
+    #[test]
+    fn rows_no_rule_parts_take_a_cell_set_a_little_higher() {
+        // `rows_no_rule_parts_are_read_by_their_lines` with the second column 1pt higher, as a cell in another font sits.
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        ops += &(shown(78., 124., "Design") + &shown(206., 123., "Insert"));
+        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 145., "Easy"));
+        ops += &(shown(78., 166., "Nested Sets") + &shown(206., 165., "Hard"));
+        ops += &(shown(78., 186., "Closure Table") + &shown(206., 185., "Easy"));
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Design\tInsert\nAdjacency List\tEasy\nNested Sets\tHard\nClosure Table\tEasy")]);
+    }
+
+    #[test]
+    fn a_line_whose_next_word_fits_only_in_the_cells_padding_wrapped() {
+        // The second column's first line ends where the next line's first word would fit before the rule, but not before
+        // the padding the cell keeps on its left (6pt): the line wrapped, so the band is one row. The first column's label
+        // is broken by hand, with room after its first line.
+        let wrapped = shown(166., 336., "Easy to insert, but") + &shown(166., 348., "hard to query");
+        let (_, measured) = glyphs(&with_contents(&pdf(&[vec![]], None), &[(0, &wrapped)]), true).unwrap();
+        let lines = page_lines(0, &measured[0].glyphs.iter().collect::<Vec<_>>(), measured[0].width);
+        let letter = (lines[1].x1 - lines[1].x0) / lines[1].text.chars().count() as f64;
+        let right = lines[0].x1 + 5. * letter + 3.;
+        let mut ops = ruled(&[72., 160., right], &[300., 320., 360.], "strokes");
+        ops += &(shown(78., 314., "Design") + &shown(166., 314., "Queries"));
+        ops += &(shown(78., 336., "Closure") + &shown(78., 348., "Table") + &wrapped);
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Design\tQueries\nClosure Table\tEasy to insert, but hard to query")]);
+    }
+
+    #[test]
+    fn vertical_writing_whose_em_box_runs_past_the_rule_under_it_stays_in_its_cell() {
+        // The first cell's column runs 1pt past the rule under it, as an em box a little taller than its glyphs does.
+        let column = |x: f64, top: f64, codes: &str| format!("1 0 0 1 {x} {} Tm <{codes}> Tj ", 792. - top - 8.8);
+        let body = column(580., 100., "034B034D034F035103530354035603580359035A") + &column(566., 100., "034B034D034F035103530354035603580359035A");
+        let cells =
+            column(490., 111., "034B034D034F03510353") + &column(430., 102., "03510353") + &column(490., 162., "03540356") + &column(430., 162., "034B034D");
+        let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいうえお\nあい\tかき")]);
+    }
+
+    #[test]
+    fn a_page_all_in_a_table_is_not_read_again_when_another_page_is() {
+        // The first page is drawn inside a form, so the PDF is read again with its forms; the second page's text is all in
+        // a table, and its form's label stays out as it does when it is the only page.
+        let mut doc = Document::load_mem(&pdf(&[vec![], vec![]], None)).unwrap();
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let contents = ["/X1 Do".to_string(), ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells + "\n/X1 Do"];
+        let labels = ["Included page text.", "Form label"];
+        let ids: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+        for (i, id) in ids.into_iter().enumerate() {
+            let mut form = Dictionary::new();
+            form.set("Type", name("XObject"));
+            form.set("Subtype", name("Form"));
+            form.set("BBox", vec![0.into(), 0.into(), 612.into(), 792.into()]);
+            let form = doc.add_object(Stream::new(form, format!("BT /F1 10 Tf 72 400 Td ({}) Tj ET", labels[i]).into_bytes()));
+            let content = doc.add_object(Stream::new(Dictionary::new(), contents[i].clone().into_bytes()));
+            let page = doc.get_dictionary_mut(id).unwrap();
+            page.set("Contents", Object::Reference(content));
+            let mut xobjects = Dictionary::new();
+            xobjects.set("X1", Object::Reference(form));
+            page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        }
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), [("paragraph", "Included page text."), ("table", "Strong\tLasting\nCostly\tEasy")]);
+    }
+
+    #[test]
+    fn a_table_repeated_in_the_body_of_every_page_is_kept() {
+        let cells = shown(78., 130., "Strong") + &shown(178., 130., "Lasting") + &shown(78., 182., "Costly") + &shown(178., 182., "Easy");
+        let page = |n: usize| {
+            shown(72., 100., &format!("Page {n} opens with a sentence of prose.")) + &ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells
+        };
+        let ops: Vec<String> = (1..=3).map(page).collect();
+        let ir = to_ir(&with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &ops[0]), (1, &ops[1]), (2, &ops[2])]), None).unwrap();
+        assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Table).count(), 3);
+    }
+
+    #[test]
+    fn a_one_page_pdf_keeps_a_table_in_its_top_margin() {
+        let cells = shown(78., 40., "Strong") + &shown(178., 40., "Lasting") + &shown(78., 70., "Costly") + &shown(178., 70., "Easy");
+        let ops = ruled(&[72., 172., 540.], &[24., 54., 84.], "strokes") + &cells + &shown(72., 200., "Then a paragraph of prose follows the table.");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Strong\tLasting\nCostly\tEasy"), ("paragraph", "Then a paragraph of prose follows the table.")]);
+    }
+
+    #[test]
+    fn a_line_beside_a_table_on_its_left_has_no_room_over_it() {
+        let cells = shown(78., 130., "One") + &shown(178., 130., "Two") + &shown(78., 180., "Three") + &shown(178., 180., "Four");
+        let prose = shown(72., 250., "A sentence of prose that runs along the whole width of the page from margin to margin.");
+        let ops = shown(400., 130., "Aside.") + &ruled(&[72., 172., 272.], &[110., 160., 200.], "strokes") + &cells + &prose;
+        let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
+        let aside = r.iter().find(|r| r.text == "Aside.").unwrap();
+        assert!(aside.room_left > 0. && aside.x0 - aside.room_left >= 272., "{} - {}", aside.x0, aside.room_left);
+    }
+
+    #[test]
+    fn shaded_or_clipped_cells_then_a_stroke_leave_the_text_as_it_was() {
+        let cells = shown(78., 130., "Cell one") + &shown(178., 130., "Cell two") + &shown(78., 180., "Cell three") + &shown(178., 180., "Cell four");
+        let text = shown(72., 100., "Some prose above the cells.") + &cells;
+        let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
+        // One rule under it all, stroked after the cells are painted.
+        let rule = "72 392 m 540 392 l S\n";
+        let plain = read(&(rule.to_string() + &text));
+        let (xs, ys) = ([(72., 172.), (172., 540.)], [(110., 160.), (160., 200.)]);
+        let each = |f: &dyn Fn((f64, f64), (f64, f64)) -> String| xs.map(|x| ys.map(|y| f(x, y)).concat()).concat();
+        let clipped = each(&|(x0, x1), (y0, y1)| format!("q {x0} {} {} {} re W n Q\n", 792. - y1, x1 - x0, y1 - y0));
+        let filled = each(&|(x0, x1), (y0, y1)| format!("{x0} {} {} {} re f\n", 792. - y1, x1 - x0, y1 - y0));
+        let shaded = outlined(&[72., 172., 540.], &[110., 160., 200.], &|x, y| (x, 792. - y), "h f");
+        for (shape, cells) in [("clipped", clipped), ("filled boxes", filled), ("shaded paths", shaded)] {
+            assert_eq!(read(&(cells + rule + &text)), plain, "{shape}");
+        }
+    }
+
+    #[test]
+    fn a_table_in_one_column_is_read_within_that_column() {
+        let column = |x: f64, y: f64, side: &str| {
+            shown(x, y, &format!("The {side} column runs on")) + &shown(x, y + 12., "and on down the page") + &shown(x, y + 24., "to its end.")
+        };
+        let cells = shown(78., 180., "Strong") + &shown(178., 180., "Lasting") + &shown(78., 230., "Costly") + &shown(178., 230., "Easy");
+        let table = ruled(&[72., 172., 290.], &[150., 200., 250.], "strokes") + &cells;
+        let ops = column(72., 100., "left") + &column(322., 100., "right") + &table + &column(72., 300., "lower left") + &column(322., 300., "lower right");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        let order: Vec<&str> = ir.blocks.iter().map(|b| b.text.split(" column").next().unwrap_or_default()).collect();
+        assert_eq!(order, ["The left", "Strong\tLasting\nCostly\tEasy", "The lower left", "The right", "The lower right"]);
+    }
+
+    #[test]
     fn a_table_on_each_page_that_reaches_into_the_margin_is_kept() {
         // The same table on each of three pages, its labels the same and its numbers not, as a report sets one table a
         // page: from 50pt down, past the top 8% of the page, and from 640pt to 740pt, past the bottom 8%.
