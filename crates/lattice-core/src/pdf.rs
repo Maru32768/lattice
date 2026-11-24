@@ -1491,9 +1491,9 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
         l.y < p.height * 0.08 || l.y > p.height * 0.92 || p.vertical && (l.x1 < p.width * 0.08 || l.x0 > p.width * 0.92)
     };
     let apart: Vec<Vec<f64>> = lines.iter().map(|page| set_apart(page)).collect();
-    // A chapter's title, a slide's and a page's one exercise stand alone there too, set like the body or larger.
+    // A chapter's title, a slide's and a page's one exercise stand alone there too, set larger than the body.
     let body = body_size(lines.iter().flatten());
-    let margin = |l: &Line| outer(l) || !pages[l.page].vertical && l.size < 0.97 * body && apart[l.page].iter().any(|y| (l.y - y).abs() < 0.5 * l.size);
+    let margin = |l: &Line| outer(l) || !pages[l.page].vertical && l.size <= 1.03 * body && apart[l.page].iter().any(|y| (l.y - y).abs() < 0.5 * l.size);
     let key = |l: &Line| {
         margin(l).then(|| {
             let mut k = String::new();
@@ -2459,7 +2459,7 @@ pub(crate) mod tests {
             &[(40., 110., 8.5, "388 Chapter 4 Making Things")],
             &[(400., 110., 8.5, "Section 4.1 The First Part 389")],
             &[(40., 110., 8.5, "390 Chapter 4 Making Things")],
-            &[(400., 110., 8.5, "Section 4.2 The Second Part 391")],
+            &[(400., 110., 10., "Section 4.2 The Second Part 391")],
         ]);
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
