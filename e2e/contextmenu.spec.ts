@@ -70,6 +70,11 @@ test("right-click on a row sets the importance, difficulty and genre from submen
   await picker.getByPlaceholder("タグを検索・追加").fill("from-menu");
   await app.keyboard.press("Enter");
   await expect.poll(async () => (await callsOf(app, "add_tag")).at(-1)).toEqual({ id: a.id, name: "from-menu" });
+  await expect(picker.getByRole("combobox")).toHaveValue("");
+  await expect(picker.getByRole("option", { name: "from-menu" }), "the tag just added is listed, checked, once the search clears").toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("タイトルを変更… gives an article a title of its own, and 元に戻す brings back the one Lattice gave it", async ({ app }) => {
@@ -89,7 +94,14 @@ test("タイトルを変更… gives an article a title of its own, and 元に�
   expect(await callsOf(app, "set_article_title")).toEqual([{ id: a.id, title: "第2部" }]);
 
   box = await open("第2部");
-  await expect(box.getByText(`元のタイトル: ${a.title}`)).toBeVisible();
+  const found = box.getByText(`元のタイトル: ${a.title}`);
+  await expect(found).toBeVisible();
+  const b = (await found.boundingBox())!;
+  await app.mouse.move(b.x + 2, b.y + b.height / 2);
+  await app.mouse.down();
+  await app.mouse.move(b.x + b.width - 2, b.y + b.height / 2, { steps: 8 });
+  await app.mouse.up();
+  expect(await app.evaluate(() => window.getSelection()?.toString()), "the found title can be selected, to copy it").toContain(a.title!.slice(2, -2));
   await box.getByRole("button", { name: "元に戻す" }).click();
   await expect(row(app, a.title!)).toBeVisible();
   expect((await callsOf(app, "set_article_title")).at(-1)).toEqual({ id: a.id, title: "" });
@@ -129,6 +141,17 @@ test("the menu key and Shift+F10 open the cursor row's menu; Esc returns to the 
   await expect(cur).toBeFocused();
   await app.keyboard.press("ContextMenu");
   await expect(menu(app)).toBeVisible();
+});
+
+test("Esc on the group picker opened from a row's menu gives the focus back to the row", async ({ app }) => {
+  const r = row(app, shown[0].title!);
+  await r.click({ button: "right" });
+  await menu(app).getByRole("menuitem", { name: "グループに追加…" }).click();
+  const picker = app.getByRole("dialog", { name: "グループ" });
+  await expect(picker).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(r).toBeFocused();
 });
 
 test("with rows picked, the menu applies the bulk actions to all of them", async ({ app }) => {

@@ -1,7 +1,8 @@
 //! The built `lattice-cli` binary against a temporary data folder.
 #![allow(clippy::unwrap_used, reason = "a failed step fails the test")]
 
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -9,8 +10,6 @@ use lattice_core::fetch::Fetched;
 use lattice_core::ingest::store_fetched;
 use lattice_core::store::Store;
 use serde_json::{Value, json};
-
-const UNTRUSTED_START: &str = "Lattice returns text from web pages";
 
 /// A temporary data folder, removed when dropped.
 struct Dir(PathBuf);
@@ -165,6 +164,43 @@ fn writes_need_the_opt_in() {
     assert!(refused(&dir, &["--allow-write", "save", "not a url"])["error"].as_str().unwrap().starts_with("not a URL"));
 }
 
+/// `serve` takes what the phone sends only with the opt-in (design-review §32): `/api/index` tells the page whether it may.
+#[test]
+fn serve_takes_the_phones_changes_only_with_the_opt_in() {
+    /// Stopped when dropped, so a failed step leaves no server running.
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let (dir, _) = library("serve");
+    for (flags, env, read_only) in [(&[][..], "", true), (&["--allow-write"][..], "", false), (&["--allow-delete"][..], "", false), (&[][..], "1", false)] {
+        let mut server = Server(
+            Command::new(env!("CARGO_BIN_EXE_lattice-cli"))
+                .arg("--data-dir")
+                .arg(&*dir)
+                .args(flags)
+                .args(["serve", "--port", "0"])
+                .env("LATTICE_ALLOW_WRITE", env)
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
+        let mut url = String::new();
+        BufReader::new(server.0.stdout.take().unwrap()).read_line(&mut url).unwrap();
+        let (host, token) = url.trim().strip_prefix("http://").and_then(|u| u.split_once("/#t=")).unwrap();
+        let token = token.split('&').next().unwrap();
+        let mut conn = TcpStream::connect(host).unwrap();
+        write!(conn, "GET /api/index HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n\r\n").unwrap();
+        let mut response = String::new();
+        conn.read_to_string(&mut response).unwrap();
+        let body: Value = serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["read_only"], read_only, "{flags:?} LATTICE_ALLOW_WRITE={env:?}");
+    }
+}
+
 #[test]
 fn a_missing_database_is_an_error_and_is_not_created() {
     let dir = data_dir("missing");
@@ -172,75 +208,28 @@ fn a_missing_database_is_an_error_and_is_not_created() {
     assert!(!dir.join("lattice.db").exists());
 }
 
-fn mcp(dir: &Path, write: bool, requests: &[Value]) -> Vec<Value> {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_lattice-cli"));
-    cmd.arg("--data-dir").arg(dir).env_remove("LATTICE_ALLOW_WRITE");
-    if write {
-        cmd.arg("--allow-write");
-    }
-    let mut child = cmd.arg("mcp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    for r in requests {
-        writeln!(stdin, "{r}").unwrap();
-    }
-    drop(stdin);
-    let out = child.wait_with_output().unwrap();
-    assert!(out.status.success());
-    String::from_utf8(out.stdout).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
-}
-
-fn call(id: i64, name: &str, arguments: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": arguments } })
+#[test]
+fn mcp_is_not_a_subcommand() {
+    let out = cli(&data_dir("no-mcp"), &["mcp"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("unrecognized subcommand 'mcp'"), "{stderr}");
 }
 
 #[test]
-fn serves_mcp_over_stdio() {
-    let (dir, id) = library("mcp");
-    let replies = mcp(
-        &dir,
-        false,
-        &[
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } }),
-            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
-            call(3, "search", json!({ "query": "EPOLLET" })),
-            call(4, "get", json!({ "id": id })),
-            call(5, "tag", json!({ "id": id, "name": "x" })),
-            json!({ "jsonrpc": "2.0", "id": 6, "method": "resources/list" }),
-            call(7, "get", json!({})),
-        ],
-    );
-    assert_eq!(replies.len(), 7, "the notification gets no reply: {replies:?}");
-    let init = &replies[0]["result"];
-    assert_eq!((init["protocolVersion"].as_str(), init["serverInfo"]["name"].as_str()), (Some("2025-06-18"), Some("lattice")));
-    assert!(init["capabilities"]["tools"].is_object());
-
-    let tools: Vec<&str> = replies[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(tools, ["search", "get", "list", "summary", "tags", "genres", "feeds", "collections", "jobs", "ask"]);
-    assert_eq!(replies[1]["result"]["tools"][0]["inputSchema"]["required"], json!(["query"]));
-
-    let text = |r: &Value| r["result"]["content"][0]["text"].as_str().unwrap().to_string();
-    for r in &replies[2..4] {
-        assert_eq!(r["result"]["isError"], false);
-        assert!(text(r).starts_with(UNTRUSTED_START), "marked as untrusted: {}", text(r));
-    }
-    let found: Value = serde_json::from_str(text(&replies[2]).split_once("\n\n").unwrap().1).unwrap();
-    assert_eq!(found["hits"][0]["article_id"], id);
-    assert!(text(&replies[3]).contains("draining the socket"));
-
-    assert_eq!(replies[4]["result"]["isError"], true, "write tools are refused without the opt-in");
-    assert!(text(&replies[4]).contains("--allow-write"));
-    assert!(text(&replies[4]).starts_with(UNTRUSTED_START), "errors are marked too: {}", text(&replies[4]));
-    assert_eq!(replies[5]["error"]["code"], -32601);
-    assert_eq!(replies[6]["error"]["code"], -32602, "a missing argument is invalid params, not a tool error: {}", replies[6]);
-    assert!(ok(&dir, &["tags"]).to_string().contains("\"db\"") && !ok(&dir, &["tags"]).to_string().contains("\"x\""));
-}
-
-#[test]
-fn mcp_write_tools_need_the_opt_in() {
-    let (dir, id) = library("mcp-write");
-    let replies = mcp(&dir, true, &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), call(2, "tag", json!({ "id": id, "name": "later" }))]);
-    assert_eq!(replies[0]["result"]["tools"].as_array().unwrap().len(), 14);
-    assert_eq!(replies[1]["result"]["isError"], false);
-    assert_eq!(ok(&dir, &["get", &id.to_string()])["article"]["tags"], json!(["db", "later"]));
+fn deleting_needs_its_own_opt_in() {
+    let (dir, id) = library("delete");
+    let id_s = id.to_string();
+    assert!(refused(&dir, &["--allow-write", "delete-article", &id_s])["error"].as_str().unwrap().contains("--allow-delete"));
+    let by_env = Command::new(env!("CARGO_BIN_EXE_lattice-cli"))
+        .arg("--data-dir")
+        .arg(&*dir)
+        .args(["delete-article", &id_s])
+        .env("LATTICE_ALLOW_WRITE", "1")
+        .output()
+        .unwrap();
+    assert!(!by_env.status.success(), "the environment opts in to edits only");
+    assert_eq!(ok(&dir, &["--allow-delete", "rename-article", &id_s, "Mine"])["title"], "Mine", "delete includes the edits");
+    assert_eq!(ok(&dir, &["--allow-delete", "delete-article", &id_s])["deleted"], true);
+    assert_eq!(ok(&dir, &["list"])["total"], 1);
 }

@@ -3,7 +3,7 @@ import type { MobileIndex, MobileOp } from "../bindings";
 import { isLang, setDisplayLang, useT } from "../i18n";
 import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
-import { FIRST_VIEW, forgetListPlace, keepListPlace, showListPlace, storeView, storedView, type ListView } from "./list";
+import { FIRST_VIEW, forgetListPlace, keepListPlace, showListPlace, storeView, storedView, withoutGoneGroup, type ListView } from "./list";
 import { keepOnRest } from "../lib/places";
 import { readingPlaces } from "../reader/useReadingPlace";
 import { keep, viewKey } from "../library/library";
@@ -309,7 +309,7 @@ export function App() {
         icons={icons}
         unsent={unsent}
         writable={!load.index.read_only}
-        view={view}
+        view={withoutGoneGroup(view, load.index.groups ?? [])}
         onView={setView}
         generatedAt={load.index.generated_at}
         refreshFailed={refreshFailed}

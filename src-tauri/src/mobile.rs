@@ -91,6 +91,11 @@ pub(crate) fn on_applied(handle: &AppHandle, effects: &Effects) {
     if effects.fetch {
         app.wake_net.iter().for_each(|w| w.notify_one());
     }
+    if effects.feeds {
+        let _ = handle.emit("feeds-changed", 0);
+        // A new feed's entries may wait for the LLM filter before the fetchers see them.
+        app.wake_llm.iter().for_each(|w| w.notify_one());
+    }
 }
 
 /// Ends the running server, if any, and starts what the settings ask for.

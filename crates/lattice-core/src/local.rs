@@ -11,7 +11,7 @@ use tokio::sync::Semaphore;
 
 use crate::llm::LlmError;
 use crate::msg;
-use crate::segments::{self, Origin, Translated, Unit};
+use crate::segments::{self, Origin, Target, Translated, Unit};
 use crate::sentences::{self, Sentences};
 
 pub const PROMPT_VERSION: &str = "plamo-v1";
@@ -90,7 +90,7 @@ impl Server {
 
     /// Like `segments::translate_snippets`: one entry per snippet, and never failing as a whole. A batch's
     /// blocks go one request at a time, so 並列実行数 batches keep that many requests on the server.
-    pub(crate) async fn translate(&self, snippets: &[String], to: &str) -> Translated {
+    pub(crate) async fn translate(&self, snippets: &[String], to: &Target) -> Translated {
         let mut out = Translated { results: vec![None; snippets.len()], error: None };
         // Also the connection check: with no server running, nothing is sent.
         let model = match self.model().await {
@@ -123,7 +123,7 @@ impl Server {
 
     /// One snippet: the block in one request, then sentence by sentence with the block as context when
     /// its lines do not pair up. Also the model that answered.
-    async fn snippet(&self, model: &str, to: &str, snippet: &str, calls: &mut Calls) -> Option<(Vec<Unit>, Option<String>)> {
+    async fn snippet(&self, model: &str, to: &Target, snippet: &str, calls: &mut Calls) -> Option<(Vec<Unit>, Option<String>)> {
         let s = sentences::split(snippet);
         let lines: Vec<String> = s.lines().collect();
         if let Some(body) = request(model, to, None, &lines.join("\n"))
@@ -206,10 +206,12 @@ impl Server {
 
 /// The request for `text`, or none when it cannot fit its share of the server's context. Tokens are
 /// bounded from chars (measured: about 1 per Japanese char, 0.25 per English one); the context goes first.
-fn request(model: &str, to: &str, context: Option<&str>, text: &str) -> Option<Value> {
+/// PLaMo takes `form` only with `target_lang=ja`.
+fn request(model: &str, to: &Target, context: Option<&str>, text: &str) -> Option<Value> {
     let chars = |s: &str| s.chars().count();
     let max_tokens = chars(text) + 64;
-    let plain = format!("[plamo-translate]\ntarget_lang={to}");
+    let form = to.japanese_form().map(|f| format!("\nform={}", f.as_str())).unwrap_or_default();
+    let plain = format!("[plamo-translate]\ntarget_lang={}{form}", to.language);
     let with_context = context.map(|c| format!("{plain}\n---\n{c}"));
     let fits = |system: &String| (chars(system) + chars(text)) * 5 / 4 + max_tokens <= CONTEXT_TOKENS / SLOTS;
     let system = with_context.into_iter().chain([plain]).find(fits)?;
@@ -285,6 +287,10 @@ pub(crate) mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
+    use crate::segments::Form;
+
+    static JA: Target = Target { language: "ja", keep_terms: false, form: None, instructions: String::new() };
+    static EN: Target = Target { language: "en", keep_terms: false, form: None, instructions: String::new() };
 
     pub(crate) type Seen = Arc<Mutex<Vec<(String, Value)>>>;
 
@@ -372,7 +378,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_block_comes_back_as_its_sentences_paired_by_line() {
         let (url, seen) = serve(plamo).await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["Use <code>git\n status</code>. Then <a href=\"/c\">commit</a>."]), "ja").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["Use <code>git\n status</code>. Then <a href=\"/c\">commit</a>."]), &JA).await;
         let (units, origin) = t.results[0].clone().unwrap();
         assert_eq!(
             units,
@@ -399,7 +405,7 @@ pub(crate) mod tests {
             _ => (200, completion("二文を一行にまとめた訳")),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["First <em>one</em>. Second &amp; last."]), "en").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["First <em>one</em>. Second &amp; last."]), &EN).await;
         let (units, origin) = t.results[0].clone().unwrap();
         assert_eq!(units, [unit("First <em>one</em>. ", "訳:First <em>one</em>."), unit("Second &amp; last.", "訳:Second &amp; last.")]);
         assert_eq!(origin.model.as_deref(), Some("plamo-3-translate-q4"), "the model the retries' answers name");
@@ -415,7 +421,7 @@ pub(crate) mod tests {
             _ => (200, completion("最初の行\n\n次の行")),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["One long sentence."]), "ja").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["One long sentence."]), &JA).await;
         assert_eq!(t.results[0].clone().unwrap().0, [unit("One long sentence.", "最初の行次の行")]);
         assert_eq!(seen.lock().unwrap().len(), 2);
     }
@@ -427,7 +433,7 @@ pub(crate) mod tests {
             _ => (200, json!({"model": "m", "choices": [{"finish_reason": "length", "message": {"content": "途中まで"}}]})),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["One. Two."]), "ja").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["One. Two."]), &JA).await;
         assert!(t.results[0].is_none());
         let e = t.error.unwrap();
         assert!(matches!(e, LlmError::Malformed(_)), "{e:?}");
@@ -443,7 +449,7 @@ pub(crate) mod tests {
             _ => plamo(path, body),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["Long one.", "Long two.", "Odd one.", "Odd two.", "Fine one."]), "ja").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["Long one.", "Long two.", "Odd one.", "Odd two.", "Fine one."]), &JA).await;
         assert!(t.results[..4].iter().all(Option::is_none));
         assert_eq!(t.results[4].clone().unwrap().0, [unit("Fine one.", "訳:Fine one.")], "those blocks' text, not the server");
         assert_eq!(seen.lock().unwrap().len(), 1 + 5, "a lone sentence is not sent again");
@@ -459,7 +465,7 @@ pub(crate) mod tests {
             _ => (200, completion(&text(body).replace("⟦1⟧", "").replace("⟦2⟧", "").lines().map(|l| format!("訳:{l}")).collect::<Vec<_>>().join("\n"))),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["See ⟦1⟧ here.", "See ⟦1⟧ here. And ⟦2⟧ there."]), "ja").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["See ⟦1⟧ here.", "See ⟦1⟧ here. And ⟦2⟧ there."]), &JA).await;
         assert!(t.results[0].is_none(), "a lone sentence");
         assert!(t.results[1].is_none(), "a block, then each of its sentences");
     }
@@ -472,7 +478,7 @@ pub(crate) mod tests {
             _ => plamo(path, body),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["One. Two."]), "ja").await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["One. Two."]), &JA).await;
         assert_eq!(t.results[0].clone().unwrap().0, [unit("One. ", "訳:One."), unit("Two.", "訳:Two.")]);
     }
 
@@ -484,7 +490,7 @@ pub(crate) mod tests {
         })
         .await;
         let blocks: Vec<String> = (0..12).map(|n| format!("Block {n} first. Block {n} second.")).collect();
-        let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        let t = Server::new(&url).unwrap().translate(&blocks, &JA).await;
         assert!(t.results.iter().all(Option::is_none));
         let e = t.error.unwrap();
         assert!(matches!(e, LlmError::Failed(_)), "{e:?}");
@@ -499,7 +505,7 @@ pub(crate) mod tests {
         // As three requests from jobs, the overlay and retries in flight together would hold them.
         let slots = IN_FLIGHT.acquire_many(3).await.unwrap();
         let (server, blocks) = (Server::new(&url).unwrap(), snippets(&["One."]));
-        let mut t = std::pin::pin!(server.translate(&blocks, "ja"));
+        let mut t = std::pin::pin!(server.translate(&blocks, &JA));
         // The model list takes no slot; the window starts once it is answered, however slowly.
         while seen.lock().unwrap().is_empty() {
             assert!(tokio::time::timeout(Duration::from_millis(10), &mut t).await.is_err());
@@ -523,7 +529,7 @@ pub(crate) mod tests {
         })
         .await;
         let blocks: Vec<String> = (0..4).map(|n| format!("Block {n}.")).collect();
-        Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        Server::new(&url).unwrap().translate(&blocks, &JA).await;
         assert_eq!(*held.lock().unwrap(), [true; 4]);
     }
 
@@ -536,7 +542,7 @@ pub(crate) mod tests {
     async fn a_server_that_is_not_running_is_unavailable_before_any_block_is_sent() {
         let url = closed_port();
         let blocks: Vec<String> = (0..12).map(|n| format!("Block {n}.")).collect();
-        let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        let t = Server::new(&url).unwrap().translate(&blocks, &JA).await;
         assert!(t.results.iter().all(Option::is_none));
         let e = t.error.unwrap();
         assert!(matches!(e, LlmError::Unavailable(_)), "{e:?}");
@@ -544,12 +550,12 @@ pub(crate) mod tests {
         assert_eq!((name.as_str(), params["url"].as_str()), ("translate.localUnavailable", Some(url.as_str())));
 
         let (url, seen) = serve(|_, _| (503, json!({"error": {"message": "Loading model"}}))).await;
-        let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        let t = Server::new(&url).unwrap().translate(&blocks, &JA).await;
         assert_eq!(code(&t.error.unwrap()).0, "translate.localUnavailable", "a server still loading its model");
         assert_eq!(seen.lock().unwrap().len(), 1, "one request for the batch, not one per block");
 
         let (url, seen) = serve(|_, _| (200, json!({"object": "list", "data": []}))).await;
-        let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        let t = Server::new(&url).unwrap().translate(&blocks, &JA).await;
         let e = t.error.unwrap();
         assert!(matches!(e, LlmError::Unavailable(_)), "{e:?}");
         assert_eq!(code(&e), ("translate.localNoModel".into(), json!({"url": url})), "a server with no model loaded");
@@ -568,7 +574,7 @@ pub(crate) mod tests {
                 _ => (status, json!({})),
             })
             .await;
-            let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+            let t = Server::new(&url).unwrap().translate(&blocks, &JA).await;
             assert!(t.results[0].is_some(), "{status}");
             assert_eq!(code(&t.error.unwrap()).0, "translate.localUnavailable", "{status}");
             assert_eq!(seen.lock().unwrap().len(), 3, "{status}: the model list, the first two blocks, then nothing");
@@ -607,17 +613,27 @@ pub(crate) mod tests {
 
     #[test]
     fn a_request_fits_its_share_of_the_context_or_is_not_made() {
-        let with = request("m", "ja", Some("The river. The bank was muddy."), "The bank was muddy.").unwrap();
+        let with = request("m", &JA, Some("The river. The bank was muddy."), "The bank was muddy.").unwrap();
         assert_eq!(system(&with), "[plamo-translate]\ntarget_lang=ja\n---\nThe river. The bank was muddy.");
         let long_context = "Context. ".repeat(1500);
-        let dropped = request("m", "ja", Some(&long_context), "The bank was muddy.").unwrap();
+        let dropped = request("m", &JA, Some(&long_context), "The bank was muddy.").unwrap();
         assert_eq!(system(&dropped), "[plamo-translate]\ntarget_lang=ja", "the context goes before the text does");
+        for (form, line) in [(Form::Plain, "form=plain"), (Form::Polite, "form=polite")] {
+            let styled = request("m", &Target { form: Some(form), ..JA.clone() }, Some("The river."), "The bank was muddy.").unwrap();
+            assert_eq!(system(&styled), format!("[plamo-translate]\ntarget_lang=ja\n{line}\n---\nThe river."));
+        }
+        let polite = Target { form: Some(Form::Polite), ..JA.clone() };
+        assert_eq!(
+            system(&request("m", &Target { language: "en", ..polite }, None, "x").unwrap()),
+            "[plamo-translate]\ntarget_lang=en",
+            "PLaMo takes form only with target_lang=ja"
+        );
 
         let block = "a".repeat(2000);
-        let body = request("m", "en", None, &block).unwrap();
+        let body = request("m", &EN, None, &block).unwrap();
         let max_tokens = body["max_tokens"].as_u64().unwrap() as usize;
         assert!(max_tokens > block.len(), "room for a translation longer than its source in tokens");
-        assert!(request("m", "en", None, &"あ".repeat(5000)).is_none(), "a block that cannot fit is cut into sentences instead");
+        assert!(request("m", &EN, None, &"あ".repeat(5000)).is_none(), "a block that cannot fit is cut into sentences instead");
     }
 
     #[test]
@@ -667,10 +683,10 @@ pub(crate) mod tests {
         let server = Server::new(&std::env::var("PLAMO_URL").unwrap()).unwrap();
         let model = server.model().await.unwrap();
         println!("model: {model}");
-        let r = server.chat(&request(&model, "ja", Some("We walked along the river. The bank was muddy."), "The bank was muddy.").unwrap()).await.unwrap();
+        let r = server.chat(&request(&model, &JA, Some("We walked along the river. The bank was muddy."), "The bank was muddy.").unwrap()).await.unwrap();
         println!("bank with river context: {}", r.content);
         let block = "Run <code>git status</code> to see what changed. Then read <a href=\"https://git-scm.com/docs\">the docs</a> before you commit. It takes a minute.";
-        let t = server.translate(&snippets(&[block]), "ja").await;
+        let t = server.translate(&snippets(&[block]), &JA).await;
         let (units, origin) = t.results[0].clone().unwrap();
         println!("origin: {origin:?}");
         for u in &units {
@@ -678,5 +694,13 @@ pub(crate) mod tests {
         }
         assert_eq!(units.len(), 3, "aligned as three sentences");
         assert_eq!(units.iter().map(|u| u.source.as_str()).collect::<String>(), block);
+
+        for form in [Form::Plain, Form::Polite] {
+            let to = Target { form: Some(form), ..JA.clone() };
+            let t = server.translate(&snippets(&[block]), &to).await;
+            let text: String = t.results[0].clone().unwrap().0.iter().map(|u| u.translation.as_str()).collect();
+            println!("{}: {text}", form.as_str());
+            assert_eq!(text.contains("ます。"), form == Form::Polite, "{text}");
+        }
     }
 }

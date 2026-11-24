@@ -61,11 +61,14 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00040_translation_page_article.sql"),
     include_str!("../db/migrations/00041_article_auto_title.sql"),
     include_str!("../db/migrations/00042_chat_thread_llm.sql"),
+    include_str!("../db/migrations/00043_content_hash_of_what_a_summary_reads.sql"),
+    include_str!("../db/migrations/00044_summary_items.sql"),
+    include_str!("../db/migrations/00045_blocks_heading_index.sql"),
 ];
-/// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
-/// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
-/// 38 still says it recomputes; migrations are append-only, so this is where that is corrected.
-const REHASH_AT: usize = 39;
+/// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
+/// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
+/// migrations are append-only, so this is where that is corrected.
+const REHASH_AT: usize = 43;
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
 /// then folding http into https (28; a feed linking http:// showed its saved page as unsaved).
@@ -319,9 +322,11 @@ pub struct JobRow {
 #[ts(export)]
 pub struct SummaryView {
     pub text: String,
+    /// The sentences and key points with the blocks they cite; `None` for a summary made before them (`summary-v3`).
+    pub items: Option<crate::summarize::Items>,
     pub created_at: String,
     /// The article was re-extracted with different content since this summary was made
-    /// (`summarize::mark_stale` adds changed instructions).
+    /// (`summarize::mark_stale` adds changed instructions and cited blocks the article no longer has).
     pub stale: bool,
     #[serde(skip)]
     pub prompt_version: String,
@@ -344,8 +349,10 @@ pub struct ArticleView {
 pub struct SummarySource {
     pub title: String,
     pub content_hash: String,
-    /// (kind, text) of headings and prose blocks in order.
+    /// (kind, text) of every block but images, in order; `summarize` picks what it sends.
     pub blocks: Vec<(String, String)>,
+    /// The id of each of `blocks`.
+    pub block_ids: Vec<i64>,
 }
 
 /// (source_hash, units, provider, model) of one cached translation.
@@ -462,7 +469,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     })
 }
 
-/// The text summaries, quizzes and translations read (`PROSE_KINDS`): no images, code or tables.
+/// The text quizzes and translations read (`PROSE_KINDS`): no images, code or tables.
 fn prose(blocks: &[Block]) -> impl Iterator<Item = &str> {
     blocks.iter().filter(|b| PROSE_KINDS.contains(&b.kind.as_str())).map(|b| b.text.as_str())
 }
@@ -485,21 +492,23 @@ fn text_hash<'a>(texts: impl Iterator<Item = &'a str>) -> String {
     sha256_hex(texts.flat_map(str::split_whitespace).collect::<String>())
 }
 
+/// Of the text a summary reads, code and tables included (`summary_source`). A quiz reads only the prose, so a change
+/// to code or a table alone makes it out of date too.
 fn content_hash(blocks: &[Block]) -> String {
-    text_hash(prose(blocks))
+    text_hash(all_text(blocks))
 }
 
-/// `content_hash` was once of every block, image blocks and paragraph breaks included (`REHASH_AT`): recomputed from the
-/// stored blocks of every article that has one, an extraction that failed since included (it keeps its blocks). The
-/// summaries and quizzes that recorded the old hash move with it, as their text is the same.
+/// `content_hash` was once of other text (`REHASH_AT`): recomputed from the stored blocks of every article that has
+/// one, an extraction that failed since included (it keeps its blocks). The summaries and quizzes that recorded the old
+/// hash move with it, as their text is the same.
 fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     let articles: Vec<(i64, String)> = tx
         .prepare("SELECT id, content_hash FROM articles WHERE content_hash IS NOT NULL")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_>>()?;
-    let mut text = tx.prepare(STORED_PROSE)?;
+    let mut text = tx.prepare(STORED_TEXT)?;
     for (id, old) in articles {
-        let texts: Vec<String> = text.query_map(params![id, json(&PROSE_KINDS)], |r| r.get(0))?.collect::<Result<_>>()?;
+        let texts: Vec<String> = text.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
         let hash = text_hash(texts.iter().map(String::as_str));
         tx.execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash])?;
         for table in ["summaries", "quizzes"] {
@@ -588,6 +597,13 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// 32 random bytes as 64 hex characters: bearer tokens, MCP registration and session ids.
+pub fn random_hex() -> std::result::Result<String, String> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
+    Ok(hex(&bytes))
+}
+
 /// `?1` article, `?2` target language, `?3` block kinds as a JSON array.
 const UNTRANSLATED: &str = "b.article_id = ?1 AND b.kind IN (SELECT value FROM json_each(?3))
     AND NOT EXISTS (SELECT 1 FROM segment_translations st WHERE st.source_hash = b.text_hash AND st.target_language = ?2)";
@@ -620,13 +636,13 @@ impl Store {
 
     fn init(mut conn: Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        // The app, the CLI and the MCP server share the file. A deferred transaction that reads first fails
+        // The app and the CLI share the file. A deferred transaction that reads first fails
         // at once, whatever the busy timeout, if another process commits before its first write.
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let user_version = |c: &Connection| c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0));
         let version = user_version(&conn)?;
-        // A migration can hold the lock for seconds (rehash_content: 0.2 s release, 5 s debug for 3000 articles), and the
-        // app and the MCP server start together: the one that waits must outwait it rather than fail to open the library.
+        // A migration can hold the lock for seconds (rehash_content: 15 s in a debug build for 7,500 articles), and the
+        // app and a CLI command can start together: the one that waits must outwait it rather than fail to open the library.
         conn.busy_timeout(std::time::Duration::from_secs(120))?;
         if version as usize > MIGRATIONS.len() {
             return Err(rusqlite::Error::ToSqlConversionFailure(format!("database version {version} is newer than this build ({})", MIGRATIONS.len()).into()));
@@ -670,9 +686,10 @@ impl Store {
         else {
             return Ok(None);
         };
-        let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal")?;
-        let blocks = st.query_map(params![article_id, json(&crate::ir::PROSE_KINDS)], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_>>()?;
-        Ok(Some(SummarySource { title, content_hash, blocks }))
+        let mut st = c.prepare("SELECT id, kind, text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
+        let rows: Vec<(i64, String, String)> = st.query_map([article_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_>>()?;
+        let (block_ids, blocks) = rows.into_iter().map(|(id, kind, text)| (id, (kind, text))).unzip();
+        Ok(Some(SummarySource { title, content_hash, blocks, block_ids }))
     }
 
     #[allow(clippy::too_many_arguments, reason = "the columns of one row")]
@@ -681,14 +698,15 @@ impl Store {
         article_id: i64,
         kind: &str,
         text: &str,
+        items: Option<&crate::summarize::Items>,
         source_hash: &str,
         provider: &str,
         model: Option<&str>,
         prompt_version: &str,
     ) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO summaries (article_id, type, text, source_hash, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![article_id, kind, text, source_hash, provider, model, prompt_version],
+            "INSERT INTO summaries (article_id, type, text, items, source_hash, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![article_id, kind, text, items.map(json), source_hash, provider, model, prompt_version],
         )?;
         Ok(())
     }
@@ -1118,10 +1136,10 @@ impl Store {
         let jobs = st.query_map([id], job_row)?.collect::<Result<_>>()?;
         let summary = c
             .query_row(
-                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash, s.prompt_version FROM summaries s JOIN articles a ON a.id = s.article_id
+                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash, s.prompt_version, s.items FROM summaries s JOIN articles a ON a.id = s.article_id
                  WHERE s.article_id = ?1 AND s.type = 'normal' ORDER BY s.id DESC LIMIT 1",
                 [id],
-                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
+                |r| Ok(SummaryView { text: r.get(0)?, items: opt_json_col(r, 4)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
         let note = c.query_row("SELECT body FROM article_notes WHERE article_id = ?1", [id], |r| r.get(0)).optional()?;
@@ -1330,8 +1348,8 @@ impl Store {
     }
 
     /// Puts back in the queue the jobs left `running` by a process that is gone, or by a finish that
-    /// could not be written: not this Store's, and with no heartbeat for `ABANDONED_AFTER`. The app,
-    /// the CLI and the MCP server share the queue, so a job another live process runs stays its own.
+    /// could not be written: not this Store's, and with no heartbeat for `ABANDONED_AFTER`. The app
+    /// and the CLI share the queue, so a job another live process runs stays its own.
     /// Each counts as a failed try: one that takes its process down must not run again at once, at
     /// every start, with `finish_job` and so the attempt limit never reached.
     pub fn recover_abandoned_jobs(&self) -> Result<usize> {
@@ -1655,6 +1673,13 @@ mod tests {
     }
 
     #[test]
+    fn deleting_a_block_finds_the_blocks_under_it_by_index() {
+        let s = Store::open_in_memory().unwrap();
+        let plan: String = s.conn().query_row("EXPLAIN QUERY PLAN SELECT 1 FROM blocks WHERE heading_id = 1", [], |r| r.get(3)).unwrap();
+        assert!(plan.contains("blocks_heading"), "{plan}");
+    }
+
+    #[test]
     fn a_database_from_a_newer_build_is_refused_on_open() {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "user_version", MIGRATIONS.len() as i64 + 1).unwrap();
@@ -1882,25 +1907,27 @@ mod tests {
     #[test]
     fn upgrading_recomputes_every_stored_content_hash_once_and_moves_its_summaries() {
         let conn = Connection::open_in_memory().unwrap();
-        let before = MIGRATIONS.iter().position(|m| m.contains("joined with nothing between them")).unwrap();
+        let before = MIGRATIONS.iter().position(|m| m.contains("covers code and tables too")).unwrap();
         assert_eq!(before + 1, REHASH_AT, "the recompute runs after the migration that says so");
-        for sql in &MIGRATIONS[..before] {
+        let start = MIGRATIONS.iter().position(|m| m.contains("now of the text alone")).unwrap() + 1;
+        for sql in &MIGRATIONS[..start] {
             conn.execute_batch(sql).unwrap();
         }
-        conn.pragma_update(None, "user_version", before as i64).unwrap();
+        conn.pragma_update(None, "user_version", start as i64).unwrap();
         // One article extracted, one whose later extraction failed: both keep blocks, a hash of then and a summary of it.
+        // The two hashes of then are the same, as they were for every article without prose: each article moves its own.
         conn.execute_batch(
             "INSERT INTO articles (id, original_url, normalized_url, domain, extraction_status, content_hash) VALUES
-                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then 1'),
-                 (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then 2');
+                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then'),
+                 (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then');
              INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES
                  (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3'), (1, 3, 'code', 'let x = 1;', 'h5'),
-                 (2, 0, 'paragraph', 'Some words', 'h4');
+                 (1, 4, 'table', 'p99\t12 ms', 'h6'), (2, 0, 'paragraph', 'Some words', 'h4');
              INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
-                 (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
-                 (2, 'summary', 'Current then.', 'of then 2', 't', 'v');
+                 (1, 'summary', 'Current then.', 'of then', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
+                 (2, 'summary', 'Current then.', 'of then', 't', 'v');
              INSERT INTO quizzes (article_id, source_hash, provider, prompt_version) VALUES
-                 (1, 'of then 1', 't', 'v'), (1, 'older', 't', 'v');",
+                 (1, 'of then', 't', 'v'), (1, 'older', 't', 'v');",
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
@@ -1908,8 +1935,8 @@ mod tests {
             s.conn().prepare("SELECT content_hash FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(
             hashes,
-            [text_hash(["説明文続き"].into_iter()), text_hash(["Some", "words"].into_iter())],
-            "a Japanese paragraph broken at the image hashes as one, and the code is not what a summary reads"
+            [text_hash(["説明文続き", "let x = 1;", "p99 12 ms"].into_iter()), text_hash(["Some", "words"].into_iter())],
+            "a Japanese paragraph broken at the image hashes as one, and the code and the table are what a summary reads too"
         );
         let current: Vec<bool> = s
             .conn()
@@ -2090,7 +2117,7 @@ mod tests {
         s.add_tag(a, "mine").unwrap();
         s.add_tag(a, "both").unwrap();
         s.add_tag(b, "both").unwrap();
-        s.insert_summary(a, "normal", "要約", "h", "p", None, "v").unwrap();
+        s.insert_summary(a, "normal", "要約", None, "h", "p", None, "v").unwrap();
         s.enqueue_job("translate", a, "{}", "translate:a").unwrap();
         crate::images::save(&s, a, "https://a.dev/x.png", "image/png", b"\x89PNG only-a").unwrap();
         s.exec_for_test(&format!(

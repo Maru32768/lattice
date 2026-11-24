@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ArticleRow, GroupRow } from "../bindings";
 import { useT } from "../i18n";
-import { DIMS, DIM_LABELS, NO_FACETS, scopeLabel, toggle, valueLabel, type Dim, type Facets } from "../library/library";
-import { SCOPES, options, type ListView } from "./list";
+import { DIMS, DIM_LABELS, NO_FACETS, scopeKey, scopeLabel, toggle, valueLabel, type Dim, type Facets } from "../library/library";
+import { SCOPES, options, type ListScope, type ListView } from "./list";
 import { Sheet } from "./Sheet";
 
 /** Values shown per dimension before 「ほかN件」: tags and feeds can run to hundreds. */
@@ -56,14 +56,15 @@ export function FilterSheet({
       <section aria-labelledby="m-dim-scope">
         <h3 id="m-dim-scope">{t("mobile.scope")}</h3>
         <div className="m-chips">
-          {SCOPES.map((s) => (
-            <button key={s.kind} className="m-chip" aria-pressed={view.scope.kind === s.kind} onClick={() => onScope(s)}>
+          {[...SCOPES, ...groups.map((g): ListScope => ({ kind: "group", id: g.id }))].map((s) => (
+            <button key={scopeKey(s)} className="m-chip" aria-pressed={scopeKey(view.scope) === scopeKey(s)} onClick={() => onScope(s)}>
               {scopeLabel(s, all, groups, t)}
             </button>
           ))}
         </div>
       </section>
-      {DIMS.map((dim) => {
+      {/* The groups are among the scopes above. */}
+      {DIMS.filter((d) => d !== "groups").map((dim) => {
         const opts = options(dim, base, all, facets);
         if (opts.length === 0) {
           return null;

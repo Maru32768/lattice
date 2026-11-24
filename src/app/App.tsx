@@ -54,6 +54,7 @@ import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { TitleEditor } from "../library/TitleEditor";
 import { UpdateNotice } from "./Update";
+import { McpApprovals } from "./McpApprovals";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
 import { paneOf, stepNav } from "../layout/panes";
 import { scrollerIn } from "../docnav/scroll";
@@ -168,10 +169,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(String(e));
 
-  const { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } = useLibrary(
-    fail,
-    HOST.kind !== "chat",
-  );
+  const { articles, loaded, settled, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } =
+    useLibrary(fail, HOST.kind !== "chat");
   const { jobFailures, reviewDue, loadReview } = useActivity(IS_MAIN);
   const translations = useTranslations(IS_MAIN);
   const { vocab, marksOn, setMarks, marks, loadVocab, saveWordSeq, saveWord } = useVocab(() => void loadReview());
@@ -1312,6 +1311,7 @@ export default function App() {
               article={chat.article}
               open={chat.docs}
               groups={chatGroups}
+              loading={!settled}
               request={chat.chatScope}
               onCite={openCitation}
               onClose={win.closeRequested}
@@ -1329,6 +1329,7 @@ export default function App() {
         {/* A pop-out's top tab strips are its title bar (H19, DocArea). */}
         {HOST.kind !== "doc" && <TitleBar history={{ back: history.back, forward: history.forward, onGo: history.step }} onPalette={openPalette} />}
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
+        {IS_MAIN && <McpApprovals />}
         <ContextMenu label={t("articleMenu.label")} items={ctxItems} targets={MENU_TARGETS}>
           <div
             className={screen === "library" && layout.zoomed != null ? "app zoomed" : "app"}
@@ -1591,6 +1592,7 @@ export default function App() {
                 article={chat.article}
                 open={chat.docs}
                 groups={chatGroups}
+                loading={!settled}
                 request={chat.chatScope}
                 onCite={openCitation}
                 onClose={() => win.setChatOpen(false)}

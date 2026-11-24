@@ -1,12 +1,28 @@
 // Runs in the page before the app: the real frontend over the mock backend.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import { handle } from "./mock.ts";
+import { handle, mcpActivity, mcpApprovals } from "./mock.ts";
 import { api } from "../src/api.ts";
 
 declare global {
   interface Window {
-    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit; fromPage: typeof emit; deleteArticle: typeof api.deleteArticle };
+    __e2e: {
+      calls: { cmd: string; args: unknown }[];
+      unmocked: string[];
+      emit: typeof emit;
+      fromPage: typeof emit;
+      deleteArticle: typeof api.deleteArticle;
+      mcpActivity: typeof mcpActivity;
+      mcpApprovals: typeof mcpApprovals;
+      /** Lets the oldest `n` waiting calls of `cmd` through (the newest `-n` when below 0), all of them by default; later calls wait again. */
+      release: (cmd: string, n?: number) => void;
+    };
+    /** Set by an init script: commands whose calls wait for `__e2e.release`, as slow reads would. */
+    __e2eHold?: string[];
+    /** Set by an init script: commands answered at once but delivered at `__e2e.release`, as a read that loses a race would. */
+    __e2eLate?: string[];
+    /** Set by an init script: commands that fail, as a broken read would. */
+    __e2eFail?: string[];
   }
 }
 
@@ -16,21 +32,40 @@ const fromPage: typeof emit = async (event, payload) => {
   await emit(event, payload);
   delete (document as Partial<Document>).hasFocus;
 };
-const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle };
+const late = window.__e2eLate ?? [];
+const held = new Map([...(window.__e2eHold ?? []), ...late].map((cmd) => [cmd, [] as (() => void)[]]));
+function release(cmd: string, n = Infinity) {
+  const waiting = held.get(cmd) ?? [];
+  for (const go of n < 0 ? waiting.splice(n) : waiting.splice(0, n)) {
+    go();
+  }
+}
+const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle, mcpActivity, mcpApprovals, release };
 window.__e2e = e2e;
 // `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
 mockWindows(new URLSearchParams(location.search).get("window") ?? "main");
 mockIPC(
   (cmd, args) => {
     e2e.calls.push({ cmd, args });
-    try {
-      return handle(cmd, args);
-    } catch (e) {
-      if (String(e).includes("unmocked")) {
-        e2e.unmocked.push(cmd);
+    const run = () => {
+      try {
+        if (window.__e2eFail?.includes(cmd)) {
+          throw new Error(`${cmd} failed`);
+        }
+        return handle(cmd, args);
+      } catch (e) {
+        if (String(e).includes("unmocked")) {
+          e2e.unmocked.push(cmd);
+        }
+        throw e;
       }
-      throw e;
+    };
+    const waiting = held.get(cmd);
+    if (!waiting) {
+      return run();
     }
+    const answer = late.includes(cmd) ? Promise.resolve().then(run) : null;
+    return new Promise<void>((go) => waiting.push(go)).then(() => answer ?? run());
   },
   { shouldMockEvents: true },
 );

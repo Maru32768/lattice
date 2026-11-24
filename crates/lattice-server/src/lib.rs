@@ -1,6 +1,8 @@
 //! The PC's server for the phone (G47, design-review §32): the page and the library's documents.
 //! It speaks plain HTTP. On the local network that is what there is; beyond it a tunnel in front
 //! (Tailscale Serve, cloudflared) provides TLS, so this crate never handles a certificate.
+//! `ops` holds the operations `lattice-cli` and the app's MCP server run, `mcp` the MCP protocol, and `mcp_http` that
+//! server over HTTP (design-review §23).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -17,10 +19,14 @@ use lattice_core::mobile::{self, Effects, MobileOp, Outcome, blocking};
 use lattice_core::mobile_publish;
 use lattice_core::msg;
 use lattice_core::store::Store;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+
+mod mcp;
+pub mod mcp_http;
+pub mod ops;
 
 /// A built file of the page (`src/mobile`, built by `npm run build:overlay`).
 pub struct Asset {
@@ -154,12 +160,15 @@ async fn submit(State(ctx): State<Ctx>, body: Bytes) -> Response {
 }
 
 fn applied() -> Response {
-    (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], json!({ "status": "applied" }).to_string()).into_response()
+    json(StatusCode::OK, &json!({ "status": "applied" }))
+}
+
+fn bearer(headers: &HeaderMap) -> Option<String> {
+    headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).map(str::to_owned)
 }
 
 async fn require_token(State(store): State<Arc<Store>>, request: Request, next: Next) -> Response {
-    let token = request.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).map(str::to_owned);
-    let Some(token) = token else {
+    let Some(token) = bearer(request.headers()) else {
         return error(StatusCode::UNAUTHORIZED, "unauthorized");
     };
     match blocking(move || mobile::token_accepted(&store, &token)).await {
@@ -169,13 +178,17 @@ async fn require_token(State(store): State<Arc<Store>>, request: Request, next: 
     }
 }
 
-fn error(status: StatusCode, message: &str) -> Response {
-    (status, [(header::CONTENT_TYPE, "application/json")], json!({ "error": message }).to_string()).into_response()
+fn json(status: StatusCode, body: &Value) -> Response {
+    (status, [(header::CONTENT_TYPE, "application/json")], body.to_string()).into_response()
 }
 
-/// The details stay in the log: a phone can do nothing with them.
+fn error(status: StatusCode, message: &str) -> Response {
+    json(status, &json!({ "error": message }))
+}
+
+/// The details stay in the log: a phone or an agent can do nothing with them.
 fn internal_error(e: &str) -> Response {
-    log::warn!("mobile server: {e}");
+    log::warn!("server: {e}");
     error(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
 }
 
@@ -305,7 +318,7 @@ pub async fn start(addr: SocketAddr, router: Router) -> std::io::Result<Server> 
             let _ = stopped.await;
         };
         if let Err(e) = axum::serve(listener, router).with_graceful_shutdown(shutdown).await {
-            log::warn!("mobile server: {e}");
+            log::warn!("server on {addr}: {e}");
         }
     });
     Ok(Server { addr, stop, task })

@@ -17,6 +17,7 @@ import type {
   ChatThread,
   CustomInstructions,
   EngineKind,
+  Form,
   EngineSettings,
   FeedCandidate,
   FeedFilter,
@@ -38,6 +39,9 @@ import type {
   Progress,
   Quiz,
   R2Settings,
+  McpApproval,
+  McpEdit,
+  McpStatus,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
@@ -215,6 +219,8 @@ export const api = {
   checkTranslateLocal: (url: string) => invoke<string>("check_translate_local", { url }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
+  translateForm: () => invoke<Form | null>("get_translate_form"),
+  setTranslateForm: (form: Form | null) => invoke<void>("set_translate_form", { form }),
   /** 保存した記事を自動で翻訳 (off by default). */
   autoTranslate: () => invoke<boolean>("get_auto_translate"),
   setAutoTranslate: (on: boolean) => invoke<void>("set_auto_translate", { on }),
@@ -346,6 +352,15 @@ export const r2 = {
   save: (settings: R2Settings) => invoke<void>("r2_save", { settings }),
   clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
+};
+
+/** AI agents reaching the library over MCP (design-review §23). */
+export const mcp = {
+  status: () => invoke<McpStatus>("mcp_status"),
+  edit: (edit: McpEdit) => invoke<McpStatus>("mcp_edit", { edit }),
+  /** Deletions an agent asks for, waiting for the user's answer, oldest first. */
+  approvals: () => invoke<McpApproval[]>("mcp_approvals"),
+  answer: (id: number, allow: boolean) => invoke<void>("mcp_answer", { id, allow }),
 };
 
 /** Reading on a phone (G47). */

@@ -2,6 +2,7 @@ mod badge;
 mod browser;
 mod location;
 mod logging;
+mod mcp;
 mod mobile;
 mod popout;
 mod renderer;
@@ -355,7 +356,7 @@ fn list_genres(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
 /// Renaming to an existing genre merges into it.
 #[tauri::command(async)]
 fn rename_genre(app: State<'_, App>, from: String, to: String) -> Result<(), String> {
-    classify::rename_genre(&app.store, &from, &to)
+    classify::rename_genre(&app.store, &from, &to, true)
 }
 
 /// The articles shown in this window's panes (Reader tabs and saved Page tabs in front): the
@@ -509,6 +510,16 @@ fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String>
 }
 
 #[tauri::command(async)]
+fn get_translate_form(app: State<'_, App>) -> Result<Option<segments::Form>, String> {
+    translate::form(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_form(app: State<'_, App>, form: Option<segments::Form>) -> Result<(), String> {
+    translate::set_form(&app.store, form)
+}
+
+#[tauri::command(async)]
 fn get_translate_engine(app: State<'_, App>) -> Result<translate::EngineSettings, String> {
     translate::engine_settings(&app.store)
 }
@@ -545,10 +556,11 @@ fn set_custom_instructions(app: State<'_, App>, settings: instructions::Settings
     instructions::save(&app.store, &settings)
 }
 
-/// The built-in prompt the instructions extend: the AI engine's, in the current term mode, English to Japanese.
+/// The built-in prompt the instructions extend: the AI engine's, in the current term mode and style, English to Japanese.
 #[tauri::command(async)]
 fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
-    Ok(segments::translation_prompt(&segments::Target { keep_terms: translate::keep_terms(&app.store)?, ..Default::default() }))
+    let target = segments::Target { keep_terms: translate::keep_terms(&app.store)?, form: translate::form(&app.store)?, ..Default::default() };
+    Ok(segments::translation_prompt(&target))
 }
 
 #[tauri::command(async)]
@@ -566,17 +578,9 @@ async fn discover_feeds(app: State<'_, App>, url: String) -> Result<Vec<feeds::C
 /// `folder` puts the feed in that folder, new or already subscribed.
 #[tauri::command]
 async fn add_feed(app: State<'_, App>, url: String, folder: Option<i64>) -> Result<i64, String> {
-    let (id, created) = feeds::add(&app.store, &url, folder)?;
-    match feeds::refresh(&app.store, &app.providers.http, id).await {
-        Err(e) if created => {
-            feeds::remove(&app.store, id)?;
-            Err(e)
-        }
-        _ => {
-            app.wake_net.iter().for_each(|w| w.notify_one());
-            Ok(id)
-        }
-    }
+    let id = feeds::subscribe(&app.store, &app.providers.http, &url, folder).await?;
+    app.wake_net.iter().for_each(|w| w.notify_one());
+    Ok(id)
 }
 
 #[tauri::command(async)]
@@ -1603,13 +1607,16 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log_dir,
         picked_dir: Mutex::new(None),
     });
-    // Not from a fallback folder either: a phone would read and write the old copy.
+    // Not from a fallback folder either: a phone or an agent would read and write the old copy.
     if !fell_back {
         mobile::start_publisher(app.handle());
         let handle = app.handle().clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = mobile::apply(&handle).await {
                 log::warn!("starting the mobile server: {e}");
+            }
+            if let Err(e) = mcp::apply(&handle).await {
+                log::warn!("starting the MCP server: {e}");
             }
         });
     }
@@ -1627,12 +1634,23 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _, _| popout::bring_back(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().arg(tray::AUTOSTART_ARG).build())
+        // The Run entry is keyed by this name, which would otherwise be the product name both builds share.
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name(if cfg!(debug_assertions) {
+                    "Lattice Dev"
+                } else {
+                    "Lattice"
+                })
+                .arg(tray::AUTOSTART_ARG)
+                .build(),
+        )
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
         .manage(popout::Spare::default())
         .manage(mobile::MobileServer::default())
+        .manage(mcp::McpServer::default())
         .register_asynchronous_uri_scheme_protocol(browser::PDF_SCHEME, |ctx, request, responder| {
             let (handle, label) = (ctx.app_handle().clone(), ctx.webview_label().to_string());
             tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
@@ -1695,6 +1713,8 @@ pub fn run() {
             check_translate_local,
             get_translate_keep_terms,
             set_translate_keep_terms,
+            get_translate_form,
+            set_translate_form,
             get_auto_translate,
             set_auto_translate,
             get_translate_parallel,
@@ -1796,6 +1816,10 @@ pub fn run() {
             mobile::mobile_publish_now,
             mobile::mobile_tailscale,
             mobile::mobile_tailscale_serve,
+            mcp::mcp_status,
+            mcp::mcp_edit,
+            mcp::mcp_approvals,
+            mcp::mcp_answer,
             job_overview,
             retry_job,
             retry_failed_jobs,

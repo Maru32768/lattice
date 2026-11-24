@@ -1,6 +1,6 @@
 // Pop-out windows (G52) over the mock: each window is one page started as `?window=<label>`; what
 // crosses windows (the window commands, `emit_to` requests, storage keys) is read from the calls.
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, list, callsOf, chatScope, scopeDialog } from "./harness.ts";
 import { ARTICLES, CHAT_MESSAGES } from "./fixtures.ts";
 import { NO_FACETS, scopeKey } from "../src/library/library.ts";
 import type { Page } from "@playwright/test";
@@ -195,14 +195,16 @@ test("the chat window syncs article scopes, sends citations to main and docks ba
   await expect(q).toBeVisible();
   await expect(shell.locator(".dpane, .nav, [data-pane='list']")).toHaveCount(0);
   await shell.evaluate(() => window.__e2e.emit("doc-current", { id: 1, title: "From main" }));
-  await expect(shell.getByLabel("質問の範囲").locator("option", { hasText: "From main" })).toHaveCount(1);
+  await expect(chatScope(shell), "the chat window asks over the main window's article").toHaveText("この記事(From main)");
   await shell.evaluate(() =>
     window.__e2e.emit("open-docs", [
       { id: 1, title: "From main" },
       { id: 2, title: "From doc-1" },
     ]),
   );
-  await expect(shell.getByLabel("質問の範囲").locator("optgroup[label='開いている記事'] option")).toHaveText(["From main", "From doc-1"]);
+  await chatScope(shell).click();
+  await expect(scopeDialog(shell).getByRole("option")).toContainText(["この記事(From main)", "開いている記事すべて(2件)", "全記事", "From main", "From doc-1"]);
+  await shell.keyboard.press("Escape");
 
   await shell.getByRole("button", { name: "会話を選ぶ" }).click();
   await shell.getByRole("menuitemradio", { name: "MVCCとVACUUMの関係" }).click();
@@ -217,6 +219,25 @@ test("the chat window syncs article scopes, sends citations to main and docks ba
   expect(sent.at(-1)).toEqual({ kind: "chatDocked" });
   await expect.poll(() => callsOf(shell, "close_window")).toHaveLength(1);
   expect(await stored(shell, CHAT)).toBeNull();
+});
+
+test("the chat window names a scope sent while its library loads once its options are in, and never as the one before", async ({ shell }) => {
+  await seed(shell, { [CHAT]: "1" });
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["list_tags", "list_genres"];
+  });
+  await shell.goto("/?window=chat");
+  const scope = chatScope(shell);
+  await expect(scope).toHaveText("全記事");
+  await shell.evaluate((key) => window.__e2e.emit("chat-request", { key }), JSON.stringify({ kind: "tag", name: "kafka" }));
+  await expect(scope, "not the scope it replaced").toHaveText("");
+  await shell.evaluate(() => window.__e2e.release("list_tags"));
+  const kafka = `#kafka(${ARTICLES.filter((x) => x.tags.includes("kafka")).length}件)`;
+  await expect(scope, "named by its tag while the genres are still out").toHaveText(kafka);
+  await scope.click();
+  await expect(scopeDialog(shell).getByText("読み込み中…")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.release("list_genres"));
+  await expect(scopeDialog(shell).locator("[role=option].act")).toHaveAccessibleName(kafka);
 });
 
 test("closing the chat window only closes it: main does not dock it, and 対話 then opens the dock", async ({ shell }) => {

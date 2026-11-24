@@ -71,7 +71,7 @@ These providers are supported:
 
 Write your job, interests and the knowledge you can take for granted in **Settings › About you**, and the AI tailors its output to it. It holds up to 2,000 characters. These features use it:
 
-- Summaries and chat answers
+- Chat answers
 - Quiz questions
 - Article [importance](#importance) (articles are not rated while **About you** is empty)
 - The LLM feed filter
@@ -223,7 +223,7 @@ A saved article can be read in two views. Switch with **Reader** and **Page** at
 
 An article opens where you last read it, in either view, also after Lattice starts again. Switching between the Reader and the Page view keeps the paragraph you were reading. A search result or a chat citation still opens at its passage. The Page view finds the place by the paragraph's text, so it works on a page that has the same paragraph as the Reader.
 
-Imported Markdown has no original web page, so it has no Page view. The Page view of a PDF shows the saved original. This works offline, for a PDF imported from a file and for one saved from a URL. Here you can check equations and the figures drawn as lines and shapes. **Mixed** and **Translated** draw the translation over the original's paragraphs. Formulas are not sent to the AI provider: they go into the translation as the paper sets them. Zoom with `Ctrl`+wheel. `Ctrl`+`+` zooms in and `Ctrl`+`0` zooms back. The ☰ at the top left opens the contents. When a PDF has no bookmarks, Lattice builds them from its headings. Clicking a link inside the PDF goes to its place, and the back button returns. With **Mixed** or **Translated** on, **Translate this page** at the top right of a page translates only that page, including a paragraph that runs on to another page. When the page is done, pointing at it shows **Translate this page again**. If that fails, the old translation stays saved, and the same button shows it again.
+Imported Markdown has no original web page, so it has no Page view. The Page view of a PDF shows the saved original. This works offline, for a PDF imported from a file and for one saved from a URL. Here you can check equations and the figures drawn as lines and shapes. **Mixed** and **Translated** draw the translation over the original's paragraphs, except on pages set in vertical Japanese. Formulas are not sent to the AI provider: they go into the translation as the paper sets them. Zoom with `Ctrl`+wheel. `Ctrl`+`+` zooms in and `Ctrl`+`0` zooms back. The ☰ at the top left opens the contents. When a PDF has no bookmarks, Lattice builds them from its headings. Clicking a link inside the PDF goes to its place, and the back button returns. With **Mixed** or **Translated** on, **Translate this page** at the top right of a page translates only that page, including a paragraph that runs on to another page. When the page is done, pointing at it shows **Translate this page again**. If that fails, the old translation stays saved, and the same button shows it again.
 
 **The toolbar.** Both views have the same buttons at the right end of the toolbar: **Favorite**, **Mark as read**, **Ask**, **Quiz**, **Note**, focus mode and the ⋯ menu. The ⋯ menu has:
 
@@ -277,10 +277,11 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 | **Also translate articles in the display language** | With **Translate saved articles automatically** on, articles written in the display language are translated into the other language too (with English as the display language, English articles into Japanese). Off by default. |
 | **Parallel requests** | How many translation requests to the AI provider run at the same time (1–8, default 3). Long articles are translated in batches (up to 12 paragraphs each) in parallel, and short articles several at a time, so **Jobs** shows up to this many running. The article on screen is translated right away, outside this number. With a higher number, translation finishes sooner but reaches usage and API rate limits sooner. With Claude CLI and Codex CLI, more processes also run at once. The local translation server gets at most 3 requests at a time, whatever this number is. |
 | **Keep technical terms in English** | Keeps terms such as MVCC or write skew in English when translating into Japanese. When translating into English, uses the established English terms. On by default. |
-| **Extra instructions** | Instructions added to the end of the translation prompt, such as a preferred style or terms. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows the prompt they are added to. |
+| **Japanese style** | The style of translations into Japanese: **Plain (da, de aru)** or **Polite (desu, masu)**. The default, **Not set**, leaves the style to the translation engine. This setting applies to translations from the local translation server too, but not to translations into English. |
+| **Extra instructions** | Instructions added to the end of the translation prompt, such as which terms to use. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows the prompt that they are added to. |
 | **Sites not to translate** | Pages listed here stay in the original even when the Page view is set to Mixed or Translated. Write one per line; `*` matches any text. A host name alone also covers its subdomains (e.g. `www.google.*`). A line with a `/` is matched against the whole URL; `https://` may be written or left out (e.g. `https://example.com/docs/*`). As in `.gitignore`, a line starting with `!` is an exception: the pages it matches are translated. When several lines match, the last one wins. For example, `x.com/*` followed by `!x.com/*/status/*` translates only the posts on X. By default, the list holds the major search engines such as Google, Bing and DuckDuckGo. |
 
-Translations are stored separately for each combination of **Keep technical terms in English** and **Extra instructions**. After changing them, translate again the articles you want to read with the new settings. Changing the settings back shows the earlier translations again.
+Lattice stores translations separately for each combination of **Keep technical terms in English**, **Japanese style** and **Extra instructions**. After you change these settings, translate an article again to read it with the new ones. If you change the settings back, the earlier translations show again.
 
 **Translating with a local translation server.** PLaMo 3 Translate (Preferred Networks) is a model made only for translation. You can run it on your own PC and translate with it. Translation then uses no AI provider, so it costs no credits, and the text to translate goes only to that server.
 
@@ -288,7 +289,7 @@ Translations are stored separately for each combination of **Keep technical term
 2. In **Settings › Translation**, set **Translation engine** to **Local translation server**.
 3. If the server is not at the default URL, change **Translation server URL** and press **Save**. A trailing `/v1` may be written or left out. Once Lattice connects, it shows the name of the loaded model. You can check again at any time with **Check connection**.
 
-While **Local translation server** is chosen, **Keep technical terms in English** and **Extra instructions** are not used, because PLaMo 3 Translate translates technical terms too and takes no extra instructions. Translations from the local translation server are stored as if they were made with **Keep technical terms in English** off and no extra instructions. So an article that the AI provider translated with other settings counts as not translated yet and is translated again. The AI provider's translations are not deleted, and switching back to **AI providers** shows them again.
+While **Local translation server** is chosen, **Keep technical terms in English** and **Extra instructions** are not used, because PLaMo 3 Translate translates technical terms too and takes no extra instructions. Lattice stores translations from the local translation server as if they were made with **Keep technical terms in English** off, no extra instructions and the current **Japanese style**. So an article that the AI provider translated with other settings counts as not translated yet and is translated again. The AI provider's translations are kept, and setting **Translation engine** back to **AI providers** shows them again.
 
 When the server is not running (or is still loading the model), translation fails and does not fall back to the AI provider. An article's translation fails with an error saying the server cannot be reached, and is retried later like any failed job. Once the server is running, **Retry** in the Reader translates the article right away. In the Page view, paragraphs not yet translated stay in the original.
 
@@ -296,10 +297,12 @@ When the server is not running (or is still loading the model), translation fail
 
 Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it.
 
-- Summaries reflect **About you**.
+- In an open summary, the numbers after a sentence or key point refer to the passages it comes from. To go to a passage in the Reader, click its number. In the Page view's summary, a click also switches to the Reader.
+- A number in the summary that the article does not contain gets a wavy underline and is listed below the summary. A number rounded from one in the article, or converted to another unit, is underlined and listed too.
+- For an article over 100,000 characters, Lattice sends the start and the end to the AI and leaves out the middle.
 - **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
 - **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
-- If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
+- If the article's text or the summary settings change after a summary is made, or an app update changes how summaries are made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
 In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page. Press `g y` to open or close the summary: in the Page view it shows the whole summary above the page, and pressing it again closes it.
 
@@ -488,6 +491,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 - **Status** has the values **Unread**, **Read**, **Favorites** and **Needs attention**. **Needs attention** covers articles whose fetch or text extraction failed and articles with little text.
 - Choosing several values in one filter shows articles that match any of them (OR). Different filters show articles that match all of them (AND).
 - Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
+- The **Tag** filter lists every tag in the current list, most used first. When you type to search, the results show tags in the current list first, then tags outside it. A tag you choose is checked and stays where it is.
 - The counts next to the values are counts within the current list.
 
 Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
@@ -565,7 +569,7 @@ Besides switching lists, the commands include:
 
 Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. **Send key** in **Settings › Summaries & chat** can make `Enter` send too. The AI answers only from your saved articles. The numbers in the answer are citations. Click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
 
-**Scope.** **Scope** chooses which articles the answer is based on.
+**Scope.** **Scope** chooses which articles the answer is based on. In the list it opens, type in the field at the top to narrow it by name.
 
 - **This article**: the article in the focused tab
 - **All open articles**: the saved articles open in tabs in every window (you can also pick them one by one under it)
@@ -575,7 +579,7 @@ Open the chat pane with **Chat** in the navigation, type a question and send it 
 
 Choose the limit per question in **Context per question** in **Settings › Summaries & chat**: **Small (about 40,000 characters)**, **Standard (about 80,000 characters)** or **Large (about 150,000 characters)**. More context lets the answer draw on more articles, but each question costs more and takes longer.
 
-**The AI that answers.** **AI** chooses the provider, model and effort for answers in this chat. **Default (AI providers in Settings)** uses the steps in **Settings › AI providers**. With any other choice, only that AI answers. If it fails, Lattice does not move on to another AI. Lattice saves the choice with the chat when an answer comes back, and brings it back when you open the chat again. A new chat starts on the default.
+**The AI that answers.** The button to the left of **Send** shows which AI answers in this chat. Click it to choose the provider, model and effort. For a model that is not listed, choose **Custom model ID** under the provider and type its ID in the box that appears beside the button. **Default (AI providers in Settings)** uses the steps in **Settings › AI providers**. With any other choice, only that AI answers. If that AI fails, Lattice does not move on to another AI. Lattice saves the choice with the chat when an answer comes back, and restores it when you reopen the chat. A new chat starts on the default.
 
 **Conversations.**
 
@@ -717,6 +721,7 @@ Open **Settings** at the bottom of the navigation. Settings are grouped into **A
 | | **Updates** | [Updates](#updates) |
 | Data | **Backup**, **Cloud backup (R2)**, **Export**, **Logs & storage** | [Data and backups](#data-and-backups) |
 | | **Read on a phone** | [Read on a phone](#read-on-a-phone) |
+| | **AI agents (MCP)** | [CLI and MCP](#cli-and-mcp) |
 
 Type a section's name in the palette, for example **Settings: Translation**, to open that section directly.
 
@@ -881,7 +886,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 2. Scan the QR code with the phone's camera. The phone must be on the same network as the PC. Windows may ask whether to let Lattice through the firewall. Allow it on private networks.
 3. To open the page again quickly, add it to the phone's home screen. On an iPhone the page added there keeps its data apart from the browser's: open it from the icon and tap **Scan the QR code**, or paste the link from the QR code.
 
-The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles), genre, tag, collection, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images the PC has stored show in the text while the phone reads from the PC. Read from the snapshot, they appear as links, and the phone does not load them.
+The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles or a collection), genre, tag, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images the PC has stored show in the text while the phone reads from the PC. Read from the snapshot, they appear as links, and the phone does not load them.
 
 Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 
@@ -912,17 +917,17 @@ Opened from the Worker's address, the page opens without a connection too, with 
 
 The bucket and Cloudflare can read what is in it. The articles and the list are not encrypted there, as with a [cloud backup](#cloud-backup-r2).
 
-`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write`.
+`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write` or `--allow-delete`.
 
 ## CLI and MCP
 
-`lattice-cli.exe` searches and reads your saved articles from a terminal. Run as an MCP server, it serves them to AI agents such as Claude Code.
+`lattice-cli.exe` lets you search, read and change your saved articles from a terminal. AI agents such as Claude Code use the same library through the MCP server built into Lattice ([Use Lattice from Claude Code](#use-lattice-from-claude-code)).
 
 - Both the installer and the portable zip put it in the same folder as `Lattice.exe`. The installer's default location is `%LOCALAPPDATA%\Lattice`. It is not added to PATH, so run it by its full path.
 - It uses the same data as the app, including a portable copy's `data` folder or a folder chosen in **Settings › Logs & storage**. It works while the app is running.
 - In a portable copy, run `.\lattice-cli.exe` from the unzipped folder. It uses the `data` folder next to it. Pass `--data-dir PATH` to use another library.
 - The examples below assume the default installation. If you installed elsewhere, change the path to the executable.
-- Before you update or uninstall Lattice, quit your MCP clients so that no CLI process is running.
+- Before you update or uninstall Lattice, stop every `lattice-cli` command that is still running, such as `lattice-cli serve`.
 
 ### Commands
 
@@ -950,13 +955,24 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | `tag ID NAME` | Adds a tag to an article. Needs write permission. |
 | `read ID` | Marks an article as read. Needs write permission. |
 | `favorite ID` | Marks an article as a favorite. Needs write permission. |
-| `mcp` | Serves these commands to agents as an MCP server over stdio. |
+| `untag ID NAME`, `unread ID`, `unfavorite ID` | Undo `tag`, `read` and `favorite`. Need write permission. |
+| `rename-article ID TITLE` | Gives an article your own title. An empty title goes back to the one Lattice found. Needs write permission. |
+| `set-genre ID NAME` | Puts an article in a genre, which auto-classification does not overwrite. An empty name takes it out. Needs write permission. |
+| `add-genre NAME`, `rename-genre FROM TO`, `delete-genre NAME` | Add, rename and delete genres. A genre cannot be renamed to one that exists, and only a genre with no articles can be deleted. Need write permission. |
+| `create-collection NAME`, `rename-collection ID NAME` | Create and rename collections. Need write permission. |
+| `collect COLLECTION ARTICLE`, `uncollect COLLECTION ARTICLE` | Add an article to a collection, or take it out. Need write permission. |
+| `add-feed URL` | Subscribes to an RSS or Atom feed, fetching it once to check it. `--folder NAME` puts it in that folder, made if missing. Needs write permission. |
+| `rename-feed ID [NAME]`, `move-feed ID [FOLDER]`, `rename-folder ID NAME` | Rename a feed (without a name, back to its own title), move it into a folder by name (without one, out of any folder) and rename a folder. Need write permission. |
+| `delete-article ID` | Deletes an article with its summary, translation, note and quiz. Needs delete permission. |
+| `delete-collection ID`, `remove-feed ID`, `delete-folder ID` | Delete a collection, unsubscribe from a feed and delete a folder. Their articles and feeds stay. Need delete permission. |
+| `merge-genre FROM INTO` | Moves a genre's articles into another genre and deletes it. Needs delete permission. |
 
 Options for every command:
 
 - `--format json` (the default) or `--format text` (easier for people to read)
 - `--data-dir PATH`: use another data folder.
-- `--allow-write`: allow `save`, `tag`, `read` and `favorite`. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
+- `--allow-write`: allow the commands that need write permission. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
+- `--allow-delete`: also allow the commands that need delete permission.
 
 `lattice-cli --help` also lists the commands.
 
@@ -984,16 +1000,41 @@ Options for every command:
 - Search gives the same results as the app. If the app has not downloaded the semantic search model yet, the CLI does not download it and answers with full-text search only. The JSON output says so.
 - Questions asked with `ask` also appear in the app's chat history.
 - `save` only adds a fetch job; a running app does the fetch within 30 seconds. With `--run`, the CLI itself fetches the page and its images, and makes the search vectors if the model is present. In both cases, classification, importance, automatic translation and rendering are left to the app.
-- Changes made with `tag`, `read` and `favorite` show in the app the next time it reloads the list.
-- The CLI cannot remove favorites, mark articles unread, remove tags or delete articles. Agents are limited to actions that are easy to undo.
+- Changes made with the CLI show in the app the next time it reloads the list.
+- With `--allow-delete`, the CLI deletes without asking you, because you run it yourself. An agent deletes through the MCP server, and Lattice asks you before each deletion.
 
 ### Use Lattice from Claude Code
 
-```powershell
-claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
-```
+Agents connect to the MCP server built into Lattice, at `http://127.0.0.1:8788/mcp`. It is off by default, runs only while Lattice is running, and accepts connections only from this PC.
 
-With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
+1. In **Settings › AI agents (MCP)**, turn on **Run the MCP server**.
+2. In **New registration**, enter a name, choose a role and where to use it, and press **Register**.
+3. Press **Copy command** on the registration and run the copied command in a terminal. If the registration is for **One project**, run the command in that project's folder.
+
+Each registration has its own token, and its role decides what the agent can do:
+
+| Role | What the agent can do |
+|---|---|
+| **Read** | Use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. |
+| **Edit** | Also use the commands that need write permission. |
+| **Delete** | Also use the commands that need delete permission. Lattice asks you before each deletion ([Approve deletions](#approve-deletions)). |
+
+- Only one registration can be for **All of Claude Code**, and every project uses it. A registration for **One project** is used in its project instead. In a Git repository, it applies to the whole repository. Elsewhere, it applies only to the project's folder.
+- A role change takes effect from the agent's next call, but the tools the agent sees change only when it reconnects.
+- After **Regenerate token** or **Delete**, the old token stops working from the next call, even for agents that are already connected. The confirmation dialog shows the `claude mcp remove` command that takes the old registration out of Claude Code.
+- **Activity** lists the sessions that agents have started and each registration's latest 20 calls. Turning the server off or quitting Lattice clears both.
+- Changes an agent makes show in the app at once.
+- Registrations are left out of backups. After you restore a backup, make them again.
+
+### Approve deletions
+
+When an agent with the **Delete** role asks to delete something, Lattice brings its main window to the front and flashes it on the taskbar. Keyboard focus stays in the app you are typing in, so what you type cannot answer the request.
+
+- The **Allow an AI agent to delete?** dialog names the registration and shows what would be deleted.
+- **Allow deletion** becomes available after the window with the dialog has been in focus for 1 second. Press it, or press **Deny**.
+- If you don't answer within 2 minutes, nothing is deleted. All agents together can have up to 10 deletions waiting at once, and Lattice refuses requests beyond that.
+- If what would be deleted changes while you decide, nothing is deleted.
+- If the agent cancels its request before you answer, the request leaves the dialog and nothing is deleted.
 
 ### Watch out for prompt injection
 
@@ -1001,8 +1042,8 @@ Saved articles are web pages written by other people. An agent that reads them c
 
 Lattice starts every tool result with a notice that the content is untrusted outside text and that instructions in it must not be followed. It also cuts each result at 25,000 characters. The risk remains, so:
 
-- Don't allow writes (`--allow-write`) unless you need them.
-- Don't give an agent session that reads your articles risky tools at the same time, such as running shell commands, writing files or sending email.
+- Give a registration the **Read** role unless the agent needs more. Don't run the CLI with `--allow-write` for an agent.
+- If an agent session reads your articles, don't also give it risky tools, such as ones that run shell commands, write files or send email. An agent that can run shell commands could also run `lattice-cli` with `--allow-delete`, which deletes without asking you.
 
 ## Data and backups
 
@@ -1064,13 +1105,13 @@ A backup contains articles, images, translations, words, review history and the 
 
 ### Restore a backup
 
-Restoring is done by hand. It replaces the database file, so keep every process that uses the library (Lattice, `lattice-cli`, MCP servers) stopped while you work. Do not replace the database while any of them is running.
+Restoring is done by hand. It replaces the database file, so keep every process that uses the library (Lattice and `lattice-cli`) stopped while you work. Do not replace the database while any of them is running.
 
 A local backup is a SQLite file named `backups/lattice-<Unix seconds>.db`, a database that can be used as it is.
 
 1. In **Settings › Logs & storage**, note the full path of the database. Use the path shown there even if you moved the data folder or use a portable copy.
 2. Copy the backup you want to restore to a separate folder. Leave the original backup untouched. If its name ends in `.db.gz`, extract it first. To download a backup from R2, see [R2 restore steps](../infra/r2/README.md#3-復元).
-3. Close every Lattice window, CLI command and MCP server that uses this database.
+3. Close every Lattice window and stop every CLI command that uses this database.
 4. Move the current `lattice.db` to a recovery folder. If `lattice.db-wal` and `lattice.db-shm` exist, move them with it. Don't leave an old WAL or SHM file in the original folder.
 5. Copy the backup database into the original folder and name it `lattice.db`.
 6. Start Lattice and check that the articles, images, translations, words and review history are there.
@@ -1111,7 +1152,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 |---|---|
 | Translation | The paragraphs to translate, and your translation **Extra instructions** |
 | Translation in the Page view | The paragraphs of the page you are viewing (only while **Mixed** or **Translated** is chosen) |
-| Summaries | The article text, **About you** and your summary instructions |
+| Summaries | The article's title and text, and your summary instructions |
 | Classification | The title, the domain, and the summary or the start of the text |
 | Importance | The title, the domain, the summary, the headings, excerpts from the beginning, middle and end of the text, and **About you** |
 | Quizzes | The article text and **About you** |
@@ -1123,7 +1164,7 @@ Semantic search, reading aloud and text extraction run only on your computer. Th
 
 ### API keys
 
-API keys and the R2 Secret Access Key are stored in the local database. They are never shown after you save them, and are left out of backups, R2 uploads and exports. When you move the data folder with **Change…** in **Settings › Logs & storage**, they are copied to the new folder with the database.
+API keys and the R2 Secret Access Key are stored in the local database. They are never shown after you save them, and are left out of backups, R2 uploads and exports. When you move the data folder with **Change…** in **Settings › Logs & storage**, they are copied to the new folder with the database. The tokens of MCP registrations are also left out of backups, R2 uploads and exports.
 
 ### Article content is untrusted
 

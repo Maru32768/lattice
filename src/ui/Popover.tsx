@@ -129,17 +129,86 @@ function keepFocus(e: Event) {
   }
 }
 
-/** A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on close. */
+/** The nearest ancestor of `el` that scrolls its content, or null. */
+function scroller(el: Element) {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (/auto|scroll|overlay/.test(s.overflowX + s.overflowY)) {
+      return p;
+    }
+  }
+  return null;
+}
+
+/**
+ * Where `anchor` sits in the content it scrolls with: taken on opening, and again from the anchor of then when the
+ * window or the pane changes size. What the popover picks can replace, move or rewrap its anchor (a chip shows the
+ * picks), and a popover that followed it there would carry every row away from the pointer.
+ */
+function anchorPlace(anchor: HTMLElement, pane: Element | null) {
+  let live = anchor;
+  const sizes = () => `${innerWidth} ${innerHeight} ${pane?.clientWidth} ${pane?.clientHeight}`;
+  const take = (el: HTMLElement) => {
+    const box = scroller(el);
+    const a = el.getBoundingClientRect();
+    const b = box?.getBoundingClientRect();
+    return {
+      box,
+      sizes: sizes(),
+      x: a.left - (b?.left ?? 0) + (box?.scrollLeft ?? 0),
+      y: a.top - (b?.top ?? 0) + (box?.scrollTop ?? 0),
+      w: a.width,
+      h: a.height,
+      /** The scroller's content height and scroll when last read. */
+      tall: box?.scrollHeight ?? 0,
+      top: box?.scrollTop ?? 0,
+    };
+  };
+  let at = take(anchor);
+  return {
+    // floating-ui follows the scrolling of this element's ancestors, read once on opening.
+    contextElement: anchor,
+    getBoundingClientRect: () => {
+      if (at.sizes !== sizes() && live.isConnected) {
+        at = take(live);
+      }
+      const box = at.box;
+      if (box) {
+        // A pick that shortens the content (a row leaves the list) pulls a scroll at its end back with it: the reader did
+        // not scroll, so the popover stays.
+        if (box.scrollHeight < at.tall && box.scrollTop < at.top && box.scrollTop >= box.scrollHeight - box.clientHeight - 1) {
+          at.y += box.scrollTop - at.top;
+        }
+        at.tall = box.scrollHeight;
+        at.top = box.scrollTop;
+      }
+      const b = box?.getBoundingClientRect();
+      return new DOMRect((b?.left ?? 0) + at.x - (box?.scrollLeft ?? 0), (b?.top ?? 0) + at.y - (box?.scrollTop ?? 0), at.w, at.h);
+    },
+    /** The anchor now: a pick can replace it. */
+    follow: (el: HTMLElement) => {
+      live = el;
+    },
+  };
+}
+
+/**
+ * A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on
+ * close, or with `refocus` false to where it was when the popover opened. It scrolls and resizes with the anchor, but
+ * stays where it is when a pick moves the anchor (`anchorPlace`).
+ */
 export function Popover({
   anchor,
   label,
   width,
+  refocus,
   onClose,
   children,
 }: {
   anchor: HTMLElement;
   label: string;
   width: number;
+  refocus?: boolean;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -147,9 +216,26 @@ export function Popover({
   // Inside the pane, so a popover opened from the list stays off the page webview.
   const pane = anchor.closest("[data-pane]");
   const w = Math.min(width, (pane?.clientWidth ?? window.innerWidth) - 16);
+  const [at] = useState(() => anchorPlace(anchor, pane));
+  // Radix gives the focus back to a trigger, and this popover has none: an anchor is not always where it came from.
+  const [before] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  useLayoutEffect(() => at.follow(anchor), [at, anchor]);
+  useLayoutEffect(() => {
+    // Chromium scrolls the content to hold what is at the top of the view in place as a pick rewraps or adds what is
+    // around it (scroll anchoring), and the popover would follow that as the reader's scroll.
+    const box = scroller(at.contextElement);
+    if (!box) {
+      return;
+    }
+    const was = box.style.overflowAnchor;
+    box.style.overflowAnchor = "none";
+    return () => {
+      box.style.overflowAnchor = was;
+    };
+  }, [at]);
   return (
     <PV.Root open onOpenChange={(o) => !o && onClose()}>
-      <PV.Anchor virtualRef={{ current: anchor }} />
+      <PV.Anchor virtualRef={{ current: at }} />
       <PV.Portal>
         <PV.Content
           {...s}
@@ -170,7 +256,8 @@ export function Popover({
               return;
             }
             e.preventDefault();
-            (anchor.querySelector("button") ?? anchor).focus();
+            // Where the anchor is, not where the reader has scrolled to since.
+            (refocus !== false ? (anchor.querySelector("button") ?? anchor) : before)?.focus({ preventScroll: true });
           }}
           // The anchor toggles the popover itself: a press on it is not a press outside.
           onInteractOutside={(e) => anchor.contains(e.target as Node) && e.preventDefault()}
@@ -212,6 +299,17 @@ function stepMenu(e: React.KeyboardEvent<HTMLElement>) {
 
 type Parts = Pick<typeof DM, "Item" | "Label" | "Separator" | "Sub" | "SubTrigger" | "SubContent" | "Portal">;
 
+/** The check column of an item that has a `checked` state. */
+function Check({ checked }: { checked?: boolean }) {
+  return (
+    checked !== undefined && (
+      <span className="check" aria-hidden="true">
+        {checked ? "✓" : ""}
+      </span>
+    )
+  );
+}
+
 /** A submenu, kept off a page webview like the menu it opens from. */
 function SubMenu({ parts: P, item, height }: { parts: Parts; item: MenuItem; height: string }) {
   const s = useSurface();
@@ -220,6 +318,7 @@ function SubMenu({ parts: P, item, height }: { parts: Parts; item: MenuItem; hei
     <P.Sub>
       <P.SubTrigger asChild disabled={item.disabled}>
         <button role="menuitem" className="sub" disabled={item.disabled}>
+          <Check checked={item.checked} />
           <span className="grow">{item.label}</span>
           <Icon name="right" size="sm" />
         </button>
@@ -253,11 +352,7 @@ function MenuItems({ parts: P, items, height }: { parts: Parts; items: (MenuItem
           disabled={it.disabled}
           title={it.hint}
         >
-          {it.checked !== undefined && (
-            <span className="check" aria-hidden="true">
-              {it.checked ? "✓" : ""}
-            </span>
-          )}
+          <Check checked={it.checked} />
           {it.hint ? (
             <span className="mi">
               {it.label}

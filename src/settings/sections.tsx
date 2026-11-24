@@ -23,6 +23,7 @@ export type SettingsSection =
   | "backup"
   | "r2"
   | "mobile"
+  | "mcp"
   | "export"
   | "storage";
 
@@ -58,6 +59,7 @@ export const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lea
   { id: "update", group: "app", title: "settingsView.update", lead: "settingsView.updateLead" },
   { id: "backup", group: "data", title: "settingsView.backup", lead: "settingsView.backupLead" },
   { id: "mobile", group: "data", title: "settingsView.mobile", lead: "settingsView.mobileLead" },
+  { id: "mcp", group: "data", title: "settingsView.mcp", lead: "settingsView.mcpLead" },
   { id: "r2", group: "data", title: "settingsView.r2", lead: (t) => t.rich("settingsView.r2Lead", { code: <code>infra/r2</code> }) },
   { id: "export", group: "data", title: "settingsView.export" },
   { id: "storage", group: "data", title: "settingsView.storage" },

@@ -1,20 +1,11 @@
 // The title bar, the toolbars and the Reader / Page parity (H8–H14).
-import { test, expect, list, callsOf, navItem } from "./harness.ts";
+import { test, expect, list, callsOf, navItem, openPage } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
 
 const more = (page: Page) => page.locator(".docbar [aria-haspopup=menu]").last();
-
-/** Opens an article (the first one), then its Page view, and lets the page finish loading. */
-async function openPage(app: Page, title?: string) {
-  await (title ? list(app).locator(".row", { hasText: title }) : list(app).locator(".row").first()).click();
-  await app.locator(".docbar").getByRole("button", { name: "Page" }).click();
-  await expect.poll(async () => (await callsOf(app, "browser_open")).length).toBeGreaterThan(0);
-  const { tab, url } = (await callsOf(app, "browser_open")).at(-1) as { tab: string; url: string };
-  await app.evaluate((p) => window.__e2e.emit("browser-page", p), { tab, url, loading: false, can_go_back: false, can_go_forward: false });
-}
 
 /** Serialized into the page: check the actual face and glyph subsets, without loading them from the test. */
 function firstMenuFonts(): Promise<boolean> {

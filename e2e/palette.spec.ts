@@ -82,3 +82,23 @@ test("a pasted URL of a saved article offers its Reader view first", async ({ ap
   await app.keyboard.press("Enter");
   await expect(app.locator(".art-title")).toHaveText(saved.title!);
 });
+
+test("closing the palette gives the focus back without scrolling the article to it", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 400 });
+  await list(app).locator(".row", { hasText: ARTICLES[0].title! }).click();
+  const add = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
+  await add.click();
+  await app.keyboard.press("Escape");
+  await expect(add).toBeFocused();
+  const doc = app.locator(".doc-scroll").first();
+  await doc.evaluate((e) => (e.scrollTop = e.scrollHeight / 2));
+  await expect(add).not.toBeInViewport();
+  const top = await doc.evaluate((e) => e.scrollTop);
+
+  await app.keyboard.press("Control+p");
+  await expect(palette(app)).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(palette(app)).toBeHidden();
+  await expect(add).toBeFocused();
+  expect(await doc.evaluate((e) => e.scrollTop), "the article stays where it was read").toBe(top);
+});

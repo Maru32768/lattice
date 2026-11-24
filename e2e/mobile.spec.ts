@@ -204,19 +204,45 @@ test("the filter sheet narrows the list as the PC's filters do, and the bar says
     sheet.getByRole("region", { name: "ジャンル" }).getByRole("button", { name: /フロントエンド/ }),
     "its own choice does not hide the others",
   ).toContainText("1");
-  await sheet
-    .getByRole("region", { name: "グループ" })
-    .getByRole("button", { name: /あとで読む/ })
-    .click();
+  await sheet.getByRole("region", { name: "表示" }).getByRole("button", { name: "あとで読む", exact: true }).click();
   await sheet.getByRole("button", { name: "1件を表示" }).click();
   await expect(sheet).toBeHidden();
   await expect(page.getByRole("link")).toHaveCount(1);
   await expect(page.getByRole("link", { name: /Postgres MVCC/ })).toBeVisible();
-  await expect(page.getByRole("banner")).toContainText("すべての記事 · データベース · あとで読む · 1件");
+  await expect(page.getByRole("banner")).toContainText("あとで読む · データベース · 1件");
   await page.getByRole("button", { name: "絞り込み", exact: true }).click();
   await sheet.getByRole("button", { name: "絞り込みを解除" }).click();
   await sheet.getByRole("button", { name: "閉じる" }).click();
+  await expect(page.getByRole("banner"), "the group is the scope, which the filters leave").toContainText("あとで読む · 1件");
+  await showScope(page, "すべての記事");
   await expect(page.getByRole("link")).toHaveCount(3);
+});
+
+test("a group of read articles is a scope to show, as in the PC's sidebar", async ({ page }) => {
+  const ddia = { id: 7, name: "DDIA", created_at: "2026-11-01T00:00:00Z", count: 1 };
+  const index = {
+    format: 1,
+    generated_at: 1,
+    ui_language: "ja",
+    applied_ops: [],
+    groups: [ddia],
+    articles: [row(1, "Replication", { groups: [7], read_status: "read" }), row(2, "Unread article")],
+  };
+  await start(page, { index });
+  await expect(page.getByRole("link")).toHaveCount(1);
+  await showScope(page, "DDIA");
+  await expect(page.getByRole("link")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: /Replication/ })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("link", { name: /Replication/ }), "the phone opens the group again").toBeVisible();
+
+  // An older snapshot, made before the group, is what the phone reads while the PC is off.
+  index.groups = [];
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("banner")).toContainText("すべての記事 · 2件");
+  index.groups = [ddia];
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("banner"), "the PC's list has the group, so the phone shows it again").toContainText("DDIA · 1件");
 });
 
 test("an article read from 未読 stays in the list until the view changes", async ({ page }) => {

@@ -361,13 +361,15 @@ test("under the PDF viewer's text layer, the paragraph on the line beats one tra
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
 });
 
-test("a short place begins a block only when no word follows: a cell's No is not Note nor No such", async ({ page }) => {
+test("a short place begins a block only when no word follows: a cell's No is not Note nor No such, nor a table's Notes", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
     const ps = document.querySelectorAll("p");
     ps[20].textContent = "Note that this paragraph is not the cell.";
     ps[25].textContent = "No such file or directory, the shell said.";
+    // A search result looks for its text in the tables too, a place not.
+    ps[28].insertAdjacentHTML("afterend", "<table><tr><td>Notes</td><td>None of these</td></tr></table>");
     ps[30].textContent = "Installation is quick: one command.";
     ps[45].textContent = "Installation¶";
   });
@@ -475,4 +477,96 @@ test("trying a place again goes on in one chain, not one more for each try", asy
   };
   const one = await tries(1);
   expect(await tries(3), "not three chains").toBeLessThanOrEqual(one + 2);
+});
+
+/** In the page: translation on, every snippet shown as its translation, `訳:` and the snippet. */
+const translateAll = () => {
+  const internals = window.__TAURI_INTERNALS__!;
+  const ipc = internals.invoke;
+  internals.invoke = (cmd, args) =>
+    cmd === "overlay_translate" ? Promise.resolve((args!.snippets as string[]).map((s) => [{ source: s, translation: `訳:${s}` }])) : ipc(cmd, args);
+  window.__lattice!.configure({ enabled: true, percent: null });
+};
+
+test("a table is translated cell by cell, also a theme's inline-block table, while a sentence keeps its inline flex or table box", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const rows =
+      "<thead><tr><th>Event</th><th>Kernel impact</th></tr></thead>" +
+      "<tbody><tr><td>Linus announces Linux</td><td>Monolithic kernel</td></tr><tr><td>GPL adoption</td><td>Contributions begin</td></tr></tbody>";
+    // The first as HTML written by hand has it, all its rows in the tbody the parser adds; the second as MkDocs Material
+    // wraps one, to scroll it sideways.
+    const tables =
+      `<table>${rows.replace(/<\/?t(?:head|body)>/gu, "")}</table>` +
+      `<div><div style="display: inline-block"><table style="display: inline-block">${rows}</table></div></div>`;
+    // A flex item is a block by its computed display, and KaTeX lays out a formula in table rows.
+    const boxes =
+      '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
+      '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
+    const letters =
+      '<table id="letters"><tr><td id="number">12.3</td><td id="linked"><a href="#">4.5</a></td><td id="cyrillic">Ядро</td><td id="letter">x</td><td id="mark">–</td></tr></table>';
+    // Responsive CSS that lines a row's cells up as inline blocks.
+    const responsive =
+      '<table id="responsive"><tr><th style="display: inline-block">Head one</th><th style="display: inline-block">Head two</th></tr>' +
+      '<tr><td style="display: inline-block">Alpha one</td><td style="display: inline-block">Beta two</td></tr></table>';
+    // A table laid out as a grid, its row groups and rows boxes of none of their own.
+    const grid =
+      '<table id="grid" style="display: grid; grid-template-columns: 1fr 1fr"><tbody style="display: contents"><tr style="display: contents">' +
+      "<td>Gamma three</td><td>Delta four</td></tr></tbody></table>";
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + letters + responsive + grid);
+  });
+  await page.evaluate(translateAll);
+  const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
+  await expect(page.locator("table:not(#letters, #responsive, #grid) :is(th, td)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
+  await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
+  await expect(page.locator("#katex")).toHaveText("訳:Energy is mc2 in total.");
+  // Figures alone have nothing to translate, also in a link; letters of any script have.
+  for (const cell of ["#number", "#linked"]) {
+    await expect(page.locator(cell)).toHaveAttribute("data-lattice-block", "skip");
+  }
+  await expect(page.locator("#cyrillic")).toHaveText("訳:Ядро");
+  // Leaves are taken at once when translation starts: one letter or mark is none.
+  for (const cell of ["#letter", "#mark"]) {
+    await expect(page.locator(cell)).not.toHaveAttribute("data-lattice-block");
+  }
+  await expect(page.locator("#responsive :is(th, td)")).toHaveText(["訳:Head one", "訳:Head two", "訳:Alpha one", "訳:Beta two"]);
+  await expect(page.locator("#grid td")).toHaveText(["訳:Gamma three", "訳:Delta four"]);
+});
+
+test("a search result's table, one block in the Reader, is found though each cell is a block here", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  // No space between the cells, as on a minified page, and in a table that lays out the page.
+  await page.evaluate(() =>
+    document
+      .querySelectorAll("p")[40]
+      .insertAdjacentHTML(
+        "afterend",
+        '<table id="layout"><tr><td><p>A paragraph of the layout.</p>' +
+          '<table id="data"><tr><th>Year</th><th>Event</th></tr><tr><td>1991</td><td>Linus announces Linux</td></tr></table></td></tr></table>',
+      ),
+  );
+  await page.evaluate(translateAll);
+  await page.locator("#data").scrollIntoViewIfNeeded();
+  await expect(page.locator("#data td").last()).toHaveText("訳:Linus announces Linux");
+  await page.evaluate(() => scrollTo(0, 0));
+  // As the Reader keeps a table's text: its cells joined by tabs, its rows by lines. Found by its original, though translated.
+  const flashed = await page.evaluate(() => [
+    window.__lattice!.scrollToText("Year\tEvent\n1991\tLinus announces Linux"),
+    ...["#data", "#layout"].map((s) => document.querySelector(s)!.classList.contains("lattice-flash")),
+  ]);
+  expect(flashed, "found, the table itself, not the one around it").toEqual([true, true, false]);
+  await expect(page.locator("#data")).toBeInViewport();
+});
+
+test("on a Japanese page, a cell of one ideograph is a word and is translated", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    document.documentElement.lang = "ja";
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", '<table id="ja"><tr><th>年</th><th>出来事</th></tr></table>');
+  });
+  await page.evaluate(translateAll);
+  await expect(page.locator("#ja th")).toHaveText(["訳:年", "訳:出来事"]);
 });

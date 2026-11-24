@@ -4,6 +4,7 @@ import { feedName } from "../library/groups";
 import { activeDims, countBy, facetLabel, genreSwatch, groupName, scopeLabel, type Facets, type Scope } from "../library/library";
 import { filterKey } from "../library/scopes";
 import { coverStyle, useCover } from "../ui/Popover";
+import { Marked } from "../ui/PickList";
 import { onMiddle } from "../lib/middle";
 import { Icon, Kbd, type IconName } from "../ui/Icon";
 import type { Screen } from "../library/Nav";
@@ -103,20 +104,6 @@ const NOT_COMMANDS = new Set<ActionId>([
 const URLISH = /^(https?:\/\/\S+|[\w-]+(\.[\w-]+)+(\/\S*)?)$/i;
 const LIMIT = 5;
 
-function Hl({ text, q }: { text: string; q: string }) {
-  const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
-  if (i < 0) {
-    return <>{text}</>;
-  }
-  return (
-    <>
-      {text.slice(0, i)}
-      <mark>{text.slice(i, i + q.length)}</mark>
-      {text.slice(i + q.length)}
-    </>
-  );
-}
-
 const Tg = ({ children }: { children: React.ReactNode }) => <span className="tg">{children}</span>;
 
 /** One input for commands, articles, filters, URLs and search (Palette board). */
@@ -166,7 +153,8 @@ export function Palette({
     // After an initial ">": typing goes on from it.
     const end = input.current?.value.length ?? 0;
     input.current?.setSelectionRange(end, end);
-    return () => prev?.focus?.();
+    // Not to scroll the article back to a control in it that the reader has scrolled away from.
+    return () => prev?.focus?.({ preventScroll: true });
   }, []);
 
   const raw = q.trim();
@@ -334,7 +322,7 @@ export function Palette({
         out.push({
           group: "tabs",
           icon: tab.kind === "page" ? "page" : "reader",
-          label: <Hl text={label.title} q={text} />,
+          label: <Marked text={label.title} q={text} />,
           sub: label.domain,
           right: panes > 1 ? t("docArea.document", { x: pane }) : undefined,
           run: () => actions.tab(tab.id),
@@ -428,7 +416,7 @@ export function Palette({
         out.push({
           group: "articles",
           icon: "reader",
-          label: <Hl text={a.title ?? a.original_url} q={text} />,
+          label: <Marked text={a.title ?? a.original_url} q={text} />,
           right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : siteOf(a, t)),
           run: (newTab) => actions.open(a, newTab),
         });
@@ -440,7 +428,7 @@ export function Palette({
           group: "tags",
           label: (
             <Tg>
-              #<Hl text={tag} q={text} />
+              #<Marked text={tag} q={text} />
             </Tg>
           ),
           right: t("palette.articleCount", { n }),
@@ -457,7 +445,7 @@ export function Palette({
         out.push({
           group: "sources",
           icon: "folder",
-          label: <Hl text={f.name} q={text} />,
+          label: <Marked text={f.name} q={text} />,
           sub: t("common.folder"),
           right: t("palette.unreadCount", { n }),
           run: () => actions.scope({ kind: "folder", id: f.id }),
@@ -470,7 +458,7 @@ export function Palette({
         out.push({
           group: "sources",
           icon: id == null ? "manual" : "rss",
-          label: <Hl text={name} q={text} />,
+          label: <Marked text={name} q={text} />,
           sub: id == null ? undefined : t("common.feed"),
           right: t("palette.unreadCount", { n: unreadByFeed.get(id) ?? 0 }),
           run: () => actions.scope({ kind: "feed", id }),
@@ -486,7 +474,7 @@ export function Palette({
           label: (
             <>
               <span className="sw" style={{ background: genreSwatch(g) }} />
-              <Hl text={g ?? t("common.unclassified")} q={text} />
+              <Marked text={g ?? t("common.unclassified")} q={text} />
             </>
           ),
           right: t("palette.articleCount", { n }),

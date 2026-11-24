@@ -171,20 +171,24 @@ pub fn load(store: &Store) -> Result<Vec<(AnyLlm, Option<String>)>, String> {
 /// The provider for one entry, with its API key resolved now, and the model to record when it reports none.
 pub fn build(store: &Store, e: &ChainEntry) -> Result<(AnyLlm, Option<String>), String> {
     let key = api_key(store, e.kind)?.map(|(k, _)| k);
+    Ok((provider(e, key), e.model.clone()))
+}
+
+/// The provider for one entry with the given API key (ignored by the CLIs).
+pub fn provider(e: &ChainEntry, key: Option<String>) -> AnyLlm {
     let (model, effort) = (e.model.clone(), e.effort);
-    let llm = match e.kind {
+    match e.kind {
         ProviderKind::ClaudeCli => {
             let mut c = ClaudeCli::default();
             c.effort = effort;
-            c.set_model(model.clone());
+            c.set_model(model);
             AnyLlm::Claude(c)
         }
-        ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model: model.clone(), effort, ..CodexCli::default() }),
-        ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model.clone(), effort)),
-        ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model.clone(), effort)),
-        ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model.clone(), effort)),
-    };
-    Ok((llm, model))
+        ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model, effort, ..CodexCli::default() }),
+        ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model, effort)),
+        ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model, effort)),
+        ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model, effort)),
+    }
 }
 
 #[derive(Clone)]
@@ -373,7 +377,7 @@ mod tests {
         let e = all_fail.complete_json("translate", input, &schema).await.unwrap_err().to_string();
         assert_eq!(e.matches("usage limit").count(), 2, "{e}");
         // Summary Fake reports no model: the configured one is recorded.
-        let c = LlmChain::new(vec![(Fake::new(), Some("cfg".into()))]).complete_json("You summarize technical articles", "", &schema).await.unwrap();
+        let c = LlmChain::new(vec![(Fake::new(), Some("cfg".into()))]).complete_json("You summarize a technical article", "", &schema).await.unwrap();
         assert_eq!((c.model.as_deref(), c.provider.as_str()), (Some("cfg"), "fake"));
     }
 

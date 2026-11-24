@@ -5,7 +5,7 @@
 //! PDF: it fails with an error or, when lopdf meets the memory limit as it inflates an object stream, reads without the
 //! rest of that stream. A crash that the guards in `pdf` miss fails the PDF the same way.
 //!
-//! A binary calls `init` before anything else: the app, and `lattice-cli` for its commands, its MCP server and `serve`.
+//! A binary calls `init` before anything else: the app, and `lattice-cli` for its commands and `serve`.
 //! A process that does not (a test run) reads PDFs itself, and so does the worker.
 
 use std::ffi::OsString;

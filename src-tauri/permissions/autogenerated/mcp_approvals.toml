@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mcp-approvals"
+description = "Enables the mcp_approvals command without any pre-configured scope."
+commands.allow = ["mcp_approvals"]
+
+[[permission]]
+identifier = "deny-mcp-approvals"
+description = "Denies the mcp_approvals command without any pre-configured scope."
+commands.deny = ["mcp_approvals"]

@@ -12,6 +12,7 @@ import type {
   ChatScope,
   CustomInstructions,
   EngineKind,
+  Form,
   EngineSettings,
   FeedCandidate,
   FeedFilter,
@@ -26,6 +27,10 @@ import type {
   LlmSettings,
   ProviderHealth,
   Quiz,
+  McpApproval,
+  McpEdit,
+  McpRegistration,
+  McpStatus,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
@@ -139,6 +144,7 @@ const store = {
   /** The library's UI preferences by key; a spec puts rows here before the app starts with `window.__uiPrefs`. */
   uiPrefs: { ...(globalThis as { __uiPrefs?: Record<string, string> }).__uiPrefs } as Record<string, string>,
   keepTerms: true,
+  translateForm: null as Form | null,
   translateEngine: "llm" as EngineKind,
   translateLocalUrl: "http://127.0.0.1:8077",
   autoTranslate: false,
@@ -184,6 +190,10 @@ const store = {
     fell_back: false,
   } as MobileStatus,
   mobileToken: "token",
+  mcp: { enabled: false, error: null, fell_back: false, registrations: [] } as McpStatus,
+  /** Counts tokens made, so that each one differs. */
+  mcpTokens: 0,
+  mcpApprovals: [] as McpApproval[],
   tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
   r2: {
     enabled: false,
@@ -311,7 +321,7 @@ function view(id: number): ArticleView | null {
           { id: 2000 + id, type: "translate", article_id: id, params: null, status: "pending", attempt_count: 0, last_error: null, next_run_at: null },
         ]
       : jobsOf(a),
-    summary: summary ? { text: summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
+    summary: summary ? { ...summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
     note: notes.get(id) ?? null,
   };
 }
@@ -763,6 +773,8 @@ export const handlers = {
     url === "http://127.0.0.1:8077" ? "plamo-3-translate" : reject("translate.localUnavailable", { url, detail: "connection refused" }),
   get_translate_keep_terms: (): boolean => store.keepTerms,
   set_translate_keep_terms: ({ on }: { on: boolean }) => void (store.keepTerms = on),
+  get_translate_form: (): Form | null => store.translateForm,
+  set_translate_form: ({ form }: { form: Form | null }) => void (store.translateForm = form),
   get_auto_translate: (): boolean => store.autoTranslate,
   set_auto_translate: ({ on }: { on: boolean }) => void (store.autoTranslate = on),
   get_auto_translate_own_language: (): boolean => store.autoTranslateOwnLanguage,
@@ -1044,6 +1056,54 @@ export const handlers = {
     store.mobile = { ...store.mobile, url };
     return store.mobile;
   },
+  mcp_status: (): McpStatus => store.mcp,
+  mcp_approvals: (): McpApproval[] => store.mcpApprovals,
+  mcp_answer: ({ id }: { id: number; allow: boolean }) => {
+    store.mcpApprovals = store.mcpApprovals.filter((a) => a.id !== id);
+  },
+  mcp_edit: ({ edit }: { edit: McpEdit }): McpStatus => {
+    const command = (scope: string) =>
+      `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
+    const regs = store.mcp.registrations;
+    switch (edit.kind) {
+      case "enable":
+        store.mcp = { ...store.mcp, enabled: edit.on };
+        break;
+      case "create": {
+        const name = edit.name.trim();
+        if (regs.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
+          throw JSON.stringify({ code: "mcp.nameTaken", params: { name } });
+        }
+        const all = regs.find((r) => r.scope === "user");
+        if (edit.scope === "user" && all) {
+          throw JSON.stringify({ code: "mcp.userTaken", params: { name: all.name } });
+        }
+        const made = command(edit.scope);
+        const reg = {
+          id: `r${store.mcpTokens}`,
+          name,
+          role: edit.role,
+          scope: edit.scope,
+          command: made,
+          remove: `claude mcp remove lattice -s ${edit.scope}`,
+          sessions: [],
+          calls: [],
+        };
+        store.mcp = { ...store.mcp, registrations: [...regs, reg] };
+        break;
+      }
+      case "regenerate":
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope) } : r)) };
+        break;
+      case "set_role":
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
+        break;
+      case "delete":
+        store.mcp = { ...store.mcp, registrations: regs.filter((r) => r.id !== edit.id) };
+        break;
+    }
+    return store.mcp;
+  },
   pick_data_dir: () => null,
   open_data_dir: none,
   open_log_dir: none,
@@ -1075,6 +1135,16 @@ export const pluginHandlers: Record<string, () => unknown> = {
   "plugin:window|inner_position": () => ({ x: 0, y: 0 }),
   "plugin:webview|set_webview_focus": none,
 };
+
+/** What an agent's requests leave on the MCP server for registration `id`, as the app would then report it. */
+export function mcpActivity(id: string, activity: Pick<McpRegistration, "sessions" | "calls">) {
+  store.mcp = { ...store.mcp, registrations: store.mcp.registrations.map((r) => (r.id === id ? { ...r, ...activity } : r)) };
+}
+
+/** The deletions agents wait on the user for, as the MCP server would then hold them. */
+export function mcpApprovals(waiting: McpApproval[]) {
+  store.mcpApprovals = waiting;
+}
 
 export function handle(cmd: string, args: unknown): unknown {
   const h = (handlers as Record<string, (a: unknown) => unknown>)[cmd] ?? pluginHandlers[cmd];
