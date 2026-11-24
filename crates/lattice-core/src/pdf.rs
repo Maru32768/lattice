@@ -1802,15 +1802,15 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     let mut drafts: Vec<Draft> = Vec::new();
     let mut refs: Option<RefStyle> = None;
     for (i, l) in lines.iter().enumerate() {
+        let cur = drafts.last().map(|d| (d, *d.lines.last().expect("a draft has a line"), d.lines[0]));
+        let flows = cur.is_some_and(|(_, prev, _)| flows(prev, l, pitch));
         // "a Y86-" / "64 processor.": the rest of a word.
-        let rest = i > 0 && lines[i - 1].text.ends_with('-') && flows(&lines[i - 1], l, pitch);
+        let rest = flows && cur.is_some_and(|(_, prev, _)| prev.text.ends_with('-'));
         if let Some(level) = heading_level(l, body).filter(|_| !rest) {
             refs = is_references(&l.text).then(|| ref_style(&lines[i + 1..], body));
             drafts.push(Draft { kind: Kind::Heading(level), lines: vec![l] });
             continue;
         }
-        let cur = drafts.last().map(|d| (d.kind, *d.lines.last().expect("a draft has a line"), d.lines[0]));
-        let flows = cur.is_some_and(|(_, prev, _)| flows(prev, l, pitch));
         // "… as illustrated in" / "Figure 2-6. Even if …": a sentence broken before a reference, not a caption.
         let wrapped = flows && cur.is_some_and(|(_, prev, _)| prev.x1 >= prev.right - 2. * prev.size && prev.text.ends_with(char::is_alphanumeric));
         let start = match (refs, cur) {
@@ -1826,16 +1826,15 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
         };
         // Across a column or page: only a draft that ran to the column's edge, into a line of its size that stands where
         // its next one would, not into an aside's title. A line that is mostly code is set a little smaller.
-        let across = drafts.last().is_some_and(|d| {
-            let prev = d.lines[d.lines.len() - 1];
+        let across = cur.is_some_and(|(d, prev, _)| {
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-            let in_word = prev.text.ends_with('-') && l.text.starts_with(char::is_lowercase);
-            let same = (prev.size - l.size).abs() < 0.5 || in_word;
-            let cut = prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-');
+            let hyphen = prev.text.ends_with('-');
+            let same = (prev.size - l.size).abs() < 0.5 || hyphen && l.text.starts_with(char::is_lowercase);
+            let cut = hyphen || prev.x1 >= prev.right - 2. * prev.size;
             across && same && cut && aligned(d, l) && !lines.get(i + 1).is_some_and(|below| heads(l, below, body))
         });
         let continues = start.is_none()
-            && cur.is_some_and(|(kind, prev, first)| match kind {
+            && cur.is_some_and(|(d, prev, first)| match d.kind {
                 // Entries start by number, edge or space; one ending in a full stop does not run
                 // on into the next column, which may be an appendix whose heading went unseen.
                 Kind::Reference => flows || !prev.text.ends_with('.'),
@@ -1850,11 +1849,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                 Kind::Paragraph if flows => {
                     let indented = l.x0 > prev.x0 + 0.8 * l.size;
                     let ended = prev.x1 < prev.right - 2. * prev.size && prev.text.ends_with(['.', '!', '?', ':']);
-                    let hung = further_in(first, prev) > 0.8 * l.size;
-                    if hung && further_in(first, l) <= 0.3 * l.size {
-                        return false;
-                    }
-                    (!indented || std::ptr::eq(first, prev) && hangs(first, l)) && !ended
+                    let next_entry = further_in(first, prev) > 0.8 * l.size && further_in(first, l) <= 0.3 * l.size;
+                    !ended && !next_entry && (!indented || d.lines.len() == 1 && hangs(first, l))
                 }
                 Kind::Paragraph => across,
             });
