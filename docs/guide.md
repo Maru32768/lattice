@@ -887,7 +887,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles or a collection), genre, tag, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images the PC has stored show in the text while the phone reads from the PC. Read from the snapshot, they appear as links, and the phone does not load them.
 
-Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
+Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread and copy an article's URL from the article's **Menu** (⋯), save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 
 The phone keeps your place. When it loads the page again, as phones do with pages left in the background, the list comes back with the same filters, where you left it. Each article opens where you left it on that phone.
 

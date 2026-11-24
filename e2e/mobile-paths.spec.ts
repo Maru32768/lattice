@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { showScope } from "./phone.ts";
+import { expectInMenu, pickInMenu, showScope } from "./phone.ts";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 // @ts-expect-error -- plain JavaScript: Terraform uploads this very file.
 import { handle } from "../infra/mobile/worker.js";
@@ -213,8 +213,8 @@ test("with the PC off the phone reads the snapshot, says how old it is, and leav
   await expect(page.getByText("2 時間前の内容")).toBeVisible();
   await page.getByRole("link", { name: /Snapshot one/ }).click();
   await expect(page.getByText("the snapshot's text")).toBeVisible();
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
-  await page.getByRole("button", { name: "お気に入りから外す" }).waitFor();
+  await pickInMenu(page, "お気に入りに追加");
+  await expectInMenu(page, "お気に入りから外す");
   await expect.poll(() => [...bucket.store.keys()].filter((k) => k.startsWith("inbox/")).length).toBe(1);
   await page.getByRole("link", { name: "一覧" }).click();
   await page.reload();
@@ -247,7 +247,7 @@ test("without a connection the phone still opens, with the list and the articles
   await page.getByRole("link", { name: /Snapshot one/ }).click();
   await expect(page.getByText("the snapshot's text"), "an article read before").toBeVisible();
   await expect(page.getByRole("alert"), "and it says this is a saved copy").toHaveText("接続できないので、保存した内容を表示しています");
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await pickInMenu(page, "お気に入りに追加");
   await page.getByRole("link", { name: "一覧" }).click();
   await expect(page.getByText("未送信1件")).toBeVisible();
   await page.getByRole("link", { name: /Snapshot two/ }).click();
@@ -282,7 +282,7 @@ test("the phone reads from the PC when it can reach it, and from the snapshot wh
   await expect(page.getByText("時間前の内容")).toHaveCount(0);
   await page.getByRole("link", { name: /Live one/ }).click();
   await expect(page.getByText("the live text")).toBeVisible();
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await pickInMenu(page, "お気に入りに追加");
   await expect.poll(() => ops.length, "with the PC there, the operation goes straight to it").toBe(1);
   expect([...bucket.store.keys()].filter((k) => k.startsWith("inbox/"))).toEqual([]);
   await page.getByRole("link", { name: "一覧" }).click();
@@ -293,7 +293,7 @@ test("the phone reads from the PC when it can reach it, and from the snapshot wh
   await expect(page.getByRole("link", { name: /Snapshot two/ })).toBeVisible();
   await page.getByRole("link", { name: /Snapshot two/ }).click();
   await expect(page.getByText("the second text")).toBeVisible();
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await pickInMenu(page, "お気に入りに追加");
   await expect.poll(() => [...bucket.store.keys()].filter((k) => k.startsWith("inbox/")).length, "without it, to the inbox").toBe(1);
   expect(ops.length).toBe(1);
   expect(violations).toEqual([]);
@@ -363,8 +363,8 @@ test("while an operation waits in the inbox, a later one follows it there and ca
   await page.goto(`${worker.origin}/#t=${TOKEN}`);
   await showAll(page);
   await page.getByRole("link", { name: /Snapshot one/ }).click();
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
-  await page.getByRole("button", { name: "お気に入りから外す" }).waitFor();
+  await pickInMenu(page, "お気に入りに追加");
+  await expectInMenu(page, "お気に入りから外す");
   const inbox = () => [...bucket.store.keys()].filter((k) => k.startsWith("inbox/")).length;
   await expect.poll(inbox, "the PC is off").toBe(1);
   pcUp = true;
@@ -372,7 +372,7 @@ test("while an operation waits in the inbox, a later one follows it there and ca
   await page.getByRole("button", { name: "更新" }).click();
   await expect(page.getByRole("link", { name: /Live one/ })).toBeVisible();
   await page.getByRole("link", { name: /Live one/ }).click();
-  await page.getByRole("button", { name: "お気に入りから外す" }).click();
+  await pickInMenu(page, "お気に入りから外す");
   await expect.poll(inbox, "the next one follows it, though the PC answers").toBe(2);
   expect(ops).toEqual([]);
   await ctx.close();
@@ -399,7 +399,7 @@ test("what the PC's list has shown stays on the phone when the PC goes off and a
   await underServiceWorker(page);
   await showAll(page);
   await page.getByRole("link", { name: /Live one/ }).click();
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await pickInMenu(page, "お気に入りに追加");
   await expect.poll(() => ops.length).toBe(1);
   await page.getByRole("link", { name: "一覧" }).click();
   await page.getByRole("button", { name: "更新" }).click();

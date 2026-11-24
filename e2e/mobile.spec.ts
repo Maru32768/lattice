@@ -1,5 +1,5 @@
 // The phone page against a stand-in for its API (the server has its own tests in crates/lattice-server).
-import { showScope } from "./phone.ts";
+import { expectInMenu, pickInMenu, showScope } from "./phone.ts";
 import { expect, test, type Page } from "@playwright/test";
 
 const row = (id: number, title: string, more: Record<string, unknown> = {}) => ({
@@ -686,7 +686,7 @@ test("every button can be tapped over its whole height", async ({ page }) => {
 test("opening an article marks it read, here at once and on the PC by an operation", async ({ page }) => {
   const seen = await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
-  await expect(page.getByRole("button", { name: "未読に戻す" })).toBeVisible();
+  await expectInMenu(page, "未読に戻す");
   await expect.poll(() => sentOps(seen).map((o) => o.op)).toEqual([{ kind: "set_read", article_id: 1, read: true }]);
   await page.getByRole("link", { name: "一覧" }).click();
   await expect(page.getByRole("link", { name: /First article/ }), "kept where it was read, as on the PC").toBeVisible();
@@ -697,17 +697,17 @@ test("an article already read is not marked again", async ({ page }) => {
   await page.route("**/api/articles/2", (route) => route.fulfill({ json: { ...ARTICLE, article: row(2, "Read article", { read_status: "read" }) } }));
   await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /Read article/ }).click();
-  await expect(page.getByRole("button", { name: "未読に戻す" })).toBeVisible();
+  await expectInMenu(page, "未読に戻す");
   expect(sentOps(seen)).toEqual([]);
 });
 
 test("favorites and read state can be changed from the article", async ({ page }) => {
   const seen = await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
-  await page.getByRole("button", { name: "お気に入りに追加" }).click();
-  await page.getByRole("button", { name: "お気に入りから外す" }).waitFor();
-  await page.getByRole("button", { name: "未読に戻す" }).click();
-  await page.getByRole("button", { name: "既読にする" }).waitFor();
+  await pickInMenu(page, "お気に入りに追加");
+  await expectInMenu(page, "お気に入りから外す");
+  await pickInMenu(page, "未読に戻す");
+  await expectInMenu(page, "既読にする");
   await expect
     .poll(() => sentOps(seen).map((o) => o.op))
     .toEqual([
@@ -723,7 +723,7 @@ test("what cannot be sent waits on the phone, across a reload, and goes when it 
   await page.getByText("First article").waitFor();
   await page.route("**/api/ops", (route) => route.abort());
   await page.getByRole("link", { name: /First article/ }).click();
-  await page.getByRole("button", { name: "未読に戻す" }).waitFor();
+  await expectInMenu(page, "未読に戻す");
   await page.getByRole("link", { name: "一覧" }).click();
   await expect(page.getByText("未送信1件")).toBeVisible();
   await page.reload();
@@ -740,7 +740,7 @@ test("an operation the list reflects stops being kept, and sending it never happ
   await page.getByText("First article").waitFor();
   await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /First article/ }).click();
-  await page.getByRole("button", { name: "未読に戻す" }).waitFor();
+  await expectInMenu(page, "未読に戻す");
   await expect.poll(() => sentOps(seen).length).toBe(1);
   const id = sentOps(seen)[0].id;
   await page.getByRole("link", { name: "一覧" }).click();
@@ -837,6 +837,33 @@ test("what waits goes when the reader comes back to the page", async ({ page }) 
   expect(sentOps(seen).at(-1)?.op).toEqual({ kind: "save_url", url: "https://example.com/later" });
 });
 
+test("the article's menu copies its URL and says so", async ({ page }) => {
+  await start(page);
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = (text) => {
+      (window as unknown as { copied: string }).copied = text;
+      return Promise.resolve();
+    };
+  });
+  await page.getByRole("link", { name: /First article/ }).click();
+  await pickInMenu(page, "URLをコピー");
+  await expect(page.getByRole("status")).toHaveText("URLをコピーしました");
+  expect(await page.evaluate(() => (window as unknown as { copied: string }).copied)).toBe("https://example.com/1");
+
+  // Served as plain http on the home network, the page has no navigator.clipboard.
+  await page.evaluate(() => {
+    Object.defineProperty(window, "isSecureContext", { value: false });
+    (window as unknown as { copied: string }).copied = "";
+    document.addEventListener("copy", (e) => {
+      (window as unknown as { copied: string }).copied = (e.target as HTMLTextAreaElement).value;
+    });
+  });
+  await pickInMenu(page, "URLをコピー");
+  await expect(page.getByRole("status")).toHaveText("URLをコピーしました");
+  expect(await page.evaluate(() => (window as unknown as { copied: string }).copied)).toBe("https://example.com/1");
+  await expect(page.locator("textarea")).toHaveCount(0);
+});
+
 test("a read-only server offers no operations and marks nothing", async ({ page }) => {
   const seen = await start(page, {
     index: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], read_only: true, articles: [row(1, "First article")] },
@@ -844,7 +871,10 @@ test("a read-only server offers no operations and marks nothing", async ({ page 
   await expect(page.getByLabel("URLを保存")).toHaveCount(0);
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("heading", { name: "First article" }).waitFor();
-  await expect(page.getByRole("button", { name: /お気に入り|未読|既読/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "メニュー" }).click();
+  await expect(page.getByRole("menuitem", { name: /お気に入り|未読|既読/ })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "URLをコピー" }), "copying changes nothing").toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "原文" }).click();
   await page.evaluate(() => {
     const text = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!.firstChild!;
@@ -862,11 +892,11 @@ test("a read-only server offers no operations and marks nothing", async ({ page 
 test("reloading on an article does not undo marking it unread", async ({ page }) => {
   const seen = await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
-  await page.getByRole("button", { name: "未読に戻す" }).click();
-  await page.getByRole("button", { name: "既読にする" }).waitFor();
+  await pickInMenu(page, "未読に戻す");
+  await expectInMenu(page, "既読にする");
   await expect.poll(() => sentOps(seen).length).toBe(2);
   await page.reload();
-  await page.getByRole("button", { name: "既読にする" }).waitFor();
+  await expectInMenu(page, "既読にする");
   expect(sentOps(seen).length).toBe(2);
 });
 
@@ -874,7 +904,7 @@ test("the open article follows the list once the list has settled what was done"
   const seen = await start(page);
   await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /First article/ }).click();
-  await page.getByRole("button", { name: "未読に戻す" }).waitFor();
+  await expectInMenu(page, "未読に戻す");
   await expect.poll(() => sentOps(seen).length).toBe(1);
   await page.route("**/api/index", (route) =>
     route.fulfill({
@@ -882,7 +912,7 @@ test("the open article follows the list once the list has settled what was done"
     }),
   );
   await page.reload();
-  await expect(page.getByRole("button", { name: "未読に戻す" }), "its own copy still says unread; the list knows better").toBeVisible();
+  await expectInMenu(page, "未読に戻す", "its own copy still says unread; the list knows better");
 });
 
 test("another library's QR code clears what waits; a new token of this one keeps it", async ({ page }) => {
