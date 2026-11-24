@@ -453,23 +453,18 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
   await drawText(page, host);
 }
 
-const painted = new WeakSet<HTMLElement>();
-
 /** A translation covers the original in the colour the page is printed on there: an aside's tinted box keeps its tint. */
 function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
-  for (const el of host.querySelectorAll<HTMLElement>(".region")) {
+  for (const el of regionsOf(host)) {
     const box = boxes.get(el);
-    if (!context || !box || painted.has(el)) {
+    if (!context || !box || el.style.getPropertyValue("--paper")) {
       continue;
     }
-    painted.add(el);
     const [x, y] = [Math.floor(box.left * canvas.width), Math.floor(box.top * canvas.height)];
     const [w, h] = [Math.max(1, Math.ceil(box.width * canvas.width)), Math.max(1, Math.ceil(box.height * canvas.height))];
-    const color = paperColor(context.getImageData(x, y, w, h).data);
-    if (color) {
-      el.style.setProperty("--paper", color);
-    }
+    // Set where `paperColor` gives nothing too, so that a page drawn again does not read it again.
+    el.style.setProperty("--paper", paperColor(context.getImageData(x, y, w, h).data) ?? "#fff");
   }
 }
 
