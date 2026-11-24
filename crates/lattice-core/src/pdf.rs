@@ -1578,19 +1578,27 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
         };
         // A box set wider than the body (a book's aside) would make every body line look short of the edges. Justified
         // lines end at one place, ragged ones nowhere in particular: where a fifth of the lines of prose of one size end
-        // is a block's edge, and the block reaches left to where the first of those starts. Only lines of its size are in
-        // it: rows of code beside it end anywhere. Rows of a table end together too, with cells across them, well short of
-        // the column or with numbers in them.
-        let mut prose: Vec<&Line> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo) && mostly_letters(&l.text)).collect();
-        prose.sort_by(|a, b| a.size.total_cmp(&b.size).then(a.x1.total_cmp(&b.x1)));
-        let blocks: Vec<(f64, f64, f64)> = prose
-            .chunk_by(|a, b| a.size == b.size && b.x1 - a.x1 < 0.25)
-            .filter(|at| at.len() >= 4 && at.len() * 5 >= prose.iter().filter(|l| l.size == at[0].size).count())
+        // is a block's edge, and the block reaches left to where the first of the lines that end there starts (the first
+        // line of a reference, the one not indented, is mostly initials). Only lines of its size are in it: rows of code
+        // beside it end anywhere. Rows of a table end together too, with cells across them, well short of the column or
+        // with numbers in them.
+        let mut wide: Vec<&Line> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo)).collect();
+        wide.sort_by(|a, b| a.size.total_cmp(&b.size).then(a.x1.total_cmp(&b.x1)));
+        let prose = |lines: &[&Line]| lines.iter().filter(|l| mostly_letters(&l.text)).count();
+        let blocks: Vec<(f64, f64, f64)> = wide
+            .chunk_by(|a, b| a.size == b.size)
+            .flat_map(|of_size| {
+                let ends = of_size.chunk_by(|a, b| b.x1 - a.x1 < 0.25);
+                let all = prose(of_size);
+                ends.filter(move |at| prose(at) >= 4 && prose(at) * 5 >= all)
+            })
             .map(|at| (at[0].size, at.iter().map(|l| l.x0).fold(f64::MAX, f64::min), at[at.len() - 1].x1))
             .collect();
         for l in lines.iter_mut().filter(|l| l.side == s) {
-            (l.left, l.right) =
-                blocks.iter().find(|(size, _, right)| *size == l.size && *right >= l.x1 - 0.25).map_or((lo, hi), |&(_, left, right)| (left, right));
+            let fits = |b: &&(f64, f64, f64)| b.0 == l.size && b.2 >= l.x1 - 0.25;
+            // A paragraph's last line ends short of a quotation's edge too, but starts before it.
+            let block = blocks.iter().find(|b| fits(b) && b.1 <= l.x0 + 0.25).or_else(|| blocks.iter().find(fits));
+            (l.left, l.right) = block.map_or((lo, hi), |&(_, left, right)| (left, right));
         }
     }
     if !two {
@@ -2594,6 +2602,29 @@ pub(crate) mod tests {
         }
         let r = regions(&bytes(5)).unwrap();
         assert!(r.iter().any(|x| x.page == 1 && x.y0 > 420.), "the body's lines reach its edges: {r:?}");
+    }
+
+    #[test]
+    fn references_whose_first_lines_are_mostly_initials_are_one_item_each() {
+        const REST: &str = "The part time parliament and the replicas that keep a log of writes";
+        let entries = (0..5).flat_map(|i| {
+            let y = 140. + 36. * i as f64;
+            let first = "Lamport, L., Reed, B., Ng, A. Y., Li, F. J., Wu, K., & Ng, T. (2010, 2011).";
+            [(L, y, 10., first), (L + 28.92, y + 12., 10., REST), (L + 28.92, y + 24., 10., "Journal of Machines, 3, 12-30.")]
+        });
+        let body = [(L, 60., 10., BODY), (L, 72., 10., "and that is the end of it."), (L, 110., 12., "References")];
+        let ir = to_ir(&pdf(&[body.into_iter().chain(entries).collect()], None), None).unwrap();
+        let k = kinds(&ir);
+        assert_eq!(k.iter().filter(|k| k.0 == "list_item" && k.1.starts_with("Lamport") && k.1.ends_with("12-30.")).count(), 5, "{k:?}");
+    }
+
+    #[test]
+    fn a_paragraphs_last_line_over_a_quotation_has_the_edges_of_the_body() {
+        let body = |from: f64| (0..5).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+        let quotation = (0..4).map(|i| (L + 30., 130. + 12. * i as f64, 10., SPREAD[0].3));
+        let second = [(L, 100., 10., "and that is the end of it.")].into_iter().chain(quotation).chain(body(200.)).collect();
+        let ir = to_ir(&pdf(&[body(100.).collect(), second], None), None).unwrap();
+        assert!(ir.blocks[0].text.ends_with("the end of it."), "{:?}", kinds(&ir));
     }
 
     #[test]
