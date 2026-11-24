@@ -1716,7 +1716,7 @@ fn body_tables(pages: &[Page]) -> Vec<(usize, &Table)> {
     let all = || pages.iter().enumerate().flat_map(|(i, p)| p.tables.iter().map(move |t| (i, t)));
     let key = |&(i, t): &(usize, &Table)| {
         let height = pages[i].height;
-        (t.at[1] < height * 0.08 || t.at[3] > height * 0.92).then(|| running_key(&t.rows.concat().join("	")))
+        (t.at[1] < height * 0.08 || t.at[3] > height * 0.92).then(|| running_key(&t.rows.concat().join("\t")))
     };
     let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
     for t in all() {
