@@ -1957,7 +1957,8 @@ fn interrupted(drafts: &[Draft], l: &Line, size: f64, body: f64) -> Option<usize
     let i = drafts.iter().rposition(|d| !(skipped(d) || asides && is_title(d, body)))?;
     let floats = drafts[i + 1..].iter().any(float);
     let last = drafts[i].lines.last()?;
-    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && in_body(last_size(&drafts[i])) && !last.text.ends_with(['.', '!', '?', ':']);
+    let of_body = in_body(last.size) || in_body(last_size(&drafts[i]));
+    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && of_body && !last.text.ends_with(['.', '!', '?', ':']);
     (unfinished && (floats || asides) && (!asides || last.page < l.page) && aligned(&drafts[i], l)).then_some(i)
 }
 
@@ -2769,10 +2770,14 @@ pub(crate) mod tests {
         assert_eq!(k.iter().map(|k| k.0).collect::<Vec<_>>(), ["caption", "paragraph"], "{k:?}");
         assert!(k[1].1.contains("and then waits for them node_self_current_idx that it has given to them, and after that the leader"), "{k:?}");
 
-        let code = [(L, 148., 9., "node_self_current_idx that it has given to each of the copies and sets there, so"), (L, 170., 9., "Figure 1: The log.")];
-        let ir = to_ir(&pdf(&[body(100.).chain(code).chain(body(200.)).collect()], None), None).unwrap();
-        let k = kinds(&ir);
-        assert_eq!(k.iter().map(|k| k.0).collect::<Vec<_>>(), ["caption", "paragraph"], "{k:?}");
+        let figure = (L, 170., 9., "Figure 1: The log.");
+        let code = [(L, 148., 9., "node_self_current_idx that it has given to each of the copies and sets there, so"), figure];
+        let titled = [(L, 136., 10.7, "Practice Problem 3 (page 36)"), (L, 148., 10., BODY), figure];
+        for page in [body(100.).chain(code).chain(body(200.)).collect::<Vec<Run>>(), titled.into_iter().chain(body(200.)).collect()] {
+            let ir = to_ir(&pdf(&[page], None), None).unwrap();
+            let k = kinds(&ir);
+            assert_eq!(k.iter().map(|k| k.0).collect::<Vec<_>>(), ["caption", "paragraph"], "{k:?}");
+        }
     }
 
     #[test]
