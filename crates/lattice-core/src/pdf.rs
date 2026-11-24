@@ -2477,7 +2477,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_title_or_a_heading_alone_at_the_top_of_a_page_is_no_header() {
-        let problems = ["Problem 1", "Problem 2", "Problem 3"].map(|t| (L, 100., 12., t));
+        let problems = ["Problem 1", "Problem 2", "Problem 3"].map(|t| (L, 100., 11.5, t));
         let pages: Vec<Vec<Run>> = problems.into_iter().map(|head| [head, (L, 150., 10., SPREAD[0].3), (L, 162., 10., SPREAD[1].3)].to_vec()).collect();
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
@@ -4266,6 +4266,24 @@ pub(crate) mod tests {
             let ir = to_ir(&bytes, None).unwrap();
             assert!(texts(&ir).iter().any(|t| t.contains("Hello world")), "{across}: {:?}", texts(&ir));
         }
+    }
+
+    #[test]
+    fn a_column_of_vertical_writing_set_apart_on_each_page_is_no_header() {
+        let column = |x: f64, text: &str| format!("1 0 0 1 {x} 700 Tm <{text}> Tj ");
+        let text = [440., 428., 416.].map(|x| column(x, "034B034D034F035103530354035603580359035A")).concat();
+        let ops = format!("BT /F3 10 Tf {}{text}ET", column(500., "034B034D034F"));
+        let mut doc = Document::load_mem(&japanese(&[vec![]], "Identity-V", &ops)).unwrap();
+        let pages = doc.catalog().unwrap().get(b"Pages").and_then(Object::as_reference).unwrap();
+        let tree = doc.get_dictionary_mut(pages).unwrap();
+        let kids = tree.get_mut(b"Kids").and_then(Object::as_array_mut).unwrap();
+        let page = kids[0].clone();
+        kids.extend([page.clone(), page]);
+        tree.set("Count", Object::Integer(3));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(texts(&ir).concat().matches("あいう").count(), 3 * 4, "{:?}", texts(&ir));
     }
 
     #[test]
