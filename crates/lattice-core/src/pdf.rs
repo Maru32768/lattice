@@ -1100,6 +1100,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             }
         }
     }
+    let vertical = mostly_down(out.pages.iter().flat_map(|p| &p.glyphs));
     for ((page, drawn), grids) in out.pages.iter_mut().zip(drawn).zip(grids) {
         let (left, top) = (page.left, page.top);
         page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - left, y0: top - d.y1, x1: d.x1 - left, y1: top - d.y0, ..d }).collect();
@@ -1111,13 +1112,11 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
                 ys: ys.into_iter().rev().map(|y| top - y).collect(),
             })
             .collect();
-        // Glyphs set across in a grid have no say: a table set across on a page of vertical writing can hold more glyphs
-        // than its columns. Vertical writing in a grid has, as a page that is all one table of it turns. The page's turn is
-        // known before its tables are taken, so that a turned glyph goes into its cell.
-        let says = |g: &&Glyph| g.vertical || !grids.iter().any(|grid| grid.cell(g).is_some());
-        let set = page.glyphs.iter().filter(|g| !g.turned && !g.text.trim().is_empty()).filter(says);
-        let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
-        let turns = down * 2 > all;
+        // In vertical writing, glyphs set across in a grid have no say: a table set across can hold more of them than the
+        // page's columns. In a document set across they have, or a label set down beside a page of tables would turn it.
+        // The page's turn is known before its tables are taken, so that a turned glyph goes into its cell.
+        let says = |g: &&Glyph| g.vertical || !vertical || !grids.iter().any(|grid| grid.cell(g).is_some());
+        let turns = mostly_down(page.glyphs.iter().filter(says));
         page.tables = take_tables(page, grids, turns);
         if turns {
             turn(page);
@@ -1128,6 +1127,13 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         page.tables.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
     }
     Ok((doc, out.pages))
+}
+
+/// Whether most of the glyphs are set down the page, as vertical writing is.
+fn mostly_down<'a>(glyphs: impl Iterator<Item = &'a Glyph>) -> bool {
+    let set = glyphs.filter(|g| !g.turned && !g.text.trim().is_empty());
+    let (down, all) = set.fold((0, 0), |(down, all), g| (down + usize::from(g.vertical), all + 1));
+    down * 2 > all
 }
 
 /// The document as pdf-extract is given it, with what `walk` finds on each of its pages. `quotes`: with `'` and `"`
@@ -4560,10 +4566,12 @@ pub(crate) mod tests {
         font.set("Encoding", name(encoding));
         font.set("DescendantFonts", vec![Object::Reference(doc.add_object(cid_font))]);
         let font = doc.add_object(font);
-        let page = *doc.get_pages().values().next_back().unwrap();
-        let resources = doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
-        resources.get_mut(b"Font").and_then(Object::as_dict_mut).unwrap().set("F3", Object::Reference(font));
-        let content = doc.get_page_contents(page)[0];
+        let pages: Vec<ObjectId> = doc.get_pages().into_values().collect();
+        for &page in &pages {
+            let resources = doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
+            resources.get_mut(b"Font").and_then(Object::as_dict_mut).unwrap().set("F3", Object::Reference(font));
+        }
+        let content = doc.get_page_contents(*pages.last().unwrap())[0];
         let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
         stream.set_plain_content([&stream.content[..], b"\n", ops.as_bytes()].concat());
         let mut bytes = Vec::new();
@@ -4738,16 +4746,24 @@ pub(crate) mod tests {
         }
     }
 
+    /// A PDF of vertical writing: a page of columns, then one with `ops`.
+    fn after_a_page_of_columns(ops: &str) -> Vec<u8> {
+        let column = |x: i32, cids: &str| format!("1 0 0 1 {x} 700 Tm <{cids}> Tj ");
+        let full: String = (0..3).map(|i| column(500 - 12 * i, &"034B034D034F03510353".repeat(6))).collect();
+        let columns = format!("BT /F3 10 Tf {full}{}ET", column(464, "034B034D027B"));
+        with_contents(&japanese(&[vec![], vec![]], "Identity-V", ops), &[(0, &columns)])
+    }
+
     #[test]
     fn a_table_set_across_on_a_page_of_vertical_writing_leaves_the_page_to_turn() {
         // The table holds more glyphs than the columns: counted with them, the page would stay upright and its columns
         // come apart a character at a time.
         let columns = "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D034F03510353> Tj 1 0 0 1 488 700 Tm <03540356> Tj ET\n";
         let cells = shown(78., 625., "Pros") + &shown(178., 625., "It lasts long.") + &shown(78., 665., "Cons") + &shown(178., 665., "It costs time.");
-        let bytes = japanese(&[vec![]], "Identity-V", &(columns.to_string() + &ruled(&[72., 172., 300.], &[600., 640., 680.], "strokes") + &cells));
-        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        let bytes = after_a_page_of_columns(&(columns.to_string() + &ruled(&[72., 172., 300.], &[600., 640., 680.], "strokes") + &cells));
+        assert!(glyphs(&bytes, true).unwrap().1[1].vertical);
         let ir = to_ir(&bytes, None).unwrap();
-        assert_eq!(kinds(&ir), [("paragraph", "あいうえおかき"), ("table", "Pros\tIt lasts long.\nCons\tIt costs time.")]);
+        assert_eq!(kinds(&ir)[1..], [("paragraph", "あいうえおかき"), ("table", "Pros\tIt lasts long.\nCons\tIt costs time.")]);
     }
 
     #[test]
@@ -4755,10 +4771,10 @@ pub(crate) mod tests {
         // A column right of the table and one left of it: read down the columns from the right, the table comes between.
         let columns = "BT /F3 10 Tf 1 0 0 1 520 700 Tm <034B034D034F03510353> Tj 1 0 0 1 200 700 Tm <03540356034B034D034F> Tj ET\n";
         let cells = shown(306., 125., "Pros") + &shown(386., 125., "Long") + &shown(306., 165., "Cons") + &shown(386., 165., "Slow");
-        let bytes = japanese(&[vec![]], "Identity-V", &(columns.to_string() + &ruled(&[300., 380., 460.], &[100., 140., 180.], "strokes") + &cells));
-        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        let bytes = after_a_page_of_columns(&(columns.to_string() + &ruled(&[300., 380., 460.], &[100., 140., 180.], "strokes") + &cells));
+        assert!(glyphs(&bytes, true).unwrap().1[1].vertical);
         let ir = to_ir(&bytes, None).unwrap();
-        assert_eq!(kinds(&ir), [("paragraph", "あいうえお"), ("table", "Pros\tLong\nCons\tSlow"), ("paragraph", "かきあいう")]);
+        assert_eq!(kinds(&ir)[1..], [("paragraph", "あいうえお"), ("table", "Pros\tLong\nCons\tSlow"), ("paragraph", "かきあいう")]);
     }
 
     #[test]
@@ -5126,7 +5142,7 @@ pub(crate) mod tests {
         let number =
             "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D> Tj ET BT /F1 10 Tf 1 0 0 1 494.4 667 Tm (25) Tj ET BT /F3 10 Tf 1 0 0 1 500 657 Tm <034F0351> Tj ET\n";
         for ops in [columns.to_string() + &table, columns.to_string() + number + &table] {
-            let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+            let ir = to_ir(&after_a_page_of_columns(&ops), None).unwrap();
             assert!(kinds(&ir).contains(&("table", "Pros\tLong\nCons\tSlow")), "{:?}", kinds(&ir));
         }
     }
@@ -5483,8 +5499,33 @@ pub(crate) mod tests {
         let columns = "BT /F3 10 Tf 1 0 0 1 520 700 Tm <034B034D034F03510353> Tj 1 0 0 1 80 700 Tm <03540356034B034D034F> Tj ET\n";
         let table = |x: f64, words| two_by_two([x, x + 60., x + 120.], [100., 140., 180.], words);
         let ops = columns.to_string() + &table(330., ["Pros", "Long", "Cons", "Slow"]) + &table(130., ["Fast", "Free", "Dear", "Big"]);
-        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+        let ir = to_ir(&after_a_page_of_columns(&ops), None).unwrap();
         let tables: Vec<&str> = kinds(&ir).into_iter().filter(|k| k.0 == "table").map(|k| k.1).collect();
         assert_eq!(tables, ["Pros\tLong\nCons\tSlow", "Fast\tFree\nDear\tBig"]);
+    }
+
+    #[test]
+    fn a_page_of_a_document_set_across_stays_upright_whatever_is_set_down_by_its_tables() {
+        let column = |x: f64, top: f64, cids: &str| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{cids}> Tj ET\n", 792. - top - 8.8);
+        let (ten, label) = ("034B034D034F035103530354035603580359035A", "034B034D034F03510353");
+        let read = |ops: &str| {
+            let bytes = japanese(&[vec![]], "Identity-V", ops);
+            assert!(!glyphs(&bytes, true).unwrap().1[0].vertical);
+            let regions = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect::<Vec<_>>();
+            (kinds(&to_ir(&bytes, None).unwrap()).into_iter().map(|(kind, text)| format!("{kind}: {text}")).collect::<Vec<_>>(), regions)
+        };
+        // A form whose row heads are set down, more of them than of what is set across outside it.
+        let heads = [105., 225., 345.].map(|top| column(115., top, ten)).concat();
+        let cells = shown(178., 160., "Ann Author") + &shown(178., 280., "42 Main Street") + &shown(178., 400., "None");
+        let form = ruled(&[72., 172., 540.], &[100., 220., 340., 460.], "strokes") + &heads + &cells;
+        let (blocks, lines) = read(&(shown(72., 80., "Fill in this form.") + &form + &shown(72., 500., "Ask the desk.")));
+        assert_eq!((blocks[0].as_str(), blocks[2].as_str()), ("paragraph: Fill in this form.", "paragraph: Ask the desk."));
+        assert!(blocks[1].starts_with("table: ") && blocks.len() == 3 && lines == ["Fill in this form.", "Ask the desk."], "{blocks:?} {lines:?}");
+        // Text set across in a grid that holds too little to be a table, or that is one, and a label set down beside it.
+        let prose: String = (0..5).map(|i| shown(78., 110. + 12. * i as f64, &format!("Prose {i} set across in the first cell."))).collect();
+        let few = ruled(&[72., 306., 540.], &[90., 400., 700.], "strokes");
+        assert_eq!(read(&(few + &prose + &column(560., 200., label))), read(&(prose + &column(560., 200., label))));
+        let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &column(560., 200., label)));
+        assert!(blocks.contains(&"table: Strong\tLasting\nCostly\tEasy".to_string()), "{blocks:?}");
     }
 }
