@@ -2657,6 +2657,23 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn ragged_lines_a_few_of_which_end_together_have_no_edge_there() {
+        let ends = (0..27).map(|i| {
+            if i % 7 == 3 {
+                BODY[..62].to_string()
+            } else {
+                format!("{} {}", &BODY[..60 + i % 12], ["w", "r", "t", "i", "to"][i % 5])
+            }
+        });
+        let short = "the leader sends every write to all of the replicas and w.".to_string();
+        let next = "Paxos keeps every one of the writes that it was given to send".to_string();
+        let lines: Vec<String> = ends.chain([short, next]).collect();
+        let page = lines.iter().enumerate().map(|(i, t)| (L, 100. + 12. * i as f64, 10., t.as_str())).collect();
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert!(texts(&ir).last().unwrap().starts_with("Paxos keeps"), "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn references_whose_first_lines_are_mostly_initials_are_one_item_each() {
         const REST: &str = "The part time parliament and the replicas that keep a log of writes";
         let entries = (0..5).flat_map(|i| {
