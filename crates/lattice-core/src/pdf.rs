@@ -280,7 +280,7 @@ fn is_title(d: &Draft, body: f64) -> bool {
 /// of its size that end in one or lead to an equation. Code, a formula, a label and a table's row are none of those.
 fn titles(l: &Line, body: f64) -> bool {
     let t = l.text.as_str();
-    let larger = l.size > 1.03 * body && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
+    let larger = l.size > 1.03 * body && letters(t) >= 3;
     let closed = t.split_whitespace().last().is_some_and(|w| w == "=" || w.trim_start_matches(['(', '“', '‘']).starts_with(char::is_alphabetic));
     let like_body = l.size > 0.97 * body && words(t) >= 3 && closed;
     (larger || like_body) && t.starts_with(char::is_uppercase) && !t.ends_with('.') && mostly_letters(t)
@@ -296,8 +296,12 @@ fn prose(t: &str) -> bool {
 }
 
 fn mostly_letters(t: &str) -> bool {
-    let (letters, ink) = t.chars().filter(|c| !c.is_whitespace()).fold((0, 0), |(l, n), c| (l + usize::from(c.is_alphabetic()), n + 1));
-    letters * 4 >= ink * 3
+    let ink = t.chars().filter(|c| !c.is_whitespace()).count();
+    letters(t) * 4 >= ink * 3
+}
+
+fn letters(t: &str) -> usize {
+    t.chars().filter(|c| c.is_alphabetic()).count()
 }
 
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
@@ -2061,7 +2065,7 @@ const NAMED_SECTIONS: &[&str] = &[
 fn heading_level(l: &Line, body: f64) -> Option<u8> {
     let t = l.text.as_str();
     let words = t.split_whitespace().count();
-    let big = l.size >= body * 1.1 && words <= 10 && l.x1 < l.right - 3. * l.size && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
+    let big = l.size >= body * 1.1 && words <= 10 && l.x1 < l.right - 3. * l.size && letters(t) >= 3;
     section_level(l, body).or((big && !t.ends_with([',', '.']) && t.chars().next().is_some_and(|c| !c.is_lowercase())).then_some(2))
 }
 
@@ -2077,11 +2081,10 @@ fn section_level(l: &Line, body: f64) -> Option<u8> {
     let appendix = l.size >= body * 1.15 && first.len() == 1 && first.chars().all(|c| c.is_ascii_uppercase());
     if let Some(depth) = section_number(first).or(appendix.then_some(1)) {
         let rest = rest.trim();
-        let letters = rest.chars().filter(|c| c.is_alphabetic()).count();
         let digits = rest.chars().filter(char::is_ascii_digit).count();
         // "3 GPUs 2048 512" is a table's row. Numbered three levels deep, it is a title that names an "Y86-64", or a
         // contents entry with its page.
-        let text = letters >= 3 && (digits <= 2 || depth > 2 && !rest.ends_with(|c: char| c.is_ascii_digit()));
+        let text = letters(rest) >= 3 && (digits <= 2 || depth > 2 && !rest.ends_with(|c: char| c.is_ascii_digit()));
         if rest.chars().next().is_some_and(char::is_uppercase) && text && !rest.ends_with([',', ';']) && words <= 10 {
             return Some((depth + 1).min(4) as u8);
         }
