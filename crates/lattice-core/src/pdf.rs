@@ -1833,7 +1833,10 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
             let hyphen = prev.text.ends_with('-');
             let same = (prev.size - size).abs() < 0.5 || hyphen && l.text.starts_with(char::is_lowercase);
             let cut = hyphen || prev.x1 >= prev.right - 2. * prev.size;
-            across && same && cut && aligned(d, l) && !lines.get(i + 1).is_some_and(|below| heads(l, below, body))
+            // After a full stop, a new paragraph may start where an item's text would: its next line stands further out.
+            let indented = |n: &&Line| self::flows(l, n, pitch) && n.x0 < l.x0 - 0.5 * l.size && !is_bullet(&n.text);
+            let new = prev.text.ends_with(['.', '!', '?', ':']) && lines.get(i + 1).filter(indented).is_some();
+            across && same && cut && !new && aligned(d, l) && !lines.get(i + 1).is_some_and(|below| heads(l, below, body))
         });
         let continues = start.is_none()
             && cur.is_some_and(|(d, prev, first)| match d.kind {
@@ -2670,6 +2673,25 @@ pub(crate) mod tests {
         let pages: Vec<usize> =
             regions(&bytes).unwrap().iter().filter(|r| r.text.starts_with("• it copies") || r.text.ends_with("is told.")).map(|r| r.page).collect();
         assert_eq!(pages, [0, 1], "each page has its piece");
+    }
+
+    #[test]
+    fn an_item_runs_on_to_the_next_page_and_a_new_paragraph_or_a_tables_row_is_not_part_of_it() {
+        const ITEM: &str = "it copies every write to all of the replicas and then waits for each of";
+        let body = |from: f64| (0..5).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+        let item = |lines: &[&'static str], next: Vec<Run<'static>>| {
+            let first = body(100.).chain([(81., 170., 10., "•")]).chain(lines.iter().enumerate().map(|(i, t)| (90., 170. + 12. * i as f64, 10., *t)));
+            let ir = to_ir(&pdf(&[first.collect(), next.into_iter().chain(body(124.)).collect()], None), None).unwrap();
+            ir.blocks.into_iter().find(|b| b.text.starts_with('•')).unwrap().text
+        };
+        let last = "the write that it was given by the leader of the replicas and the others.";
+        for lines in [&[ITEM][..], &[ITEM, ITEM]] {
+            assert!(item(lines, vec![(90., 100., 10., "them, however far away.")]).ends_with("each of them, however far away."));
+            assert!(item(lines, vec![(L, 100., 10., "The leader is told.")]).ends_with("each of"), "a line at the column's edge");
+            assert!(item(lines, vec![(90., 100., 10., "one"), (200., 100., 10., "two"), (300., 100., 10., "three")]).ends_with("each of"), "a table's row");
+        }
+        let paragraph = || vec![(90., 112., 10., "A new paragraph of the text is set in from the edge on its first line")];
+        assert!(item(&[ITEM, last], paragraph()).ends_with("and the others."), "an indented paragraph");
     }
 
     #[test]
