@@ -1811,7 +1811,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
         let cur = drafts.last().map(|d| (d, *d.lines.last().expect("a draft has a line"), d.lines[0]));
         let flows = cur.is_some_and(|(_, prev, _)| flows(prev, l, pitch));
         // "a Y86-" / "64 processor.": the rest of a word.
-        let rest = flows && cur.is_some_and(|(_, prev, _)| prev.text.ends_with('-'));
+        let hyphenated = |t: &str| t.strip_suffix('-').is_some_and(|word| word.ends_with(char::is_alphanumeric));
+        let rest = flows && cur.is_some_and(|(_, prev, _)| hyphenated(&prev.text));
         if let Some(level) = heading_level(l, body).filter(|_| !rest) {
             refs = is_references(&l.text).then(|| ref_style(&lines[i + 1..], body));
             drafts.push(Draft { kind: Kind::Heading(level), lines: vec![l] });
@@ -2085,9 +2086,10 @@ fn section_level(l: &Line, body: f64) -> Option<u8> {
     if let Some(depth) = section_number(first).or(appendix.then_some(1)) {
         let rest = rest.trim();
         let digits = rest.chars().filter(char::is_ascii_digit).count();
-        // "3 GPUs 2048 512" is a table's row. Numbered three levels deep, it is a title that names an "Y86-64", or a
-        // contents entry with its page.
-        let text = letters(rest) >= 3 && (digits <= 2 || depth > 2 && !rest.ends_with(|c: char| c.is_ascii_digit()));
+        // "3 GPUs 2048 512" is a table's row. Numbered three levels deep, it is a title that names an "Y86-64", a contents
+        // entry with its page or a row under a version.
+        let named = depth == 3 && digits * 2 <= letters(rest) && !rest.ends_with(|c: char| c.is_ascii_digit());
+        let text = letters(rest) >= 3 && (digits <= 2 || named);
         if rest.chars().next().is_some_and(char::is_uppercase) && text && !rest.ends_with([',', ';']) && words <= 10 {
             return Some((depth + 1).min(4) as u8);
         }
@@ -2544,6 +2546,8 @@ pub(crate) mod tests {
             (L, 170., 10., "which the page needs for most of its text to be set at the size of the body."),
             (L, 200., 10., "3 GPUs 2048 512"),
             (L, 230., 10., "2.2.3 Encodings of the integers 100"),
+            (L, 260., 10., "3.11.4 Linux 5.15 x86 64 bit"),
+            (L, 290., 10., "10.0.0.1 Gateway 2001 eth0 up"),
         ];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
@@ -2556,6 +2560,10 @@ pub(crate) mod tests {
             vec![(L, 100., 10., "A long line of body text that runs across the whole of the column up to the Y86-"), (L, 112., 10., "64 ISA.")];
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         assert_eq!(kinds(&ir), [("paragraph", "A long line of body text that runs across the whole of the column up to the Y86-64 ISA.")]);
+
+        let page: Vec<Run> = vec![(L, 100., 10., "Rows without a value have a -"), (L, 112., 10., "2 Results"), (L, 124., 10., BODY)];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert_eq!(kinds(&ir)[1], ("heading", "2 Results"));
     }
 
     #[test]
