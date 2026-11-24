@@ -415,8 +415,10 @@ test("the column goes on below a short article, and scrolls with it", async ({ a
     await askElsewhere(app, SNAPSHOT_ID, 107, `card ${i}`);
   }
   await expect(cards(app)).toHaveCount(8);
-  await cards(app).last().scrollIntoViewIfNeeded();
+  await doc(app).evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(cards(app).last()).toBeInViewport({ ratio: 1 });
+  const [last, view] = [await boxOf(cards(app).last()), await boxOf(doc(app))];
+  expect(view.y + view.height - (last.y + last.height), "room under the last").toBeGreaterThan(35);
 });
 
 test("in a narrow pane a card is right under its passage, and neither asking nor the answer moves the text above it", async ({ shell }) => {
