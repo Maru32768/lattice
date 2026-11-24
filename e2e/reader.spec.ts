@@ -57,6 +57,8 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
 });
 
 test("a summary's sentences and points go to the blocks they cite, and a number the article lacks is marked", async ({ app }) => {
+  // Short enough that going to the last cited block scrolls the text past where the summary would sit in it.
+  await app.setViewportSize({ width: 1440, height: 600 });
   await open(app, snapshot.title!);
   const summary = app.getByRole("region", { name: "要約" });
   await summary.getByRole("button").click();
@@ -67,15 +69,19 @@ test("a summary's sentences and points go to the blocks they cite, and a number 
   await summary.getByRole("button", { name: "出典3へ" }).click();
   await expect(app.locator("#b-106")).toHaveClass(/is-cite/);
   await expect(app.locator("#b-106 .blk-label")).toHaveText("要約の出典");
+  // The summary is pinned above the text, so it stays in view beside the block it cites.
+  await expect(app.locator("#b-106")).toBeInViewport();
+  await expect(summary.getByRole("button", { name: "出典3へ" })).toBeInViewport();
 
-  // From the Page view's strip, a citation opens the Reader at its block.
+  // From the Page view's strip, a citation opens the Reader at its block, with the summary open.
   await app.keyboard.press("g");
   await app.keyboard.press("v");
   await app.keyboard.press("g");
   await app.keyboard.press("y");
-  await app.locator(".page-summary").getByRole("button", { name: "出典2へ" }).click();
+  await app.locator(".summary-strip").getByRole("button", { name: "出典2へ" }).click();
   await expect(app.locator("#b-103")).toHaveClass(/is-cite/);
   await expect(app.locator("#b-103 .blk-label")).toHaveText("要約の出典");
+  await expect(app.locator(".summary-strip .summary-body")).toContainText("MVCCで実装する");
 });
 
 test("g y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
@@ -91,11 +97,11 @@ test("g y opens and closes the summary, in the Reader and as the Page view's str
   await expect(app.locator(".summary-body")).toHaveCount(0);
 
   await press("g", "v");
-  await expect(app.locator(".page-summary")).toHaveCount(0);
+  await expect(app.locator(".summary-strip")).toHaveCount(0);
   await press("g", "y");
-  await expect(app.locator(".page-summary .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
+  await expect(app.locator(".summary-strip .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
   await press("g", "y");
-  await expect(app.locator(".page-summary")).toHaveCount(0);
+  await expect(app.locator(".summary-strip")).toHaveCount(0);
 });
 
 const untranslated = ARTICLES.find((a) => a.id % 3 === 0 && a.fetch_status === "ok" && a.title && a.language !== "ja")!;

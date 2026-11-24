@@ -27,6 +27,8 @@ export interface Focus {
   label: string;
   terms: string[];
   tone: "hit" | "cite";
+  /** The block is a summary's source: the Reader opens its summary, to show both together. */
+  summary?: boolean;
   seq: number;
 }
 
@@ -284,8 +286,8 @@ export interface DocActions {
   onCopyUrl: () => void;
   /** Asks for confirmation, then removes the article from the Index. */
   onDelete: () => void;
-  /** Shows a block in the Reader, marked with `label` (a quiz answer's source). */
-  onFocusBlock: (block: number, label: string) => void;
+  /** Shows a block in the Reader, marked as the source of a summary item or a quiz answer. */
+  onFocusBlock: (block: number, from: "summary" | "quiz") => void;
   /** Quiz cards were added to or removed from review. */
   onReviewChanged: () => void;
 }
@@ -682,7 +684,8 @@ function SummaryText({ item, cites, view, onSource }: { item: SummaryItem; cites
 
 /**
  * The summary row, opened to the full text on a click or the summary shortcut (`request` grows), closed at first
- * unless `initialOpen` (the Page view's strip shown by the shortcut). `onSource` shows a block the summary cites.
+ * unless `initialOpen` (the Page view's strip shown by the shortcut, the Reader opened at a summary's source).
+ * `onSource` shows a block the summary cites.
  */
 export function Summary({
   view,
@@ -1045,6 +1048,18 @@ export function Reader({
         <ArticleTools view={view} act={act} panel={panel} onPanel={togglePanel} />
       </div>
       <div ref={pin} />
+      {/* Above the scroller, so a citation's block and the summary are in view together. */}
+      {!failed && (
+        <div className="summary-strip">
+          <Summary
+            view={view}
+            onSummarize={act.onSummarize}
+            onSource={(b) => act.onFocusBlock(b, "summary")}
+            request={summaryRequest}
+            initialOpen={focus?.summary}
+          />
+        </div>
+      )}
 
       <div className="doc-body">
         <div className="doc-scroll" ref={scrollEl} tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
@@ -1168,9 +1183,6 @@ export function Reader({
                 </div>
               </div>
             )}
-            {!failed && (
-              <Summary view={view} onSummarize={act.onSummarize} onSource={(b) => act.onFocusBlock(b, t("reader.summarySource"))} request={summaryRequest} />
-            )}
             {a.from_feed && (
               <div className="note warn center thin">
                 <span className="grow">
@@ -1225,9 +1237,7 @@ export function Reader({
             </OpenLink.Provider>
           </article>
         </div>
-        {panel === "quiz" && (
-          <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={closePanel} />
-        )}
+        {panel === "quiz" && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, "quiz")} onReviewChanged={act.onReviewChanged} onClose={closePanel} />}
         {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}
       </div>
       {cap &&

@@ -1234,7 +1234,13 @@ export default function App() {
         onCopyUrl: () => copyUrl(a.original_url),
         onDelete: () => setDeleting({ article: a, page }),
         onReviewChanged: () => void loadReview(),
-        onFocusBlock: (block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id),
+        onFocusBlock: (block, from) =>
+          openReader(
+            a.id,
+            { block, label: from === "summary" ? t("reader.summarySource") : t("reader.quizSource"), terms: [], tone: "cite", summary: from === "summary" },
+            "active",
+            pane.id,
+          ),
       };
     };
     if (tab.kind === "page") {

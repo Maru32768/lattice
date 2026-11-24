@@ -522,8 +522,8 @@ ${t("browserView.addToGroup", { name: saveGroup })}`
       </div>
       {/* A strip above the page; the webview shrinks to the placeholder below it. */}
       {summary && shown && !failedOf(shown) && (
-        <div className="page-summary">
-          <Summary view={shown} onSummarize={act!.onSummarize} onSource={(b) => act!.onFocusBlock(b, t("reader.summarySource"))} initialOpen={summaryByKey} />
+        <div className="summary-strip">
+          <Summary view={shown} onSummarize={act!.onSummarize} onSource={(b) => act!.onFocusBlock(b, "summary")} initialOpen={summaryByKey} />
         </div>
       )}
       <div className="doc-body">
@@ -535,7 +535,7 @@ ${t("browserView.addToGroup", { name: saveGroup })}`
           <QuizPanel
             key={shown.article.id}
             view={shown}
-            onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))}
+            onSource={(b) => act.onFocusBlock(b, "quiz")}
             onReviewChanged={act.onReviewChanged}
             onClose={closePanel}
           />
