@@ -994,6 +994,11 @@ export function Reader({
     const selected = selectionPassage();
     setCap(selected && { ...selected, capture: selectionCapture()?.capture ?? null });
   };
+  /** On a sticky or its dialog, whose events come to the scroller too. */
+  const onSticky = (e: React.SyntheticEvent) => {
+    const at = e.target as Element;
+    return !!at.closest(".stickies") || !e.currentTarget.contains(at);
+  };
   function ask(kind: StickyKind, passage: { blockId: number; quote: string }) {
     setCap(null);
     window.getSelection()?.removeAllRanges();
@@ -1127,8 +1132,9 @@ export function Reader({
           tabIndex={-1}
           data-pane-target
           onScroll={cap && !cap.status ? () => setCap(null) : undefined}
+          onPointerDown={(e) => onSticky(e) && setCap(null)}
           // Not on the blocks alone: a drag over a passage often ends in the margin.
-          onMouseUp={offerBar}
+          onMouseUp={(e) => onSticky(e) || offerBar()}
         >
           <article className="reader">
             <div className="art-meta">

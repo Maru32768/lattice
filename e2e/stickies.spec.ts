@@ -694,7 +694,7 @@ test("a drag past the text's edge over the column selects to the line's end, ove
   const x = c.x + c.width / 2;
   for (const [name, i] of [
     ["the empty column above the card", 4],
-    ["the empty column below it", 14],
+    ["the empty column below it", 12],
     ["the card", 9],
   ] as const) {
     const from = await inLine(shell, paraBlock(i), 1);
@@ -731,6 +731,33 @@ test("in a narrow pane a drag over a card selects the text on both sides of it a
   expect(await selected(shell)).toBe([para(7), para(8), para(9)].join(" "));
   await bar(shell).getByRole("button", { name: "用語" }).click();
   await expect.poll(async () => (await asked(shell)).at(-1)!.quote.split(/\n+/)).toEqual([para(7), para(8), para(9)]);
+});
+
+test("a press on a sticky takes the bar away, and the selection that stays does not bring it back", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  await expect(card(app, "詳しく").locator(".answer")).toBeVisible();
+  const dialog = app.getByRole("alertdialog", { name: "付箋を削除しますか？" });
+  for (const press of [
+    async () => {
+      await card(app, "詳しく").getByRole("button", { name: "付箋を削除" }).click();
+      await expect(dialog).toBeVisible();
+      await expect(bar(app)).toHaveCount(0);
+      await dialog.getByRole("button", { name: "キャンセル" }).click();
+      await expect(dialog).toBeHidden();
+    },
+    () => card(app, "詳しく").locator(".cite").click(),
+  ]) {
+    // A press on selected text would drag it.
+    await app.evaluate(() => getSelection()!.removeAllRanges());
+    await drag(app, "#b-103", "#b-103");
+    await expect(bar(app)).toBeVisible();
+    await press();
+    expect(await selected(app)).toContain("multi-version");
+    await expect(bar(app)).toHaveCount(0);
+  }
+  await drag(app, "#b-106", "#b-106");
+  await expect(bar(app)).toBeVisible();
 });
 
 for (const layout of ["wide", "narrow"] as const) {
