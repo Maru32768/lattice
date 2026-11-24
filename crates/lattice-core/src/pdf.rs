@@ -1838,9 +1838,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
         // its next one would, not into an aside's title.
         let across = cur.is_some_and(|(d, prev, _)| {
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-            let hyphen = prev.text.ends_with('-');
-            let same = (prev.size - size).abs() < 0.5 || hyphen && l.text.starts_with(char::is_lowercase);
-            let cut = hyphen || prev.x1 >= prev.right - 2. * prev.size;
+            let same = (prev.size - size).abs() < 0.5;
+            let cut = prev.text.ends_with('-') || prev.x1 >= prev.right - 2. * prev.size;
             // After a full stop, a new paragraph may start where an item's text would: its next line stands further out.
             let indented = |n: &&Line| self::flows(l, n, pitch) && n.x0 < l.x0 - 0.5 * l.size && !is_bullet(&n.text);
             let new = prev.text.ends_with(['.', '!', '?', ':']) && lines.get(i + 1).filter(indented).is_some();
