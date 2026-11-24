@@ -211,7 +211,7 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     // shortcut: a turned page has no regions, as a box over a column would need turning back and a translation set
     // down it; give them one when vertical text turns up for the Page view to translate.
     let on_upright_page = |piece: &[&Line]| doc.pages.get(piece[0].page).is_some_and(|p| !p.vertical);
-    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
+    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d, body)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
         } else {
@@ -262,12 +262,22 @@ fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
 /// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
 /// them would wreck the drawing. They are what is left as a paragraph with no full line and no
 /// punctuation to end it, or a line with cells across it. The Reader keeps them, as text to search.
-fn laid_out_text(d: &Draft) -> bool {
+/// A line of words set like the body is none of those: a title that is no heading, as over a book's aside.
+fn laid_out_text(d: &Draft, body: f64) -> bool {
     let Some(last) = d.lines.last() else {
         return false;
     };
     let short = !last.text.ends_with(['.', '!', '?', ':', ';', ',', '。', '！', '？', '、']) && d.lines.iter().all(|l| l.x1 - l.x0 < 0.85 * (l.right - l.left));
-    d.kind == Kind::Paragraph && (short || d.lines.iter().any(|l| l.tabular()))
+    let title = d.lines.len() == 1 && last.size > 0.97 * body && reads_as_words(&last.text);
+    d.kind == Kind::Paragraph && (short && !title || d.lines.iter().any(|l| l.tabular()))
+}
+
+/// Starts with a capital and has three words or more, with little but letters: not code, a formula or a label.
+fn reads_as_words(t: &str) -> bool {
+    let word = |w: &&str| !w.is_empty() && w.chars().all(char::is_alphabetic);
+    let words = t.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric())).filter(word).count();
+    let (letters, ink) = t.chars().filter(|c| !c.is_whitespace()).fold((0, 0), |(l, n), c| (l + usize::from(c.is_alphabetic()), n + 1));
+    t.starts_with(char::is_uppercase) && words >= 3 && letters * 5 >= ink * 4
 }
 
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
@@ -2390,6 +2400,25 @@ pub(crate) mod tests {
         assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "heading", "paragraph"]);
         assert_eq!(ir.blocks[1].text, "Logical (row-based) log replication");
         assert!(regions(&bytes).unwrap().iter().any(|r| r.text.starts_with("Logical") && r.level == Some(2)), "the Page view translates it");
+    }
+
+    #[test]
+    fn a_title_set_like_the_body_is_translated_and_a_label_or_a_line_of_code_is_not() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "A long line of body text that runs across the whole of the column and on to its end,"),
+            (L, 112., 10., "with a second line that is nearly as long as the first one and then comes to a stop."),
+            (L, 140., 10., "Aside The progress of machines"),
+            (L, 158., 9.5, "A sentence of the aside that is set a little smaller than the body text around it,"),
+            (L, 169.5, 9.5, "and that ends on its second line."),
+            (200., 200., 8., "RF: Program registers"),
+            (L, 230., 10., "irmovq $15,%rbx # Load constant 15"),
+            (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
+            (L, 272., 10., "which the page needs for most of its text to be set at the size of the body."),
+        ];
+        let r = regions(&pdf(&[page], None)).unwrap();
+        let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
+        assert!(texts.contains(&"Aside The progress of machines"), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq")), "{texts:?}");
     }
 
     #[test]
