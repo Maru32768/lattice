@@ -790,6 +790,32 @@ for (const layout of ["wide", "narrow"] as const) {
     await dragTo(shell, await inLine(shell, paraBlock(14), 1), await inLine(shell, paraBlock(14), 90));
     expect(await selected(shell)).toContain("Paragraph");
   });
+
+  test(`a drag that starts in a card selects nothing outside it (${layout})`, async ({ shell }) => {
+    await (layout === "wide" ? startLong(shell) : startNarrow(shell));
+    for (const i of [7, 8, 9]) {
+      await askElsewhere(shell, LONG_ID, paraId(i), `the quote of card ${i}`);
+    }
+    await expect(cards(shell)).toHaveCount(3);
+    await scrollTo(shell, paraBlock(8), "center");
+    const [middle, next] = [await boxOf(cards(shell).nth(1)), await boxOf(cards(shell).nth(2))];
+    const own = (await cards(shell).nth(1).innerText()).replace(/\s+/g, "");
+    const answer = await boxOf(cards(shell).nth(1).locator(".answer"));
+    const from: [number, number] = [answer.x + 4, answer.y + 12];
+    const list = await boxOf(shell.locator(".list"));
+    for (const to of [
+      [middle.x + middle.width + 5, answer.y + 12],
+      [middle.x + 60, next.y + 40],
+      [middle.x - 60, answer.y + 30],
+      [list.x + 40, answer.y + 30],
+      [middle.x + 60, 5],
+    ] as [number, number][]) {
+      await dragTo(shell, from, [from[0] + 60, from[1]], to);
+      const got = (await selected(shell)).replace(/ /g, "");
+      expect(got).not.toBe("");
+      expect(own).toContain(got);
+    }
+  });
 }
 
 test("the other language of a sentence, shown under its block, and a block's label are not in the passage", async ({ app }) => {
