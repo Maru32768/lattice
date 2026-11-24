@@ -435,14 +435,16 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
 /// columns would leave the rest of each row before them, which as text reads on along the row. The other column of a page
 /// set in two is not beside a table in one of them.
 fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>]) -> bool {
-    let (mid, [x0, y0, x1, y1]) = (p.width / 2., grid.at);
+    let [x0, y0, x1, y1] = grid.at;
+    let table = Side::of(x0, x1, p.width);
     let across = |g: &Glyph| !g.vertical && !g.turned && !g.text.trim().is_empty();
     let mut baselines: Vec<f64> = cells.iter().flatten().flatten().filter(|g| across(g)).map(|g| g.y).collect();
     baselines.sort_by(f64::total_cmp);
     let on_a_baseline = |g: &Glyph| baselines.get(baselines.partition_point(|&y| y < g.y - 0.3 * g.size)).is_some_and(|&y| y < g.y + 0.3 * g.size);
     let beside = |g: &Glyph| {
-        let y = g.y - 0.3 * g.size;
-        y > y0 && y < y1 && (g.end <= x0 && (x0 < mid || g.x >= mid) || g.x >= x1 && (x1 > mid || g.end <= mid))
+        let (y, side) = (g.y - 0.3 * g.size, Side::of(g.x, g.end, p.width));
+        let left = g.end <= x0 && (table != Side::Right || side == Side::Right);
+        y > y0 && y < y1 && (left || g.x >= x1 && (table != Side::Left || side == Side::Left))
     };
     p.glyphs.iter().any(|g| across(g) && beside(g) && on_a_baseline(g) && !grids.iter().any(|other| other.cell(g).is_some()))
 }
@@ -1426,6 +1428,19 @@ enum Side {
     Full,
 }
 
+impl Side {
+    /// The half of a page `width` across that the span from `x0` to `x1` is in: across the middle by up to 1% of the
+    /// width is still in one half, as a column's lines run a little into the gutter.
+    fn of(x0: f64, x1: f64, width: f64) -> Side {
+        let (mid, tol) = (width / 2., width * 0.01);
+        match () {
+            _ if x1 <= mid + tol => Side::Left,
+            _ if x0 >= mid - tol => Side::Right,
+            _ => Side::Full,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Line {
     page: usize,
@@ -1779,12 +1794,7 @@ fn body_tables(pages: &[Page]) -> Vec<(usize, &Table)> {
 /// do the page's tables across it, whose text is not in the lines. Otherwise the content order stands.
 fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
     let width = page.width;
-    let (mid, tol) = (width / 2., width * 0.01);
-    let side = |l: &Line| match () {
-        _ if l.x1 <= mid + tol => Side::Left,
-        _ if l.x0 >= mid - tol => Side::Right,
-        _ => Side::Full,
-    };
+    let side = |l: &Line| Side::of(l.x0, l.x1, width);
     let chars = |s: Side| lines.iter().filter(|l| side(l) == s).map(|l| l.text.chars().count()).sum::<usize>();
     let total = chars(Side::Left) + chars(Side::Right) + chars(Side::Full);
     let two = chars(Side::Left) * 5 >= total && chars(Side::Right) * 5 >= total;
@@ -1808,7 +1818,7 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
         return lines;
     }
     lines.sort_by(|a, b| a.y.total_cmp(&b.y));
-    let mut tables: Vec<f64> = page.tables.iter().filter(|t| t.at[0] < mid && t.at[2] > mid).map(|t| t.at[1]).collect();
+    let mut tables: Vec<f64> = page.tables.iter().filter(|t| Side::of(t.at[0], t.at[2], width) == Side::Full).map(|t| t.at[1]).collect();
     tables.sort_by(f64::total_cmp);
     let mut tables = tables.into_iter().peekable();
     let mut out = Vec::with_capacity(lines.len());
@@ -3278,7 +3288,7 @@ pub(crate) mod tests {
     fn a_line_beside_a_table_has_no_room_over_it() {
         let cells = shown(306., 130., "One") + &shown(406., 130., "Two") + &shown(306., 180., "Three") + &shown(406., 180., "Four");
         let prose = shown(72., 250., "A sentence of prose that runs along the whole width of the page from margin to margin.");
-        let ops = shown(72., 155., "Aside.") + &ruled(&[300., 400., 540.], &[110., 160., 200.], "strokes") + &cells + &prose;
+        let ops = shown(72., 130., "Aside.") + &ruled(&[300., 400., 540.], &[110., 160., 200.], "strokes") + &cells + &prose;
         let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
         let aside = r.iter().find(|r| r.text == "Aside.").unwrap();
         assert!(aside.room_right > 0. && aside.x1 + aside.room_right <= 300., "{} + {}", aside.x1, aside.room_right);
@@ -3342,6 +3352,30 @@ pub(crate) mod tests {
         }
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert!(kinds(&ir).contains(&("table", "Strong\tLasting\nCostly\tEasy")), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_table_in_the_left_column_that_ends_in_the_gutter_keeps_the_right_column_whole() {
+        // Its right border 4pt past the middle of the page (306), as a line of the left column may run, and the right
+        // column's lines 10pt apart, on the baselines of its cells.
+        let mut ops = String::new();
+        for (i, y) in [100., 112., 124.].into_iter().enumerate() {
+            ops += &shown(72., y, &format!("Leftabove {i} has a line of words."));
+        }
+        for (i, y) in [240., 252., 264.].into_iter().enumerate() {
+            ops += &shown(72., y, &format!("Leftbelow {i} has a line of words."));
+        }
+        for i in 0..14 {
+            ops += &shown(330., 104. + 10. * i as f64, &format!("Rightcol {i} has a line of words."));
+        }
+        ops += &(ruled(&[72., 190., 310.], &[140., 180., 220.], "strokes") + &shown(78., 164., "Strong") + &shown(196., 164., "Lasting"));
+        ops += &(shown(78., 204., "Costly") + &shown(196., 204., "Easy"));
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        let texts: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
+        let text = texts.join("\n");
+        let at = |w: &str| text.find(w).unwrap();
+        assert!(texts.contains(&"Strong\tLasting\nCostly\tEasy"), "{texts:?}");
+        assert!(at("Leftbelow 0") < at("Rightcol 0"), "{texts:?}");
     }
 
     #[test]
