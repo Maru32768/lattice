@@ -468,10 +468,13 @@ fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
     {
         breaks.extend(first[1..].iter().map(|l| l.y).filter(|&y| starts_row(y)));
     }
-    let row_of = |g: &Glyph| breaks.iter().filter(|&&y| g.y > y - 0.6 * g.size).count();
-    (0..=breaks.len())
-        .map(|row| band.iter().map(|glyphs| cell_text(&glyphs.iter().copied().filter(|g| row_of(g) == row).collect::<Vec<_>>(), width)).collect())
-        .collect()
+    let mut rows = vec![vec![Vec::new(); band.len()]; breaks.len() + 1];
+    for (column, glyphs) in band.iter().enumerate() {
+        for &g in glyphs {
+            rows[breaks.partition_point(|&y| g.y > y - 0.6 * g.size)][column].push(g);
+        }
+    }
+    rows.iter().map(|row| row.iter().map(|glyphs| cell_text(glyphs, width)).collect()).collect()
 }
 
 /// A cell's text, built as a paragraph's is. `block` reads only the lines' text, so their page is left 0.
@@ -3160,6 +3163,23 @@ pub(crate) mod tests {
         let unruled = [["Design", "Insert"], ["Adjacency List", "Easy"], ["Nested Sets", "Hard"], ["Closure Table", "Easy"]];
         let wrapped = [["Design", "Queries"], ["A tree kept as references", "Easy to insert, but hard to query"]];
         assert_eq!(ir.blocks.iter().map(|b| b.attrs.rows.clone()).collect::<Vec<_>>(), [rows(&unruled), rows(&wrapped)]);
+    }
+
+    #[test]
+    fn a_band_of_a_thousand_rows_no_rule_parts_is_read_in_linear_time() {
+        // Each of the two cells holds a thousand lines of one letter in 1pt type, 0.7pt apart, so each starts a row. With
+        // every glyph's row looked up among all the rows for each row, this took 30 s in a debug build.
+        let mut ops = ruled(&[72., 300., 540.], &[40., 60., 780.], "strokes") + &shown(78., 55., "Head") + &shown(306., 55., "Head");
+        for x in [78., 306.] {
+            for i in 0..1000 {
+                ops += &format!("BT /F1 1 Tf {x} {} Td (a) Tj ET\n", 792. - (70. + 0.7 * i as f64));
+            }
+        }
+        let bytes = with_contents(&pdf(&[vec![]], None), &[(0, &ops)]);
+        let started = std::time::Instant::now();
+        let ir = to_ir(&bytes, None).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "took {:?}", started.elapsed());
+        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(1001));
     }
 
     /// A page that draws `ops`, then a form that shows `label` at its top.
