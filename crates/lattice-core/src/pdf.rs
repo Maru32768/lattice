@@ -427,7 +427,8 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     let mut tables = Vec::new();
     let two = !turns && !grids.is_empty() && {
         let outside: Vec<&Glyph> = p.glyphs.iter().filter(|g| !grids.iter().any(|grid| grid.cell(g).is_some())).collect();
-        in_two_columns(&page_lines(0, &outside, p.width), p.width)
+        let inside = |grid: &Grid| p.glyphs.iter().filter(|g| grid.cell(g).is_some()).map(|g| g.text.chars().count()).sum();
+        in_two_columns(spans(&page_lines(0, &outside, p.width)).chain(grids.iter().map(|grid| (grid.at[0], grid.at[2], inside(grid)))), p.width)
     };
     for grid in &grids {
         let cell = |g: &Glyph| grid.cell(g).filter(|_| turns || !g.turned);
@@ -1822,11 +1823,24 @@ fn body_tables(pages: &[Page]) -> HashSet<(usize, usize)> {
     all().filter(|&(i, _, t)| key(i, t).is_none_or(|k| !running(&k))).map(|(i, j, _)| (i, j)).collect()
 }
 
-/// Whether a page whose lines are `lines` is set in two columns: each half holds a fifth of the text.
-fn in_two_columns(lines: &[Line], width: f64) -> bool {
-    let chars = |s: Side| lines.iter().filter(|l| Side::of(l.x0, l.x1, width) == s).map(|l| l.text.chars().count()).sum::<usize>();
-    let total = chars(Side::Left) + chars(Side::Right) + chars(Side::Full);
-    chars(Side::Left) * 5 >= total && chars(Side::Right) * 5 >= total
+/// Whether a page is set in two columns: each half holds a fifth of the text. `text` is each line's or table's span across
+/// the page and its number of characters: a table's text counts in its column, as it would as lines.
+fn in_two_columns(text: impl Iterator<Item = (f64, f64, usize)>, width: f64) -> bool {
+    let (mut left, mut right, mut total) = (0, 0, 0);
+    for (x0, x1, chars) in text {
+        match Side::of(x0, x1, width) {
+            Side::Left => left += chars,
+            Side::Right => right += chars,
+            Side::Full => {}
+        }
+        total += chars;
+    }
+    left * 5 >= total && right * 5 >= total
+}
+
+/// The span across the page and the number of characters of each line, as `in_two_columns` counts them.
+fn spans(lines: &[Line]) -> impl Iterator<Item = (f64, f64, usize)> + '_ {
+    lines.iter().map(|l| (l.x0, l.x1, l.text.chars().count()))
 }
 
 /// Reading order of one page, and where each of its tables is read in it: before the line at that index. In two columns
@@ -1836,7 +1850,8 @@ fn in_two_columns(lines: &[Line], width: f64) -> bool {
 fn order(mut lines: Vec<Line>, page: &Page) -> (Vec<Line>, Vec<usize>) {
     let width = page.width;
     let side = |l: &Line| Side::of(l.x0, l.x1, width);
-    let two = in_two_columns(&lines, width);
+    let tables = page.tables.iter().map(|t| (t.at[0], t.at[2], t.rows.iter().flatten().map(|c| c.chars().count()).sum()));
+    let two = in_two_columns(spans(&lines).chain(tables), width);
     if two {
         for l in &mut lines {
             l.side = side(l);
@@ -5401,6 +5416,43 @@ pub(crate) mod tests {
             let k = kinds(&ir);
             assert_eq!(k[..3].iter().map(|b| b.0).collect::<Vec<_>>(), ["caption", "table", "paragraph"], "{k:?}");
             assert!(k[2].1.contains(runs_on), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn a_column_that_is_mostly_a_table_keeps_the_page_in_two_columns() {
+        // The left column is a ruled table and three lines of prose that run on into the right column. Interleaved, the
+        // right column's lines beside the prose come between its lines, as a page set row by row has them.
+        let page = |pitch: f64, interleaved: bool| {
+            let ys = [100., 130., 160., 190., 220., 250., 280.];
+            let mut ops = ruled(&[72., 150., 290.], &ys, "strokes");
+            for (i, y) in ys[1..].iter().enumerate() {
+                ops += &(shown(78., y - 10., &format!("Row {i}")) + &shown(156., y - 10., &format!("Some cell text {i}")));
+            }
+            let prose =
+                ["The left column ends its prose here and it", "runs on for a line or two more and then it", "goes on into the right column of the page"];
+            let right = |i: usize| shown(320., 100. + pitch * i as f64, &format!("right column line {i:02} of the body runs on"));
+            if interleaved {
+                ops += &(0..14).map(right).collect::<String>();
+                for (i, l) in prose.iter().enumerate() {
+                    ops += &(shown(72., 100. + pitch * (14 + i) as f64, l) + &right(14 + i));
+                }
+                ops += &(17..20).map(right).collect::<String>();
+            } else {
+                for (i, l) in prose.iter().enumerate() {
+                    ops += &shown(72., 304. + 12. * i as f64, l);
+                }
+                ops += &(0..20).map(right).collect::<String>();
+            }
+            with_contents(&pdf(&[vec![]], None), &[(0, &ops)])
+        };
+        for (pitch, interleaved) in [(15., false), (15., true), (12., false)] {
+            let bytes = page(pitch, interleaved);
+            let ir = to_ir(&bytes, None).unwrap();
+            let k = kinds(&ir);
+            assert!(k.iter().any(|b| b.0 == "table" && b.1.starts_with("Row 0\tSome cell text 0")), "{pitch} {interleaved}: {k:?}");
+            assert!(k.iter().any(|b| b.1.contains("of the page right column line 00")), "{pitch} {interleaved}: {k:?}");
+            assert!(regions(&bytes).unwrap().iter().any(|r| r.text.starts_with("The left column ends")), "{pitch} {interleaved}");
         }
     }
 }
