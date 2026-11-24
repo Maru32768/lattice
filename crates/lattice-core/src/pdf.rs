@@ -1794,7 +1794,9 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     let mut drafts: Vec<Draft> = Vec::new();
     let mut refs: Option<RefStyle> = None;
     for (i, l) in lines.iter().enumerate() {
-        if let Some(level) = heading_level(l, body) {
+        // "a Y86-" / "64 processor.": the rest of a word.
+        let rest = i > 0 && lines[i - 1].text.ends_with('-') && flows(&lines[i - 1], l, pitch);
+        if let Some(level) = heading_level(l, body).filter(|_| !rest) {
             refs = is_references(&l.text).then(|| ref_style(&lines[i + 1..], body));
             drafts.push(Draft { kind: Kind::Heading(level), lines: vec![l] });
             continue;
@@ -2513,6 +2515,14 @@ pub(crate) mod tests {
         let ir = to_ir(&pdf(&[page], None), None).unwrap();
         let headings: Vec<&str> = kinds(&ir).iter().filter(|k| k.0 == "heading").map(|k| k.1).collect();
         assert_eq!(headings, ["4.1.2 Y86-64 Instructions"]);
+    }
+
+    #[test]
+    fn a_number_broken_off_a_word_at_the_end_of_a_line_opens_no_heading() {
+        let page: Vec<Run> =
+            vec![(L, 100., 10., "A long line of body text that runs across the whole of the column up to the Y86-"), (L, 112., 10., "64 ISA.")];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "A long line of body text that runs across the whole of the column up to the Y86-64 ISA.")]);
     }
 
     #[test]
