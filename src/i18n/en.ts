@@ -1133,6 +1133,8 @@ export const en = {
   "be.chain.noApiKey": "This provider takes no API key",
   "be.chat.noSources": "Nothing in the saved articles in this scope relates to the question. Try a wider scope, or ask it another way.",
   "be.chat.badQuestion": "The question is empty or too long",
+  "be.stickies.badQuote": "The selected passage is empty or over {max} characters",
+  "be.stickies.malformed": "The model returned an empty answer",
   "be.chat.effortUnsupported": "The chosen provider does not support effort “{effort}”",
   "be.article.noContent": "The article has no extracted text",
   "be.summarize.malformed": "The model returned a malformed summary",

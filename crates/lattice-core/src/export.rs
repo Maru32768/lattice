@@ -1,4 +1,4 @@
-//! JSON export (§17): articles, their translations, summaries, quizzes, memos (with review state),
+//! JSON export (§17): articles, their translations, summaries, quizzes (with review state), memos, stickies,
 //! groups, and chat, in an open format, so none of it lives only in this database or at an LLM provider. One JSON object per line,
 //! gzip-compressed, written article by article: 10^5 articles never sit in memory at once.
 //! Left out: settings (API keys and other secrets), raw HTML snapshots, image bytes, embeddings
@@ -12,6 +12,7 @@ use rusqlite::OptionalExtension;
 use serde_json::{Value, json};
 
 use crate::msg;
+use crate::stickies;
 use crate::store::Store;
 
 pub const FORMAT: &str = "lattice-export/1";
@@ -132,7 +133,7 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
         let Some(article) = store.article_row(id).map_err(err)? else {
             continue;
         }; // deleted meanwhile
-        let (blocks, summaries, quizzes, note): (String, String, String, Option<Value>) = {
+        let (blocks, summaries, quizzes, stickies, note): (String, String, String, String, Option<Value>) = {
             let c = store.conn();
             let q = |sql: &str| c.query_row(sql, [id], |r| r.get::<_, String>(0)).map_err(err);
             let note = c
@@ -141,13 +142,14 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
                 })
                 .optional()
                 .map_err(err)?;
-            (q(BLOCKS)?, q(SUMMARIES)?, q(QUIZZES)?, note)
+            (q(BLOCKS)?, q(SUMMARIES)?, q(QUIZZES)?, q(stickies::EXPORT)?, note)
         };
         let mut v = json!({"type": "article"});
         v.as_object_mut().expect("object").extend(serde_json::to_value(article).map_err(err)?.as_object().cloned().unwrap_or_default());
         v["blocks"] = serde_json::from_str(&blocks).map_err(err)?;
         v["summaries"] = serde_json::from_str(&summaries).map_err(err)?;
         v["quizzes"] = serde_json::from_str(&quizzes).map_err(err)?;
+        v["stickies"] = serde_json::from_str(&stickies).map_err(err)?;
         v["note"] = note.unwrap_or(Value::Null);
         line(out, &v)?;
         n += 1;
@@ -243,6 +245,12 @@ mod tests {
              INSERT INTO review_log (question_id, grade, prev_interval_minutes, interval_minutes, ease, reviewed_at) VALUES (7, 'good', 0, 1440, 2500, 0);"
         ));
 
+        s.exec_for_test(&format!(
+            "INSERT INTO stickies (id, article_id, block_id, kind, quote) VALUES (1, {id}, {para}, 'question', 'write skew'), (2, {id}, NULL, 'term', 'SSI');
+             INSERT INTO sticky_messages (sticky_id, question, answer, citations, provider, prompt_version) VALUES
+                 (1, 'なぜ？', '答え [1]', '[{{\"n\":1}}]', 'fake', 'sticky-v1'), (2, '', '用語の答え', '[]', 'fake', 'sticky-v1');"
+        ));
+
         let mut out = Vec::new();
         assert_eq!(export_to(&s, &mut out, None).unwrap(), 1);
         let text = String::from_utf8(out).unwrap();
@@ -272,6 +280,15 @@ mod tests {
                    "log": [{"grade": "good", "interval_minutes": 1440, "reviewed_at": "1970-01-01T00:00:00Z"}]})
         );
         assert_eq!(quiz["questions"][1]["review"], Value::Null, "not in review");
+        let stickies = a["stickies"].as_array().unwrap();
+        assert_eq!((stickies.len(), stickies[0]["kind"].as_str(), stickies[0]["quote"].as_str()), (2, Some("question"), Some("write skew")));
+        assert_eq!((stickies[0]["block_ordinal"].as_i64(), &stickies[1]["block_ordinal"]), (Some(1), &Value::Null), "the block as its ordinal");
+        assert_eq!(
+            stickies[0]["messages"],
+            json!([{"question": "なぜ？", "answer": "答え [1]", "citations": [{"n": 1}], "provider": "fake", "model": null, "prompt_version": "sticky-v1",
+                    "created_at": stickies[0]["messages"][0]["created_at"]}])
+        );
+        assert_eq!(stickies[1]["messages"][0]["answer"], "用語の答え");
         let chat = &lines[2];
         assert_eq!((chat["type"].as_str(), chat["messages"][0]["answer"].as_str()), (Some("chat_thread"), Some("answer [1]")));
         assert_eq!(chat["llm"], json!({"kind": "gemini", "model": null}));

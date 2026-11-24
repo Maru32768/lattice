@@ -1117,6 +1117,8 @@ export const ja = {
   "be.chain.noApiKey": "このproviderにAPIキーはありません",
   "be.chat.noSources": "この範囲の保存済み記事には、質問に関係する箇所が見つかりませんでした。範囲を広げるか、質問の言い方を変えてみてください。",
   "be.chat.badQuestion": "質問が空か、長すぎます",
+  "be.stickies.badQuote": "選んだ箇所が空か、{max}文字を超えています",
+  "be.stickies.malformed": "モデルが空の回答を返しました",
   "be.chat.effortUnsupported": "選んだプロバイダはeffort「{effort}」に対応していません",
   "be.article.noContent": "記事の本文が抽出されていません",
   "be.summarize.malformed": "モデルが返した要約の形式が不正です",
