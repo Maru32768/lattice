@@ -3,6 +3,9 @@ import { test, expect, callsOf, list, listRow } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
+// With scrollbars that take width, as in the app: the pane of its default window is too narrow for a column only with one.
+test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
+
 const titleOf = (id: number) => ARTICLES.find((a) => a.id === id)!.title!;
 const LONG_ID = ARTICLES[1].id;
 const para = (i: number) => `Paragraph ${i} of the long article.`;
@@ -18,16 +21,31 @@ async function openSnapshot(page: Page) {
   await page.locator(".docbar").getByRole("button", { name: "原文", exact: true }).click();
 }
 
-/** The app with one article long enough to scroll. */
-async function startLong(shell: Page) {
+/** The app with one article long enough to scroll, beside the sidebar and the list. */
+async function startLong(shell: Page, sentences = 1) {
   await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
     const res = await route.fetch();
-    const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', \`Paragraph \${i} of the long article.\`, null])] : plain(a)))(genericBlocks);`;
+    const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', Array(${sentences}).fill(\`Paragraph \${i} of the long article.\`).join(' '), null])] : plain(a)))(genericBlocks);`;
     await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
   });
   await shell.goto("/");
   await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   await open(shell, LONG_ID);
+}
+
+/** The block of `para(i)`. */
+const paraBlock = (i: number) => `#b-${LONG_ID * 100 + 5 + i}`;
+const doc = (page: Page) => page.locator(".doc-scroll");
+const scrollTop = (page: Page) => doc(page).evaluate((el) => el.scrollTop);
+const scrollTo = (page: Page, block: string, where: ScrollLogicalPosition) => page.locator(block).evaluate((el, block) => el.scrollIntoView({ block }), where);
+
+/** At the size the app's window opens in, which leaves the article a pane too narrow for a column of stickies. */
+async function startNarrow(shell: Page) {
+  await shell.setViewportSize({ width: 1200, height: 800 });
+  await startLong(shell);
+  await expect(shell.locator(".nav")).toBeVisible();
+  await expect(list(shell)).toBeVisible();
+  expect(await doc(shell).evaluate((el) => el.clientWidth)).toBeLessThan(560);
 }
 
 const bar = (page: Page) => page.locator(".vw-cap");
@@ -103,7 +121,7 @@ test("詳しく: a passage over two paragraphs gets an answer beside the first, 
   await openSnapshot(shell);
   const text = await boxOf(shell.locator("#b-102"));
   await expect(cards(shell)).toHaveCount(0);
-  await expect(shell.locator(".stickies")).toHaveCount(0);
+  await expect(shell.locator(".stickies")).toBeHidden();
 
   // Let go in the margin, as a drag over a passage often ends.
   await drag(shell, "#b-102", "#b-103", 60);
@@ -284,12 +302,12 @@ test("a sticky is deleted after a confirmation, and the column goes with the las
   expect(await callsOf(app, "delete_sticky")).toEqual([]);
   await remove.click();
   await dialog.getByRole("button", { name: "削除" }).click();
-  await expect(app.locator(".stickies")).toHaveCount(0);
+  await expect(app.locator(".stickies")).toBeHidden();
   expect(await callsOf(app, "delete_sticky")).toEqual([{ id: 1 }]);
   expect(await boxOf(app.locator("#b-102"))).toEqual(before);
   await open(app, LONG_ID);
   await open(app, SNAPSHOT_ID);
-  await expect(app.locator(".stickies")).toHaveCount(0);
+  await expect(app.locator(".stickies")).toBeHidden();
 });
 
 test("a sticky asked or deleted in another window shows here", async ({ app }) => {
@@ -305,7 +323,7 @@ test("a sticky asked or deleted in another window shows here", async ({ app }) =
       id: 2,
     }),
   );
-  await expect(app.locator(".stickies")).toHaveCount(0);
+  await expect(app.locator(".stickies")).toBeHidden();
 });
 
 test("stickies that cannot be read say so", async ({ shell }) => {
@@ -356,34 +374,170 @@ test("the column goes on below a short article, and scrolls with it", async ({ a
   await expect(cards(app).last()).toBeInViewport({ ratio: 1 });
 });
 
-test("in a narrow pane the cards come after the article, and go back beside it in a wider one", async ({ shell }) => {
+test("in a narrow pane a card is right under its passage, and neither asking nor the answer moves the text above it", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await startNarrow(shell);
+  const [block, next] = [shell.locator(paraBlock(40)), shell.locator(paraBlock(41))];
+  await scrollTo(shell, paraBlock(40), "center");
+  const [top, at, below] = [await scrollTop(shell), await boxOf(block), await boxOf(next)];
+  const between = below.y - (at.y + at.height);
+
+  await askAbout(shell, "質問", paraBlock(40));
+  await expect(field(shell)).toBeFocused();
+  const under = async () => {
+    const [c, b, n] = [await boxOf(cards(shell).first()), await boxOf(block), await boxOf(next)];
+    expect(b, "the passage stays where it was").toEqual(at);
+    expect(c.y - (b.y + b.height)).toBeCloseTo(10, 0);
+    expect(n.y - (c.y + c.height), "the text below gives way").toBeCloseTo(between, 0);
+    return c.height;
+  };
+  await under();
+  await shell.keyboard.press("Escape");
+  await expect(cards(shell)).toHaveCount(0);
+  expect(await boxOf(next)).toEqual(below);
+  expect(await scrollTop(shell)).toBe(top);
+
+  await askAbout(shell, "詳しく", paraBlock(40));
+  const waiting = await under();
+  await shell.evaluate(() => window.__e2e.release("sticky_ask"));
+  await expect(card(shell, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  expect(await under()).toBeGreaterThan(waiting);
+  expect(await scrollTop(shell)).toBe(top);
+  await open(shell, SNAPSHOT_ID);
+  await open(shell, LONG_ID);
+  await expect.poll(() => scrollTop(shell)).toBe(top);
+  await under();
+});
+
+test("in a narrow pane a card that opens at the bottom of the view moves the text no further than shows the card", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(40), "end");
+  const top = await scrollTop(shell);
+  await askAbout(shell, "質問", paraBlock(40));
+  await expect(field(shell)).toBeInViewport({ ratio: 1 });
+  const [c, view] = [await boxOf(cards(shell).first()), await boxOf(doc(shell))];
+  expect(c.y + c.height).toBeCloseTo(view.y + view.height, 0);
+  expect((await scrollTop(shell)) - top).toBeLessThan(c.height + 20);
+  await expect(shell.locator(paraBlock(40))).toBeInViewport();
+});
+
+test("in a narrow pane the text being read stays still as an answer above it comes and goes", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(40), "center");
+  await askAbout(shell, "詳しく", paraBlock(40));
+  await scrollTo(shell, paraBlock(60), "center");
+  await expect(cards(shell).first()).not.toBeInViewport();
+  const y = async () => (await boxOf(shell.locator(paraBlock(60)))).y;
+  const [before, top] = [await y(), await scrollTop(shell)];
+  const moved = async () => Math.abs((await y()) - before);
+  await shell.evaluate(() => window.__e2e.release("sticky_ask"));
+  await expect(card(shell, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  // The browser moves the view with the text in a frame of its own.
+  await expect.poll(moved).toBeLessThan(1);
+  expect(await scrollTop(shell), "it had to").toBeGreaterThan(top + 10);
+  await card(shell, "詳しく")
+    .getByRole("button", { name: "付箋を削除" })
+    .evaluate((el) => (el as HTMLElement).click());
+  await shell.getByRole("alertdialog").getByRole("button", { name: "削除" }).click();
+  await expect(cards(shell)).toHaveCount(0);
+  await expect.poll(moved).toBeLessThan(1);
+});
+
+test("in a narrow pane stickies that come all at once leave the text at the top of the view there", async ({ shell }) => {
+  await hold(shell, "list_stickies");
+  await startNarrow(shell);
+  // One is on the block at the top, whose own styles change with it, and one has no block.
+  for (const block of [null, LONG_ID * 100 + 2, LONG_ID * 100 + 5 + 10, LONG_ID * 100 + 5 + 40]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await doc(shell).evaluate((el) => (el.scrollTop += 5));
+  await scrollTo(shell, paraBlock(40), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 5));
+  const y = async () => (await boxOf(shell.locator(paraBlock(40)))).y;
+  const before = await y();
+  await shell.evaluate(() => window.__e2e.release("list_stickies"));
+  await expect(cards(shell)).toHaveCount(4);
+  await expect.poll(async () => Math.abs((await y()) - before)).toBeLessThan(1);
+
+  await doc(shell).evaluate((el) => el.scrollTo(0, 0));
+  const [first, second, heading, chips] = [
+    await boxOf(cards(shell).first()),
+    await boxOf(cards(shell).nth(1)),
+    await boxOf(shell.locator(`#b-${LONG_ID * 100 + 1}`)),
+    await boxOf(shell.locator(".art-chips")),
+  ];
+  expect(first.y, "the one without a block is above the article's first").toBeGreaterThanOrEqual(chips.y + chips.height);
+  expect(heading.y).toBeGreaterThanOrEqual(first.y + first.height);
+  expect(second.y).toBeGreaterThan(heading.y + heading.height);
+});
+
+test("the cards are under their block in a narrow pane, and beside it in a wider one", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 2, "one");
-  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 3, "two");
+  const plain = await boxOf(shell.locator(paraBlock(10)));
+  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5, "one");
+  await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5, "two");
+  const [one, two] = [cards(shell).first(), cards(shell).nth(1)];
   const beside = async () => {
-    const [c, r] = [await boxOf(cards(shell).first()), await boxOf(shell.locator(".reader"))];
+    const [c, r] = [await boxOf(one), await boxOf(shell.locator(".reader"))];
     return c.x >= r.x + r.width - 1;
   };
-  const below = async () => {
-    const [one, two, r] = [await boxOf(cards(shell).first()), await boxOf(cards(shell).last()), await boxOf(shell.locator(".reader"))];
-    return one.y >= r.y + r.height && two.y >= one.y + one.height;
+  const under = async () => {
+    const [a, b, block, next] = [await boxOf(one), await boxOf(two), await boxOf(shell.locator(paraBlock(0))), await boxOf(shell.locator(paraBlock(1)))];
+    return a.x === block.x + 14 && a.y >= block.y + block.height && b.y >= a.y + a.height && next.y >= b.y + b.height;
   };
+  const roomless = async () => Math.abs((await boxOf(shell.locator(paraBlock(10)))).y - plain.y) < 1;
   await expect.poll(beside).toBe(true);
+  expect(await roomless()).toBe(true);
   // The pane keeps what the sidebar and the list leave.
-  const pane = await shell.locator(".doc-scroll").evaluate((el) => el.clientWidth);
+  const pane = await doc(shell).evaluate((el) => el.clientWidth);
   await shell.setViewportSize({ width: 1500 - pane + 575, height: 900 });
   await expect.poll(beside).toBe(true);
   const text = await boxOf(shell.locator(".reader .blocks"));
   expect(text.width, "the text gives up width").toBeGreaterThan(240);
   await shell.setViewportSize({ width: 1500 - pane + 540, height: 900 });
-  await expect.poll(below).toBe(true);
-  await askAbout(shell, "質問", `#b-${LONG_ID}02`);
-  await expect(field(shell)).toBeFocused();
-  await expect(field(shell), "down there, brought into view").toBeInViewport();
+  await expect.poll(under).toBe(true);
+
+  // A card that the reader makes taller pushes the text below it.
+  await scrollTo(shell, paraBlock(3), "center");
+  await askAbout(shell, "質問", paraBlock(3));
+  const grip = await boxOf(field(shell));
+  const next = async () => (await boxOf(shell.locator(paraBlock(4)))).y;
+  const before = await next();
+  await shell.mouse.move(grip.x + grip.width - 4, grip.y + grip.height - 4);
+  await shell.mouse.down();
+  await shell.mouse.move(grip.x + grip.width - 4, grip.y + grip.height + 116, { steps: 6 });
+  await shell.mouse.up();
+  await expect.poll(async () => (await next()) - before, { timeout: 3000 }).toBeGreaterThan(100);
+  expect(await callsOf(shell, "log_ui_error"), "in the app's log").toEqual([]);
   await shell.keyboard.press("Escape");
   await shell.setViewportSize({ width: 1500, height: 900 });
   await expect.poll(beside).toBe(true);
+  await doc(shell).evaluate((el) => el.scrollTo(0, 0));
+  await expect.poll(roomless).toBe(true);
+});
+
+test("a column that narrows the text leaves the line at the top of the view there, as it comes and as it goes", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell, 12);
+  const pane = await doc(shell).evaluate((el) => el.clientWidth);
+  await shell.setViewportSize({ width: 1500 - pane + 640, height: 900 });
+  await scrollTo(shell, paraBlock(40), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 150));
+  const [top, wide] = [await scrollTop(shell), await boxOf(shell.locator(paraBlock(40)))];
+  const passed = async () => {
+    const [b, view] = [await boxOf(shell.locator(paraBlock(40))), await boxOf(doc(shell))];
+    return (view.y - b.y) / b.height;
+  };
+  const before = await passed();
+  await askAbout(shell, "質問", paraBlock(42));
+  await expect(field(shell)).toBeFocused();
+  expect((await boxOf(shell.locator(paraBlock(40)))).height, "the text is narrower").toBeGreaterThan(wide.height + 50);
+  expect(Math.abs((await passed()) - before)).toBeLessThan(0.02);
+  await shell.keyboard.press("Escape");
+  await expect(cards(shell)).toHaveCount(0);
+  expect(Math.abs((await scrollTop(shell)) - top)).toBeLessThan(3);
 });
 
 test("what is in a sticky is not the article's text: the find, link labels, visual mode and gi pass over it", async ({ shell }) => {
@@ -505,29 +659,88 @@ test("the bar of a passage that ends below the view, or at its edge, is in the w
   await expect(bar(shell)).toBeInViewport({ ratio: 1 });
 });
 
-test("the reading place is the article's while the view is among the cards below it", async ({ shell }) => {
-  await shell.setViewportSize({ width: 900, height: 700 });
+/** The place kept for an article. */
+const placeOf = (page: Page, article = LONG_ID) =>
+  page.evaluate(
+    (id) =>
+      (JSON.parse(localStorage.getItem("lattice.readingPlaces") ?? "[]") as [string, { text: string; at: number; page?: { text: string; at: number } }][]).find(
+        ([a]) => a === id,
+      )?.[1],
+    String(article),
+  );
+const placeText = async (page: Page) => (await placeOf(page))?.text;
+
+test("the reading place is the article's while the view is among the cards that go on below it", async ({ shell }) => {
   await startLong(shell);
+  await scrollTo(shell, paraBlock(40), "start");
+  await expect.poll(() => placeText(shell)).toBe(para(40));
   for (let i = 0; i < 12; i++) {
-    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 2, `card ${i}`);
+    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 70, `card ${i}`);
   }
   await expect(cards(shell)).toHaveCount(12);
-  const doc = shell.locator(".doc-scroll");
-  const places = () => shell.evaluate(() => localStorage.getItem("lattice.readingPlaces") ?? "");
-  await doc.getByText(para(40)).evaluate((el) => el.scrollIntoView({ block: "start" }));
-  await expect.poll(places).toContain(para(40));
-  await doc.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-  await expect(doc.getByText(para(79))).not.toBeInViewport();
-  await expect.poll(places).toContain(para(79));
-  await doc.evaluate((el) => el.scrollTo(0, 0));
-  await expect.poll(places).not.toContain("long article");
+  await doc(shell).evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect(shell.locator(paraBlock(79))).not.toBeInViewport();
+  await expect.poll(() => placeText(shell)).toBe(para(79));
+  await doc(shell).evaluate((el) => el.scrollTo(0, 0));
+  await expect.poll(() => placeText(shell)).toBeUndefined();
 });
 
-test("the print of an article leaves its stickies out", async ({ app }) => {
-  await openSnapshot(app);
-  await askAbout(app, "詳しく", "#b-102");
-  await expect(card(app, "詳しく").locator(".answer")).toBeVisible();
-  await app.emulateMedia({ media: "print" });
-  await expect(app.locator(".stickies")).toBeHidden();
-  await expect(app.locator("#b-102")).toBeVisible();
+test("the reading place among the cards under a block is the block's end, and the article opens there again", async ({ shell }) => {
+  await startNarrow(shell);
+  for (let i = 0; i < 4; i++) {
+    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 40, `card ${i}`);
+  }
+  await expect(cards(shell)).toHaveCount(4);
+  await cards(shell)
+    .nth(2)
+    .evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await expect.poll(() => placeText(shell)).toBe(para(40));
+  const { at } = (await placeOf(shell))!;
+  expect(at).toBeGreaterThan(0.9);
+  expect(at).toBeLessThanOrEqual(1);
+  await open(shell, SNAPSHOT_ID);
+  await open(shell, LONG_ID);
+  const end = async () => {
+    const [b, view] = [await boxOf(shell.locator(paraBlock(40))), await boxOf(doc(shell))];
+    return Math.abs(b.y + b.height - view.y);
+  };
+  await expect.poll(end).toBeLessThan(3);
+  await expect(cards(shell).first()).toBeInViewport();
+  // Past the last block too.
+  for (let i = 0; i < 6; i++) {
+    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 79, `card ${i}`);
+  }
+  await expect(cards(shell)).toHaveCount(10);
+  await doc(shell).evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect(shell.locator(paraBlock(79))).not.toBeInViewport();
+  await expect.poll(() => placeText(shell)).toBe(para(79));
+});
+
+test("the place that the Page view gets of a code block leaves out the cards between it and the next paragraph", async ({ shell }) => {
+  await startNarrow(shell);
+  await openSnapshot(shell);
+  for (let i = 0; i < 6; i++) {
+    await askElsewhere(shell, SNAPSHOT_ID, 105, `card ${i}`);
+  }
+  await expect(cards(shell)).toHaveCount(6);
+  await scrollTo(shell, "#b-105", "start");
+  await expect.poll(async () => (await placeOf(shell, SNAPSHOT_ID))?.text).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ;");
+  const { page } = (await placeOf(shell, SNAPSHOT_ID))!;
+  const [code, next] = [await boxOf(shell.locator("#b-105")), await boxOf(shell.locator("#b-106"))];
+  expect(page!.text).toBe("Write skew is still possible under snapshot isolation.");
+  expect(Math.abs(page!.at * next.height + code.height), "the code block above its start").toBeLessThan(20);
+});
+
+test("the print of an article leaves its stickies out, and the room that the text of a narrow pane makes for them", async ({ shell }) => {
+  await startNarrow(shell);
+  const pages = async () => (await shell.pdf()).toString("latin1").match(/[/]Type [/]Page[^s]/g)!.length;
+  const before = await pages();
+  for (let i = 0; i < 12; i++) {
+    await askElsewhere(shell, LONG_ID, LONG_ID * 100 + 5 + 1, `card ${i}`);
+  }
+  await expect(cards(shell)).toHaveCount(12);
+  expect(await pages()).toBe(before);
+  await shell.emulateMedia({ media: "print" });
+  await expect(shell.locator(".stickies")).toBeHidden();
+  await expect(shell.locator(paraBlock(1))).toBeVisible();
 });

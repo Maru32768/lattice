@@ -2,7 +2,12 @@ import type { Sticky, StickyKind } from "../api";
 
 /** Mirrors stickies.rs: a longer passage is refused. */
 export const MAX_QUOTE = 2000;
-const GAP = 10;
+/** Between a card and what is next to it. */
+export const GAP = 10;
+
+/** The style by which a block makes room (px) for the cards under it, and `.blocks` for those above its first block. */
+export const ROOM = "--sticky-room";
+export const roomOf = (el: HTMLElement) => parseFloat(el.style.getPropertyValue(ROOM)) || 0;
 
 export const STICKY_KINDS = ["question", "detail", "term"] as const satisfies readonly StickyKind[];
 

@@ -620,7 +620,7 @@ When you don't follow a passage, select it in the Reader. A bar with three butto
 - **Explain**: explains the passage in detail.
 - **Term**: explains what the selected words mean in this article.
 
-Stickies are in a column right of the text, at the height of their passages. In a narrow pane they come after the article.
+Stickies are in a column right of the text, at the height of their passages. In a narrow pane each is right under the paragraph its passage starts in, and the text below makes room.
 
 - The numbers in an answer are citations. Click one to go to its passage. The AI can add general knowledge, and says which part goes beyond the article.
 - If asking fails, the sticky stays with the error and **Retry**, and a question you typed is kept. You can go to another article while you wait. Until the answer comes, a sticky is kept only while Lattice runs.

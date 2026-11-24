@@ -5,7 +5,7 @@ import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT, type PlainKey } from "../i18n";
-import { cardsOf, stack, type Ask } from "./stickies";
+import { GAP, ROOM, cardsOf, stack, type Ask } from "./stickies";
 import { deleteSticky, dropAsk, sendAsk, setQuestion } from "./useStickies";
 import "./stickies.css";
 
@@ -18,27 +18,54 @@ export const STICKY_LABELS = {
 /** A pane narrower than this has no room for a column beside the text. */
 const COLUMN_FROM = 560;
 
-/** Puts the cards beside their blocks, or leaves them one after another below the article where there is no room. */
-function place(column: HTMLElement) {
+/**
+ * Puts the cards beside their blocks, or under them in a narrow pane, where the text makes room. The text at the view's top
+ * stays there. `room` is false to leave the text's layout as it is.
+ */
+function place(column: HTMLElement, room = true) {
   const scroller = column.parentElement!;
   // Hidden (under a zoomed pane): nothing to measure, and coming back is a resize.
   if (scroller.clientWidth === 0) {
     return;
   }
-  const beside = scroller.clientWidth >= COLUMN_FROM;
-  column.toggleAttribute("data-beside", beside);
-  const cards = Array.from(column.children) as HTMLElement[];
+  const article = scroller.querySelector<HTMLElement>(".blocks")!;
+  const cards = (Array.from(column.children) as HTMLElement[]).map((el) => ({ el, block: article.querySelector<HTMLElement>(`#b-${el.dataset.block}`) }));
+  const beside = cards.length > 0 && scroller.clientWidth >= COLUMN_FROM;
+
+  // The browser's scroll anchoring lets go of text whose own styles change, as they do here.
+  const viewTop = scroller.getBoundingClientRect().top;
+  const kept = Array.from(article.children).findLast((b) => b.getBoundingClientRect().top <= viewTop);
+  const was = kept?.getBoundingClientRect();
+  const share = was?.height ? Math.min(1, (viewTop - was.top) / was.height) : 0;
+
+  if (room) {
+    column.toggleAttribute("data-beside", beside);
+    const rooms = new Map<HTMLElement, number>();
+    for (const { el, block } of beside ? [] : cards) {
+      const host = block ?? article;
+      rooms.set(host, (rooms.get(host) ?? (block ? 0 : GAP)) + el.offsetHeight + GAP);
+    }
+    for (const el of scroller.querySelectorAll<HTMLElement>(`[style*="${ROOM}"]`)) {
+      if (!rooms.has(el)) {
+        el.style.removeProperty(ROOM);
+      }
+    }
+    rooms.forEach((px, el) => el.style.setProperty(ROOM, `${px}px`));
+  }
   const top = column.getBoundingClientRect().top;
+  const under = (block: HTMLElement | null) => (block ? block.getBoundingClientRect().bottom : article.getBoundingClientRect().top) + GAP;
   const tops = stack(
-    cards.map((c) => ({
-      at: (scroller.querySelector(`#b-${c.dataset.block}`)?.getBoundingClientRect().top ?? top) - top,
-      height: c.offsetHeight,
-    })),
+    cards.map(({ el, block }) => ({ at: (beside ? (block?.getBoundingClientRect().top ?? top) : under(block)) - top, height: el.offsetHeight })),
   );
-  cards.forEach((c, i) => (c.style.top = beside ? `${tops[i]}px` : ""));
+  cards.forEach(({ el }, i) => (el.style.top = `${tops[i]}px`));
+
+  if (kept && was) {
+    const now = kept.getBoundingClientRect();
+    scroller.scrollTop += now.top + share * now.height - (was.top + share * was.height);
+  }
 }
 
-/** The article's stickies: a column beside its text, inside its scroller, or below it in a narrow pane. */
+/** The article's stickies: a column beside its text, inside its scroller, or each under its block in a narrow pane. */
 export function StickyColumn({
   article,
   blocks,
@@ -63,16 +90,35 @@ export function StickyColumn({
   const cards = cardsOf(saved, asks, blocks);
   // On each render, as any may add a card or move a block.
   useLayoutEffect(() => {
-    const column = root.current;
-    if (!column) {
+    const column = root.current!;
+    place(column);
+    if (column.children.length === 0) {
       return;
     }
-    place(column);
-    const sizes = new ResizeObserver(() => place(column));
-    for (const el of [column.parentElement!, column.previousElementSibling!, ...column.children]) {
-      sizes.observe(el);
+    const scroller = column.parentElement!;
+    // Text that makes room in answer to its own size, or to a card's inside it, would be reported again in the same round
+    // of the observers, which is an error: a card waits for the next frame, and the pane around them does not.
+    const around = new ResizeObserver((sizes) =>
+      place(
+        column,
+        sizes.some((s) => s.target === scroller),
+      ),
+    );
+    around.observe(scroller);
+    around.observe(column.previousElementSibling!);
+    let frame = 0;
+    const own = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => place(column));
+    });
+    for (const card of column.children) {
+      own.observe(card);
     }
-    return () => sizes.disconnect();
+    return () => {
+      around.disconnect();
+      own.disconnect();
+      cancelAnimationFrame(frame);
+    };
   });
   useLayoutEffect(() => {
     const card = opened == null ? null : root.current?.querySelector(`[data-ask="${opened}"]`);
@@ -80,11 +126,9 @@ export function StickyColumn({
     card?.querySelector("textarea")?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: "nearest" });
   }, [opened]);
-  if (cards.length === 0 && !error) {
-    return null;
-  }
   return (
-    <aside className="stickies" ref={root} aria-label={t("stickies.title")}>
+    // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
+    <aside className="stickies" ref={root} hidden={cards.length === 0 && !error} aria-label={t("stickies.title")}>
       {error && (
         <p className="sticky error-text" role="alert">
           {t("stickies.loadFailed", { error: t.msg(error) })}
