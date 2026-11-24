@@ -1838,11 +1838,12 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
         // its next one would, not into an aside's title.
         let across = cur.is_some_and(|(d, prev, _)| {
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-            let same = (prev.size - size).abs() < 0.5;
+            let ended = prev.text.ends_with(['.', '!', '?', ':']);
+            let same = (prev.size - l.size).abs() < 0.5 || !ended && (prev.size - size).abs() < 0.5;
             let cut = prev.text.ends_with('-') || prev.x1 >= prev.right - 2. * prev.size;
             // After a full stop, a new paragraph may start where an item's text would: its next line stands further out.
             let indented = |n: &&Line| self::flows(l, n, pitch) && n.x0 < l.x0 - 0.5 * l.size && !is_bullet(&n.text);
-            let new = prev.text.ends_with(['.', '!', '?', ':']) && lines.get(i + 1).filter(indented).is_some();
+            let new = ended && lines.get(i + 1).filter(indented).is_some();
             across && same && cut && !new && aligned(d, l) && !lines.get(i + 1).is_some_and(|below| heads(l, below, body))
         });
         let continues = start.is_none()
@@ -2849,6 +2850,11 @@ pub(crate) mod tests {
             let ir = to_ir(&pdf(&[first(last), second], None), None).unwrap();
             assert!(ir.blocks[0].text.starts_with(BODY) && ir.blocks[0].text.contains(next), "{:?}", kinds(&ir));
         }
+        let last = "the write that it was given by the leader of the replicas and the others.";
+        let second =
+            [(L, 100., 9.5, "2.73 Write a function that the leader has a use for")].into_iter().chain((0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY)));
+        let ir = to_ir(&pdf(&[first(last), second.collect()], None), None).unwrap();
+        assert!(ir.blocks[0].text.ends_with(last), "after a full stop, a small line opens its own paragraph: {:?}", kinds(&ir));
     }
 
     #[test]
