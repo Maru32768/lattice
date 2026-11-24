@@ -1885,7 +1885,16 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Read {
                 }
             };
             let near = lines.iter().enumerate().filter(|(_, l)| l.x0 < x1 && l.x1 > x0 && (l.y <= y0 || l.y >= y1));
-            near.min_by(|a, b| gap(a.1).total_cmp(&gap(b.1))).map_or(lines.len(), |(i, l)| i + usize::from(l.y <= y0))
+            let Some((i, l)) = near.min_by(|a, b| gap(a.1).total_cmp(&gap(b.1))) else {
+                return lines.len();
+            };
+            // Not between the parts of a line that a wide gap parts.
+            let on = |part: &&Line| (part.y - l.y).abs() < 0.3 * l.size;
+            if l.y <= y0 {
+                i + lines[i..].iter().take_while(on).count()
+            } else {
+                i - lines[..i].iter().rev().take_while(on).count()
+            }
         };
         let mut tables: Vec<(usize, usize)> = page.tables.iter().enumerate().map(|(i, t)| (by(t.at), i)).collect();
         tables.sort_unstable();
@@ -2027,7 +2036,7 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[R
     for &(read, page, t) in tables {
         let at = read_before(&drafts, read);
         // A table at the foot of one column is read before all that opens the next, figures over their caption as well.
-        let column = drafts.get(at).map(|d| d.lines[0]).filter(|l| l.page == page);
+        let column = drafts.get(at).map(|d| &lines[d.start]).filter(|l| l.page == page);
         let beside = column.is_some_and(|l| t.at[2] <= l.left || t.at[0] >= l.right);
         let under = figures.iter().position(|f| f.0 == at && (beside || (f.1, f.2) > (page, t.at[1]))).unwrap_or(figures.len());
         out.push(((at, 2 * under), Block::table(t.rows.clone())));
@@ -5901,5 +5910,20 @@ pub(crate) mod tests {
         let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(0, &first), (1, &second)]), None).unwrap();
         let k = kinds(&ir);
         assert!(k.last().unwrap().1.contains("past the table on the next page") && k[k.len() - 2].1 == "Strong\tLasting\nCostly\tEasy", "{k:?}");
+    }
+
+    #[test]
+    fn tables_stay_by_captions_drawn_before_the_page_and_in_parts() {
+        // The captions and the tables are drawn first, as floats may be, and each caption's unit across the middle from it.
+        let caption = |y: f64, n: i32| shown(72., y, &format!("Table {n}: What it brings.")) + &shown(340., y, &format!("Unit {n}: percent"));
+        let tables = two_by_two([72., 172., 540.], [100., 150., 190.], PROS) + &two_by_two([72., 172., 540.], [250., 300., 340.], CONS);
+        let prose = "A paragraph of prose opens the page and it runs along the whole of its width to the end.";
+        let more = "Another paragraph of prose closes it and it runs along the whole of its width to the end.";
+        let ops = caption(92., 1) + &caption(242., 2) + &tables + &shown(72., 60., prose) + &shown(72., 400., more);
+        let texts = texts_of(&ops);
+        let table = |t: &str| texts.iter().position(|x| x == t).unwrap_or_else(|| panic!("{t}: {texts:?}"));
+        let (one, two) = (table("Strong\tLasting\nCostly\tEasy"), table("Fast\tCheap\nSlow\tDear"));
+        assert!(texts[one - 1].ends_with("Unit 1: percent") && texts[one + 1].starts_with("Table 2"), "{texts:?}");
+        assert!(texts[two - 1].ends_with("Unit 2: percent") && texts[two + 1] == prose, "{texts:?}");
     }
 }
