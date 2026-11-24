@@ -388,7 +388,7 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
         lines.push(page_lines(i, &page.glyphs.iter().collect::<Vec<_>>(), page.width));
     }
     drop_running_lines(&mut lines, &doc.pages);
-    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p.width)).collect();
+    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p)).collect();
     let body = body_size(&lines);
     let half = doc.pages.first().map_or(0., |p| p.height / 2.);
     let front = take_front_matter(&mut lines, body, half);
@@ -1726,9 +1726,10 @@ fn body_tables(pages: &[Page]) -> Vec<(usize, &Table)> {
 }
 
 /// Reading order of one page. Two columns when each half holds a fifth of the text: lines across
-/// the middle (title, wide figures) split the page into bands, read left column then right.
-/// Otherwise the content order stands.
-fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
+/// the middle (title, wide figures) split the page into bands, read left column then right, and so
+/// do the page's tables across it, whose text is not in the lines. Otherwise the content order stands.
+fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
+    let width = page.width;
     let (mid, tol) = (width / 2., width * 0.01);
     let side = |l: &Line| match () {
         _ if l.x1 <= mid + tol => Side::Left,
@@ -1758,9 +1759,16 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
         return lines;
     }
     lines.sort_by(|a, b| a.y.total_cmp(&b.y));
+    let mut tables: Vec<f64> = page.tables.iter().filter(|t| t.at[0] < mid && t.at[2] > mid).map(|t| t.at[1]).collect();
+    tables.sort_by(f64::total_cmp);
+    let mut tables = tables.into_iter().peekable();
     let mut out = Vec::with_capacity(lines.len());
     let (mut left, mut right) = (Vec::new(), Vec::new());
     for l in lines {
+        while tables.next_if(|&top| top < l.y).is_some() {
+            out.append(&mut left);
+            out.append(&mut right);
+        }
         match l.side {
             Side::Left => left.push(l),
             Side::Right => right.push(l),
@@ -3149,6 +3157,19 @@ pub(crate) mod tests {
         doc.save_to(&mut bytes).unwrap();
         let want = [("paragraph", "Pros and cons"), ("table", "Strong\tLasting\nCostly\tEasy"), ("paragraph", "Then a paragraph of prose follows the table.")];
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), want);
+    }
+
+    #[test]
+    fn a_table_across_both_columns_is_read_after_the_text_above_it_in_both() {
+        let column = |x: f64, y: f64, side: &str| {
+            shown(x, y, &format!("The {side} column runs on")) + &shown(x, y + 12., "and on down the page") + &shown(x, y + 24., "to its end.")
+        };
+        let cells = shown(78., 180., "Strong") + &shown(310., 180., "Lasting") + &shown(78., 230., "Costly") + &shown(310., 230., "Easy");
+        let table = ruled(&[72., 300., 540.], &[150., 200., 250.], "strokes") + &cells;
+        let ops = column(72., 100., "left") + &column(322., 100., "right") + &table + &column(72., 300., "lower left") + &column(322., 300., "lower right");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        let order: Vec<&str> = ir.blocks.iter().map(|b| b.text.split(" column").next().unwrap_or_default()).collect();
+        assert_eq!(order, ["The left", "The right", "Strong\tLasting\nCostly\tEasy", "The lower left", "The lower right"]);
     }
 
     #[test]
