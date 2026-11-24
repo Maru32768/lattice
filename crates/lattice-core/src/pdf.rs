@@ -1857,10 +1857,17 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
 }
 
 /// Whether the line carries on the sentence of an entry's first line, set with a hanging indent. An equation stands
-/// further in, and a contents entry under another starts with a capital or a number.
+/// further in, and a contents entry under another starts with a capital or a number. A table's cell stops short of the
+/// column's edge, as a line of code does, but code is set in by more than a letter.
 fn hangs(first: &Line, l: &Line) -> bool {
-    let full = first.x1 >= first.right - 0.5 * first.size && !first.text.ends_with(['.', '!', '?', ':']);
-    full && l.text.starts_with(char::is_lowercase) && further_in(first, l) < 4. * l.size
+    let full = first.x1 >= first.right - 0.5 * first.size;
+    let cut = !first.text.ends_with(['.', '!', '?', ':']) && (l.text.starts_with(char::is_lowercase) || first.text.ends_with('-'));
+    let most = if full {
+        4.
+    } else {
+        1.
+    };
+    cut && further_in(first, l) < most * l.size
 }
 
 /// How much further in than `first` a line starts. On another page or in another column, from the edges of the two.
@@ -2603,6 +2610,26 @@ pub(crate) mod tests {
                 "After that it starts again with the first stage.",
             ]
         );
+    }
+
+    #[test]
+    fn a_table_cell_set_with_a_hanging_indent_is_one_paragraph() {
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let page: Vec<Run> = (0..9)
+            .map(|i| (L, 100. + 12. * i as f64, 10., BODY))
+            .chain([
+                (L, 230., 9.2, "Implementation artifacts hidden from all"),
+                (80., 241., 9.2, "the programs."),
+                (300., 230., 9.2, "No condition codes. Instead, explicit test"),
+                (308., 241., 9.2, "instructions are used."),
+                (L, 270., 9.5, "bool need_regids ="),
+                (94., 282., 9.5, "icode in { IRRMOVQ, IOPQ };"),
+            ])
+            .collect();
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        let texts: HashSet<&str> = ir.blocks.iter().skip(1).map(|b| b.text.as_str()).collect();
+        let cells = ["Implementation artifacts hidden from all the programs.", "No condition codes. Instead, explicit test instructions are used."];
+        assert_eq!(texts, HashSet::from([cells[0], cells[1], "bool need_regids =", "icode in { IRRMOVQ, IOPQ };"]));
     }
 
     #[test]
