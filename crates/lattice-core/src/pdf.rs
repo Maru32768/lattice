@@ -1996,7 +1996,7 @@ struct Draft<'a> {
 /// The drafts' blocks with the figures' and the tables' among them. A figure goes before the draft `place` puts it at, in
 /// drawing order. A table goes before the first draft that starts where `lay_out` reads it or later: a draft it is read
 /// in the middle of runs on past it, as text runs on past a float. Before the same draft, a table goes before the figures
-/// under it on its page. The figures' `src` starts with `prefix`.
+/// under it on its page, or in the column after its own. The figures' `src` starts with `prefix`.
 fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[ReadAt], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
     let drafts = drafts(lines, body);
@@ -2015,7 +2015,10 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[R
     let mut out: Vec<((usize, usize), Block)> = Vec::new();
     for &(read, page, t) in tables {
         let at = drafts.iter().position(|d| d.start >= read).unwrap_or(drafts.len());
-        let under = figures.iter().position(|f| f.0 == at && (f.1, f.2) > (page, t.at[1])).unwrap_or(figures.len());
+        // A table at the foot of one column is read before all that opens the next, figures over their caption as well.
+        let column = drafts.get(at).map(|d| d.lines[0]).filter(|l| l.page == page);
+        let beside = column.is_some_and(|l| t.at[2] <= l.left || t.at[0] >= l.right);
+        let under = figures.iter().position(|f| f.0 == at && (beside || (f.1, f.2) > (page, t.at[1]))).unwrap_or(figures.len());
         out.push(((at, 2 * under), Block::table(t.rows.clone())));
     }
     out.extend(figures.into_iter().enumerate().map(|(n, (at, .., b))| ((at, 2 * n + 1), b)));
@@ -5658,5 +5661,39 @@ pub(crate) mod tests {
             let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &(table.clone() + &rows + &labels))]), None).unwrap();
             assert!(ir.blocks.iter().all(|b| b.kind != BlockKind::Table), "{:?}", kinds(&ir));
         }
+    }
+
+    #[test]
+    fn a_table_at_the_foot_of_the_left_column_comes_before_a_figure_atop_the_right_column() {
+        let mut ops = shown(72., 500., "Table 1: Pros and cons.") + &two_by_two(LEFT, [510., 550., 590.], PROS);
+        for i in 0..20 {
+            ops += &shown(72., 100. + 12. * i as f64, &format!("Left column line {i} of the body runs on."));
+        }
+        for i in 0..20 {
+            ops += &shown(320., 350. + 12. * i as f64, &format!("Right column line {i} of the body runs on."));
+        }
+        let read = |ops: &str, figure: (usize, f64, f64, f64, f64)| {
+            let bytes = draw(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), rgb(30, 10, [200, 0, 0]), &[figure]);
+            let ir = to_ir(&bytes, None).unwrap();
+            let at = ir.blocks.iter().position(|b| b.text.starts_with("Table 1")).unwrap();
+            ir.blocks[at..at + 5]
+                .iter()
+                .map(|b| {
+                    if b.kind == BlockKind::Image {
+                        "image".into()
+                    } else {
+                        b.text.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let left = "Strong\tLasting\nCostly\tEasy";
+        // Over the right column's first lines, a figure and its caption.
+        let alone = read(&(ops.clone() + &shown(320., 220., "Figure 1: A chart.")), (0, 320., 100., 200., 100.));
+        assert_eq!(alone[..4], ["Table 1: Pros and cons.", left, "image", "Figure 1: A chart."]);
+        // And another table over the figure.
+        let right = two_by_two(RIGHT, [90., 130., 170.], CONS);
+        let under = read(&(ops + &right + &shown(320., 320., "Figure 1: A chart.")), (0, 320., 190., 200., 100.));
+        assert_eq!(under, ["Table 1: Pros and cons.", left, "Fast\tCheap\nSlow\tDear", "image", "Figure 1: A chart."]);
     }
 }
