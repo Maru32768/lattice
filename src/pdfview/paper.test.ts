@@ -24,7 +24,7 @@ test("dark paper gives nothing, as the translation is set in dark type", () => {
 });
 
 test("dark blue is dark and a mid grey is not: the eye weighs the channels", () => {
-  assert.equal(paperColor(pixels([10, [60, 120, 255]])), null);
+  assert.equal(paperColor(pixels([10, [100, 140, 255]])), null);
   assert.equal(paperColor(pixels([10, [170, 170, 170]])), "rgb(170, 170, 170)");
 });
 
