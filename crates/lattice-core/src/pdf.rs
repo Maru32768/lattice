@@ -495,23 +495,18 @@ fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
         let word = after.text.split_whitespace().next().unwrap_or_default().chars().count() as f64;
         before.x1 + (word + 1.) * letter <= xs[column + 1] - padding[cell]
     };
+    let starts_row = |y: f64| {
+        cells.iter().enumerate().all(|(cell, (_, lines))| {
+            let i = lines.partition_point(|l| l.y < y && !on(l, y));
+            lines.get(i).is_some_and(|l| on(l, y)) && i > 0 && has_room(cell, i)
+        })
+    };
     let mut breaks = Vec::new();
     if let [(_, first), _, ..] = &cells[..]
         && cells.iter().all(|(_, lines)| on(&lines[0], first[0].y))
         && !band.iter().flatten().any(|g| g.vertical || g.turned)
     {
-        // Each cell's next line at or under the baseline: the baselines go down the band, so each line is passed once.
-        let mut next = vec![0; cells.len()];
-        for y in first[1..].iter().map(|l| l.y) {
-            for ((_, lines), i) in cells.iter().zip(&mut next) {
-                while lines.get(*i).is_some_and(|l| l.y < y && !on(l, y)) {
-                    *i += 1;
-                }
-            }
-            if cells.iter().zip(&next).enumerate().all(|(cell, ((_, lines), &i))| lines.get(i).is_some_and(|l| on(l, y)) && i > 0 && has_room(cell, i)) {
-                breaks.push(y);
-            }
-        }
+        breaks.extend(first[1..].iter().map(|l| l.y).filter(|&y| starts_row(y)));
     }
     let mut rows = vec![vec![Vec::new(); band.len()]; breaks.len() + 1];
     for (column, glyphs) in band.iter().enumerate() {
