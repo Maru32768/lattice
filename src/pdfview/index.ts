@@ -455,7 +455,7 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
 
 const painted = new WeakSet<HTMLElement>();
 
-/** A translation covers the original in the colour the page is printed on there: an aside's grey box stays grey. */
+/** A translation covers the original in the colour the page is printed on there: an aside's tinted box keeps its tint. */
 function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
   for (const el of host.querySelectorAll<HTMLElement>(".region")) {
