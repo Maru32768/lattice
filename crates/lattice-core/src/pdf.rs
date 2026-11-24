@@ -425,8 +425,10 @@ struct Table {
 fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     let mut tables = Vec::new();
     let two = !turns && !grids.is_empty() && {
-        let outside: Vec<&Glyph> = p.glyphs.iter().filter(|g| !grids.iter().any(|grid| grid.cell(g).is_some())).collect();
-        let inside = |grid: &Grid| p.glyphs.iter().filter(|g| grid.cell(g).is_some()).map(|g| g.text.chars().count()).sum();
+        // Less the turned ones, which the page drops.
+        let set = || p.glyphs.iter().filter(|g| !g.turned);
+        let outside: Vec<&Glyph> = set().filter(|g| !grids.iter().any(|grid| grid.cell(g).is_some())).collect();
+        let inside = |grid: &Grid| set().filter(|g| grid.cell(g).is_some()).map(|g| g.text.chars().count()).sum();
         in_two_columns(&page_lines(0, &outside, p.width), grids.iter().map(|grid| (grid.at, inside(grid))), p.width)
     };
     for grid in &grids {
@@ -5644,5 +5646,17 @@ pub(crate) mod tests {
         }
         let texts = texts_of(&ops);
         assert!(texts.iter().any(|t| t == "Strong\tLasting\nCostly\tEasy"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_label_turned_on_its_side_does_not_make_two_columns_by_a_partly_ruled_table() {
+        // Only the right columns are ruled: the left one's cells go on their rows.
+        let table = two_by_two([310., 420., 540.], [110., 150., 190.], ["Yes", "No", "Yes", "Yes"]);
+        let rows = shown(78., 133., "Signs documents on any device") + &shown(78., 173., "Keeps an audit trail of steps");
+        let label = |i: i32| format!("BT /F1 10 Tf 0 -1 1 0 {} 700 Tm (A label turned a quarter down the page) Tj ET\n", 560 + 12 * i);
+        for labels in [String::new(), (0..3).map(label).collect()] {
+            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &(table.clone() + &rows + &labels))]), None).unwrap();
+            assert!(ir.blocks.iter().all(|b| b.kind != BlockKind::Table), "{:?}", kinds(&ir));
+        }
     }
 }
