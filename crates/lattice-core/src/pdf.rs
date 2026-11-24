@@ -2187,10 +2187,11 @@ fn drafts<'a>(lines: &'a [Line], body: f64, tables: &[ReadAt]) -> Vec<Draft<'a>>
                     !indented && !ended
                 }
                 // Across a column or page: only a paragraph that ran to the column's edge, into
-                // a line that is not indented.
+                // a line that is not indented, and past a table only one in the middle of a sentence.
                 Kind::Paragraph => {
                     let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-                    across && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && l.x0 <= l.left + 0.8 * l.size
+                    let whole = prev.text.ends_with(['.', '!', '?', ':', '。', '！', '？']) && tables.binary_search_by_key(&i, |&(read, ..)| read).is_ok();
+                    across && !whole && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && l.x0 <= l.left + 0.8 * l.size
                 }
             });
         if continues {
@@ -5746,5 +5747,32 @@ pub(crate) mod tests {
         assert_eq!(texts_of(&(over + &foot)), [before, caption, read, after, footer]);
         let under = shown(72., 100., before) + &table + &shown(72., 252., caption) + &shown(72., 290., after);
         assert_eq!(texts_of(&(foot + &under)), [footer, before, read, caption, after]);
+    }
+
+    #[test]
+    fn a_paragraph_that_ends_over_a_table_does_not_run_on_past_it() {
+        // To the column's edge both, and the next page's is not indented: without the table they would be one.
+        let first = "A paragraph of prose comes before the table and it runs along the width of the page and on.";
+        let next = "paragraph opens the next page, and it runs along the width of the page as the one before did.";
+        let read = "Strong\tLasting\nCostly\tEasy";
+        for (end, start, whole) in [("ends whole.", "Another", true), ("goes on to", "another", false)] {
+            let last = format!("It has a second line of prose as wide as the first one is, where the paragraph {end}");
+            let pages = [
+                shown(72., 600., first) + &shown(72., 612., &last) + &two_by_two([72., 172., 540.], [640., 676., 712.], PROS),
+                shown(72., 100., &format!("{start} {next}")) + &shown(72., 112., "It ends here."),
+            ];
+            let bytes = with_contents(&pdf(&[vec![], vec![]], None), &[(0, &pages[0]), (1, &pages[1])]);
+            let texts: Vec<String> = to_ir(&bytes, None).unwrap().blocks.into_iter().map(|b| b.text).collect();
+            let table = texts.iter().position(|t| t == read).unwrap();
+            assert_eq!(
+                (table, texts.len()),
+                if whole {
+                    (1, 3)
+                } else {
+                    (1, 2)
+                },
+                "{texts:?}"
+            );
+        }
     }
 }
