@@ -1237,6 +1237,11 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
         _ if g.y > base.y + 0.1 * base.size => Some(SUB),
         _ => None,
     };
+    // A book draws a list's bullet as a full stop a third of the text's size, raised to the middle of the line.
+    let bullet = match ink.as_slice() {
+        [mark, next, ..] => mark.size < 0.5 * base.size && !mark.text.chars().any(char::is_alphanumeric) && next.x > mark.end + 0.15 * mark.size,
+        _ => false,
+    };
     let formula = formula_glyphs(glyphs);
     let mut text = String::new();
     let mut marked = String::new();
@@ -1251,7 +1256,8 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
             space = true;
             continue;
         }
-        let script = script_of(g);
+        let bullet = bullet && prev.is_none();
+        let script = script_of(g).filter(|_| !bullet);
         let italic = math && g.face.is_italic();
         if open.is_some() && open != script {
             marked.push(SCRIPT_END);
@@ -1286,8 +1292,13 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
         (in_math, in_italic) = (math, italic);
         reach = reach.max(g.end);
         space = false;
-        push_clean(&mut text, &g.text);
-        push_clean(&mut marked, &g.text);
+        let shown = if bullet {
+            "•"
+        } else {
+            g.text.as_str()
+        };
+        push_clean(&mut text, shown);
+        push_clean(&mut marked, shown);
         prev = Some(g);
     }
     if open.is_some() {
@@ -2453,6 +2464,31 @@ pub(crate) mod tests {
         let item = r.iter().find(|x| x.text.ends_with("reduce the latency)"));
         let item = item.unwrap_or_else(|| panic!("the item's second line is translated with it: {texts:?}"));
         assert_eq!((item.room_left, item.room_right), (0., 0.), "an item of two lines gets no room beside it");
+    }
+
+    #[test]
+    fn a_small_raised_dot_before_a_line_is_a_list_marker() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "There are several reasons to copy the same data to many machines, including:"),
+            (80., 118.2, 3.5, "."),
+            (90., 120., 10., "To keep the data close to the people who use it (and so reduce the"),
+            (90., 132., 10., "latency)"),
+            (80., 148.2, 3.5, "."),
+            (90., 150., 10., "To serve more reads."),
+            (L, 170., 10., "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
+        ];
+        let bytes = pdf(&[page], None);
+        assert_eq!(
+            kinds(&to_ir(&bytes, None).unwrap()),
+            [
+                ("paragraph", "There are several reasons to copy the same data to many machines, including:"),
+                ("list_item", "• To keep the data close to the people who use it (and so reduce the latency)"),
+                ("list_item", "• To serve more reads."),
+                ("paragraph", "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
+            ]
+        );
+        let r = regions(&bytes).unwrap();
+        assert!(r.iter().any(|x| x.text == "• To keep the data close to the people who use it (and so reduce the latency)"), "{r:?}");
     }
 
     /// Glyphs as a line would have them, one per character, with `|` starting and ending a stretch in `face`.
