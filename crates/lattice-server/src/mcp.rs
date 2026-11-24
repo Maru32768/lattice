@@ -141,7 +141,7 @@ fn all_tools() -> Vec<(Role, Value)> {
         tool(
             Delete,
             "delete_article",
-            "Delete an article from the library, with its summary, translation, note and quiz. This cannot be undone.",
+            "Delete an article from the library, with its summary, translation, note, stickies and quiz. This cannot be undone.",
             json!({ "id": article }),
             &["id"],
         ),

@@ -237,7 +237,7 @@ export const en = {
   "backupSection.location": "Location: {path}",
   "browserSettings.invalidTemplate": "Enter an http(s) URL containing {code}. Until then, DuckDuckGo is used.",
   "exportSection.jsonDesc":
-    "Writes gzip-compressed JSON Lines (one object per line) to the {code} folder: articles, blocks, translations, summaries, tags, genres, feeds and chats. Settings such as API keys and the fetched HTML are left out; to keep the HTML too, use a backup.",
+    "Writes gzip-compressed JSON Lines (one object per line) to the {code} folder: articles, blocks, translations, summaries, notes, stickies, tags, genres, feeds and chats. Settings such as API keys and the fetched HTML are left out; to keep the HTML too, use a backup.",
   "modelSettings.cliDefault": "CLI default",
   "modelSettings.haiku": "Haiku (fast, cheap)",
   "modelSettings.sonnet": "Sonnet (balanced)",
@@ -1130,7 +1130,7 @@ export const en = {
   "app.markReadDesc": "Marks every unread article shown in “{title}” as read. To make one unread again, do it article by article.",
   "app.deleteWhat": "Deletes “{x}”.",
   "app.deleteDesc":
-    "Its saved HTML, text, the translations only it uses, summaries, tags, images and search index entries are deleted too, and this cannot be undone. Citations in chat answers stay.",
+    "Its saved HTML, text, the translations only it uses, summaries, notes, stickies, tags, images and search index entries are deleted too, and this cannot be undone. Citations in chat answers stay.",
   "app.localFeatures": "Saving, reading and full-text search work without configuring AI.",
   "app.needsProvider": "By default, AI features use Claude CLI. Install Claude CLI and sign in, or choose another provider in {link}.",
   "app.aiPrivacy": "AI features, including automatic classification, send article text to your configured AI providers.",

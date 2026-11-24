@@ -229,7 +229,7 @@ export const ja = {
   "backupSection.location": "保存先: {path}",
   "browserSettings.invalidTemplate": "{code}を含むhttp(s)のURLを入力してください。それまではDuckDuckGoを使います。",
   "exportSection.jsonDesc":
-    "{code}フォルダに、1行1オブジェクトのgzipで書き出します。記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。APIキーなどの設定と取得したHTMLは含まないので、HTMLまで残すにはバックアップを使ってください。",
+    "{code}フォルダに、1行1オブジェクトのgzipで書き出します。記事・ブロック・訳・要約・メモ・付箋・タグ・ジャンル・フィード・対話が入ります。APIキーなどの設定と取得したHTMLは含まないので、HTMLまで残すにはバックアップを使ってください。",
   "modelSettings.cliDefault": "CLIの既定",
   "modelSettings.haiku": "Haiku(速い・安い)",
   "modelSettings.sonnet": "Sonnet(バランス)",
@@ -1114,7 +1114,8 @@ export const ja = {
   "app.confirmMarkRead": "未読の{n}件を既読にしますか？",
   "app.markReadDesc": "「{title}」に表示している未読の記事をすべて既読にします。未読に戻すときは記事ごとに戻します。",
   "app.deleteWhat": "「{x}」を削除します。",
-  "app.deleteDesc": "保存したHTML・本文・この記事だけの訳文・要約・タグ付け・画像・検索indexも削除され、元に戻せません。対話の回答に残る引用は消えません。",
+  "app.deleteDesc":
+    "保存したHTML・本文・この記事だけの訳文・要約・メモ・付箋・タグ付け・画像・検索indexも削除され、元に戻せません。対話の回答に残る引用は消えません。",
   "app.localFeatures": "記事の保存・閲覧・全文検索は、AIを設定せずに使えます。",
   "app.needsProvider": "初期設定では、AI機能にClaude CLIを使います。Claude CLIをインストールしてログインするか、{link}から別のプロバイダを選んでください。",
   "app.aiPrivacy": "自動分類を含むAI機能は、記事の本文を設定したAIプロバイダに送信します。",
