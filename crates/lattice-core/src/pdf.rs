@@ -1855,7 +1855,9 @@ fn spans(lines: &[Line]) -> impl Iterator<Item = (f64, f64, usize)> + '_ {
 fn order(mut lines: Vec<Line>, page: &Page) -> Read {
     let width = page.width;
     let side = |l: &Line| Side::of(l.x0, l.x1, width);
-    let tables = page.tables.iter().map(|t| (t.at[0], t.at[2], t.rows.iter().flatten().map(|c| c.chars().count()).sum()));
+    // Not on a turned page, where a table set across under columns that stop short of it would make two tiers of one.
+    let tables = page.tables.iter().filter(|_| !page.vertical);
+    let tables = tables.map(|t| (t.at[0], t.at[2], t.rows.iter().flatten().map(|c| c.chars().count()).sum()));
     let two = in_two_columns(spans(&lines).chain(tables), width);
     if two {
         for l in &mut lines {
@@ -5593,5 +5595,20 @@ pub(crate) mod tests {
         let text = texts(&to_ir(&bytes, None).unwrap()).join("|");
         let at = |w: &str| text.find(w).unwrap_or_else(|| panic!("{w} in {text}"));
         assert!(at("ああ") < at("Pros") && at("Pros") < at("いい") && at("いい") < at("Fast") && at("Fast") < at("うう"), "{text}");
+    }
+
+    #[test]
+    fn a_table_set_across_under_columns_of_vertical_writing_comes_after_its_caption() {
+        // The columns stop short of the table, which holds more text than they do. Its caption is set across in two parts.
+        let columns: String = (0..6).map(|i| format!("1 0 0 1 {} 700 Tm <{}> Tj ", 500 - 16 * i, "034B034D034F03510353".repeat(3))).collect();
+        let last = "1 0 0 1 404 700 Tm <034B034D027B> Tj ";
+        let words = ["Strong", "Lasting for a good long time once it has begun", "Costly", "Easy to lose again and then not to be had back"];
+        let table = two_by_two([72., 172., 520.], [480., 560., 640.], words);
+        let caption = shown(72., 470., "Table 5") + &shown(150., 470., "Pros and cons");
+        let bytes = after_a_page_of_columns(&(format!("BT /F3 10 Tf {columns}{last}ET\n") + &caption + &table));
+        assert!(glyphs(&bytes, true).unwrap().1[1].vertical);
+        let ir = to_ir(&bytes, None).unwrap();
+        let read: Vec<&str> = kinds(&ir)[2..].iter().map(|k| k.1).collect();
+        assert_eq!(read.concat(), format!("Table 5Pros and cons{}\t{}\n{}\t{}", words[0], words[1], words[2], words[3]), "{:?}", kinds(&ir));
     }
 }
