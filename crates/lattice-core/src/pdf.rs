@@ -3023,34 +3023,47 @@ pub(crate) mod tests {
     }
 
     /// Two tables, each under its caption, drawn as the book that set them does: both captions first, then each table's
-    /// rules and the text of its cells, one of which runs over two lines.
-    fn tables_page(how: &str) -> Vec<u8> {
+    /// rules, drawn by `rules` from its column and row edges, and the text of its cells, one of which runs over two lines.
+    fn tables_page(rules: &dyn Fn(&[f64], &[f64]) -> String) -> Vec<u8> {
         let xs = [72., 172., 540.];
         let mut ops = shown(72., 100., "Pros of passion") + &shown(72., 300., "Cons of passion");
-        ops += &ruled(&xs, &[110., 160., 200.], how);
+        ops += &rules(&xs, &[110., 160., 200.]);
         ops += &(shown(78., 130., "Strong") + &shown(178., 128., "You care a lot about it") + &shown(178., 140., "and keep at it."));
         ops += &(shown(78., 182., "Lasting") + &shown(178., 182., "It holds over the years."));
-        ops += &ruled(&xs, &[310., 350., 390.], how);
+        ops += &rules(&xs, &[310., 350., 390.]);
         ops += &(shown(78., 330., "Costly") + &shown(178., 330., "It takes time from other duties."));
         ops += &(shown(78., 372., "Easy") + &shown(178., 366., "You stay where it") + &shown(178., 378., "comes easily."));
         with_contents(&pdf(&[vec![]], None), &[(0, &ops)])
     }
 
+    /// The blocks `tables_page` is read as.
+    const TABLES_PAGE: [(&str, &str); 4] = [
+        ("paragraph", "Pros of passion"),
+        ("table", "Strong\tYou care a lot about it and keep at it.\nLasting\tIt holds over the years."),
+        ("paragraph", "Cons of passion"),
+        ("table", "Costly\tIt takes time from other duties.\nEasy\tYou stay where it comes easily."),
+    ];
+
     #[test]
     fn a_table_ruled_round_every_cell_is_read_as_a_table_after_its_caption() {
         let first = [["Strong", "You care a lot about it and keep at it."], ["Lasting", "It holds over the years."]];
         let second = [["Costly", "It takes time from other duties."], ["Easy", "You stay where it comes easily."]];
-        let text = |rows: &[[&str; 2]]| rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
         let rows = |rows: &[[&str; 2]]| Some(rows.iter().map(|r| r.map(String::from).to_vec()).collect::<Vec<_>>());
-        let (first_text, second_text) = (text(&first), text(&second));
         for how in ["strokes", "boxes", "bars"] {
-            let bytes = tables_page(how);
+            let bytes = tables_page(&|xs, ys| ruled(xs, ys, how));
             let ir = to_ir(&bytes, None).unwrap();
-            let want = [("paragraph", "Pros of passion"), ("table", first_text.as_str()), ("paragraph", "Cons of passion"), ("table", second_text.as_str())];
-            assert_eq!(kinds(&ir), want, "{how}");
+            assert_eq!(kinds(&ir), TABLES_PAGE, "{how}");
             assert_eq!((ir.blocks[1].attrs.rows.clone(), ir.blocks[3].attrs.rows.clone()), (rows(&first), rows(&second)), "{how}");
             let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
             assert!(!texts.iter().any(|t| t.contains("keep at it") || t.contains("over the years") || t.contains("comes easily")), "{how}: {texts:?}");
+        }
+    }
+
+    #[test]
+    fn cells_outlined_as_closed_paths_are_tables() {
+        for end in ["h S", "s", "b", "h B"] {
+            let bytes = tables_page(&|xs, ys| outlined(xs, ys, &|x, y| (x, 792. - y), end));
+            assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), TABLES_PAGE, "{end}");
         }
     }
 
