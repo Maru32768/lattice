@@ -8,6 +8,7 @@
 import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import { bookmarkTree, headingTree, topOf, webLink, type Entry, type Target } from "./outline.ts";
 import { pageAction } from "./pageAction.ts";
+import { paperColor } from "./paper.ts";
 import { onViewport } from "./regionBox.ts";
 import { widen } from "./widen.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -264,7 +265,7 @@ function span(el: HTMLElement, left: number, width: number) {
   el.style.width = `${width * 100}%`;
 }
 
-/** A translated region's white shadow is 2px wide: a widened box stops this many px short of its column's edge, where a frame's line may be drawn. */
+/** A translated region's shadow is 2px wide: a widened box stops this many px short of its column's edge, where a frame's line may be drawn. */
 const FRAME_GAP = 3;
 
 /** A single line too long for its box takes the rest of its line first: above and below it a frame may be drawn, which the layout does not see. */
@@ -448,7 +449,28 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
   await task.promise;
   host.querySelector("canvas")?.remove();
   host.prepend(canvas);
+  paintPaper(host, canvas);
   await drawText(page, host);
+}
+
+const painted = new WeakSet<HTMLElement>();
+
+/** A translation covers the original in the colour the page is printed on there: an aside's grey box stays grey. */
+function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d");
+  for (const el of host.querySelectorAll<HTMLElement>(".region")) {
+    const box = boxes.get(el);
+    if (!context || !box || painted.has(el)) {
+      continue;
+    }
+    painted.add(el);
+    const [x, y] = [Math.floor(box.left * canvas.width), Math.floor(box.top * canvas.height)];
+    const [w, h] = [Math.max(1, Math.ceil(box.width * canvas.width)), Math.max(1, Math.ceil(box.height * canvas.height))];
+    const color = paperColor(context.getImageData(x, y, w, h).data);
+    if (color) {
+      el.style.setProperty("--paper", color);
+    }
+  }
 }
 
 /** A long PDF would hold hundreds of MB of canvases: only pages near the screen keep theirs. */
