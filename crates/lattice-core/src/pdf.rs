@@ -1816,10 +1816,11 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                     !indented && !ended
                 }
                 // Across a column or page: only a paragraph that ran to the column's edge, into
-                // a line at the other edge: an aside's title is indented, or sticks out of the body.
+                // a line of its size at the other edge: an aside's title is indented, or sticks out of the body.
                 Kind::Paragraph => {
                     let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-                    across && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && (l.x0 - l.left).abs() <= 0.8 * l.size
+                    let same = (prev.size - l.size).abs() < 0.5;
+                    across && same && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && (l.x0 - l.left).abs() <= 0.8 * l.size
                 }
             });
         if continues {
@@ -1848,14 +1849,15 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
 /// and the stray labels around a figure: the paragraph it continues, if one before them is
 /// unfinished.
 fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
-    if !l.text.starts_with(char::is_lowercase) || l.x0 > l.left + 0.8 * l.size || l.tabular() {
+    let in_body = |l: &Line| (l.size - body).abs() < 0.5;
+    if !l.text.starts_with(char::is_lowercase) || l.x0 > l.left + 0.8 * l.size || l.tabular() || !in_body(l) {
         return None;
     }
     let float = |d: &Draft| d.kind == Kind::Caption || d.kind == Kind::Paragraph && d.lines.iter().all(|x| x.size < body * 0.95);
     let skipped: Vec<&Draft> = drafts.iter().rev().take_while(|d| float(d) || fragment(d)).collect();
     let i = drafts.len().checked_sub(skipped.len() + 1)?;
     let last = drafts[i].lines.last()?;
-    let unfinished = drafts[i].kind == Kind::Paragraph && (last.size - body).abs() < 0.5 && !last.text.ends_with(['.', '!', '?', ':']);
+    let unfinished = drafts[i].kind == Kind::Paragraph && in_body(last) && !last.text.ends_with(['.', '!', '?', ':']);
     (unfinished && skipped.iter().any(|d| float(d))).then_some(i)
 }
 
@@ -2472,6 +2474,19 @@ pub(crate) mod tests {
         assert!(kinds(&ir).contains(&("paragraph", "Aside The progress of machines")), "the first page's text does not run on into it: {:?}", kinds(&ir));
         let r = regions(&bytes).unwrap();
         assert!(r.iter().any(|x| x.page == 1 && x.y0 > 420.), "the body's lines reach its edges: {r:?}");
+    }
+
+    #[test]
+    fn a_figure_at_the_top_of_a_page_stays_out_of_the_paragraph_the_page_break_cuts() {
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let first: Vec<Run> = (0..6).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
+        for (label, size) in [("input b when the signal is not set, and input a when it is set.", 9.), ("data in", 6.)] {
+            let second = vec![(L, 100., size, label), (L, 140., 10., "until a majority of them has answered.")];
+            let ir = to_ir(&pdf(&[first.clone(), second], None), None).unwrap();
+            let k = kinds(&ir);
+            assert!(k.contains(&("paragraph", label)), "{k:?}");
+            assert!(k.iter().any(|(_, t)| t.starts_with(BODY) && t.ends_with("then waits for them until a majority of them has answered.")), "{k:?}");
+        }
     }
 
     #[test]
