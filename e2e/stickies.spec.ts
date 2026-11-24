@@ -48,7 +48,7 @@ async function startNarrow(shell: Page) {
   await startLong(shell);
   await expect(shell.locator(".nav")).toBeVisible();
   await expect(list(shell)).toBeVisible();
-  expect(await doc(shell).evaluate((el) => el.clientWidth)).toBeLessThan(560);
+  expect(await doc(shell).evaluate((el) => el.clientWidth)).toBeLessThan(720);
 }
 
 const bar = (page: Page) => page.locator(".vw-cap");
@@ -556,11 +556,11 @@ test("the cards are under their block in a narrow pane, and beside it in a wider
   expect(await roomless()).toBe(true);
   // The pane keeps what the sidebar and the list leave.
   const pane = await doc(shell).evaluate((el) => el.clientWidth);
-  await shell.setViewportSize({ width: 1500 - pane + 575, height: 900 });
+  await shell.setViewportSize({ width: 1500 - pane + 735, height: 900 });
   await expect.poll(beside).toBe(true);
   const text = await boxOf(shell.locator(".reader .blocks"));
   expect(text.width, "the text gives up width").toBeGreaterThan(240);
-  await shell.setViewportSize({ width: 1500 - pane + 540, height: 900 });
+  await shell.setViewportSize({ width: 1500 - pane + 700, height: 900 });
   await expect.poll(under).toBe(true);
 
   // Asked here it is under those before too.
@@ -592,7 +592,7 @@ test("a column that narrows the text leaves the line at the top of the view ther
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell, 12);
   const pane = await doc(shell).evaluate((el) => el.clientWidth);
-  await shell.setViewportSize({ width: 1500 - pane + 640, height: 900 });
+  await shell.setViewportSize({ width: 1500 - pane + 800, height: 900 });
   await scrollTo(shell, paraBlock(40), "start");
   await doc(shell).evaluate((el) => (el.scrollTop += 150));
   const [top, wide] = [await scrollTop(shell), await boxOf(shell.locator(paraBlock(40)))];
@@ -603,7 +603,7 @@ test("a column that narrows the text leaves the line at the top of the view ther
   const before = await passed();
   await askAbout(shell, "質問", paraBlock(42));
   await expect(field(shell)).toBeFocused();
-  expect((await boxOf(shell.locator(paraBlock(40)))).height, "the text is narrower").toBeGreaterThan(wide.height + 50);
+  expect((await boxOf(shell.locator(paraBlock(40)))).height, "the text is narrower").toBeGreaterThan(wide.height + 20);
   expect(Math.abs((await passed()) - before)).toBeLessThan(0.02);
   await shell.keyboard.press("Escape");
   await expect(cards(shell)).toHaveCount(0);

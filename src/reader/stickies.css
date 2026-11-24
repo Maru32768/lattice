@@ -8,12 +8,12 @@
   .reader .blocks { padding-top: var(--sticky-room); }
   .reader .blk { margin-bottom: var(--sticky-room); }
   /* The text and the column, centered together. The text's lines stay about as long as without the column. */
-  .doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(200px, 30%, 300px); justify-content: center; }
+  .doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(240px, 30%, 300px); justify-content: center; }
   .doc-scroll:has(> .stickies[data-beside]) > .reader { align-self: start; margin: 0; padding-right: 28px; }
 }
 /* The browser keeps what it anchors on in place as heights above it change: the text, not a card. Out of the flow, or a
    selection dragged past the text's edge would go on to the nearest card. */
-.stickies { overflow-anchor: none; position: absolute; top: 0; left: 48px; right: 48px; }
+.stickies { overflow-anchor: none; position: absolute; top: 0; left: max(48px, 50% - 292px); right: max(48px, 50% - 292px); }
 .stickies > * { position: absolute; left: 0; right: 0; }
 .stickies[data-beside] { grid-column: 2 / 3; inset: 40px 20px auto 0; }
 /* Where the column goes on below the article, its end is off the view's edge. */

@@ -11,7 +11,7 @@ import { deleteSticky, dropAsk, replaceAsk, sendAsk, useStickies } from "./useSt
 import "./stickies.css";
 
 /** A pane narrower than this has no room for a column beside the text. */
-const COLUMN_FROM = 560;
+const COLUMN_FROM = 720;
 
 /**
  * Puts the cards beside their blocks, or under them in a narrow pane, where the text makes room. The text at the view's top
