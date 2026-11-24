@@ -47,7 +47,7 @@ Once the library has articles, the ＋ at the top of the navigation (**Add artic
 
 ### Set up an AI provider
 
-Translation, summaries, classification, importance, quizzes, word meanings, the LLM feed filter and chat send text to an AI provider. To use them, set up at least one provider in **Settings › AI providers**. Saving, reading and full-text search work without one.
+Translation, summaries, classification, importance, quizzes, word meanings, the LLM feed filter, chat and stickies send text to an AI provider. To use them, set up at least one provider in **Settings › AI providers**. Saving, reading and full-text search work without one.
 
 These providers are supported:
 
@@ -593,8 +593,8 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 | Setting | What it does |
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
-| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. |
-| **Send key** | The key that sends a question from the chat box: **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Enter` in insert mode is a new line, and `Enter` in normal mode follows this setting. `Ctrl+Enter` and `:w` always send. |
+| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. [Stickies](#stickies) use it too. |
+| **Send key** | The key that sends a question from the chat box and from a [sticky](#stickies): **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Enter` in insert mode is a new line, and `Enter` in normal mode follows this setting. `Ctrl+Enter` and `:w` always send. |
 
 ## Learn from what you read
 
@@ -611,6 +611,22 @@ When you have answered every question, **Add to review** puts them in [Today's r
 - **Try again** starts over.
 - When the article's text or **About you** has changed, **Regenerate** writes new questions.
 - The panel keeps its state when you move to another screen or tab and come back. It is cleared when you quit Lattice.
+
+### Stickies
+
+When you don't follow a passage, select it in the Reader. A bar with three buttons appears, and the answer stays beside the passage as a sticky. No chat changes.
+
+- **Ask**: type a question on the sticky and send it with the key set in **Send key** (`Ctrl+Enter` always sends). `Esc` closes it without sending.
+- **Explain**: explains the passage in detail.
+- **Term**: explains what the selected words mean in this article.
+
+Stickies are in a column right of the text, at the height of their passages. In a narrow pane they come after the article.
+
+- The numbers in an answer are citations. Click one to go to its passage. The AI can add general knowledge, and says which part goes beyond the article.
+- If asking fails, the sticky stays with the error and **Retry**, and a question you typed is kept. You can go to another article while you wait. Until the answer comes, a sticky is kept only while Lattice runs.
+- You can select up to 2,000 characters, and a question can have up to 4,000.
+- **Delete the sticky** on a sticky deletes it. Deleting an article deletes its stickies, and re-extracting it keeps them. A sticky whose passage is no longer in the article is at the top.
+- Stickies are in the JSON export and in backups.
 
 ### Notes
 
@@ -963,7 +979,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | `collect COLLECTION ARTICLE`, `uncollect COLLECTION ARTICLE` | Add an article to a collection, or take it out. Need write permission. |
 | `add-feed URL` | Subscribes to an RSS or Atom feed, fetching it once to check it. `--folder NAME` puts it in that folder, made if missing. Needs write permission. |
 | `rename-feed ID [NAME]`, `move-feed ID [FOLDER]`, `rename-folder ID NAME` | Rename a feed (without a name, back to its own title), move it into a folder by name (without one, out of any folder) and rename a folder. Need write permission. |
-| `delete-article ID` | Deletes an article with its summary, translation, note and quiz. Needs delete permission. |
+| `delete-article ID` | Deletes an article with its summary, translation, note, stickies and quiz. Needs delete permission. |
 | `delete-collection ID`, `remove-feed ID`, `delete-folder ID` | Delete a collection, unsubscribe from a feed and delete a folder. Their articles and feeds stay. Need delete permission. |
 | `merge-genre FROM INTO` | Moves a genre's articles into another genre and deletes it. Needs delete permission. |
 
@@ -1049,7 +1065,7 @@ Lattice starts every tool result with a notice that the content is untrusted out
 
 ### Where your data is
 
-All of Lattice's data is in one SQLite database file: articles, the fetched HTML, translations, summaries, images, search data, chats, quizzes, words and settings. For an installed copy, the default locations are:
+All of Lattice's data is in one SQLite database file: articles, the fetched HTML, translations, summaries, images, search data, chats, stickies, quizzes, words and settings. For an installed copy, the default locations are:
 
 | What | Where |
 |---|---|
@@ -1123,7 +1139,7 @@ To go back to the database from before the restore, first close every process th
 
 **Settings › Export** writes the library's contents as gzip-compressed JSON Lines to the `exports` folder, for using your data in other tools. **What to export** chooses the whole library or one collection.
 
-- **Included:** articles, paragraphs, translations, summaries, notes, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
+- **Included:** articles, paragraphs, translations, summaries, notes, stickies, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
 - **Not included:** API keys and other settings, saved words, the fetched HTML, images and search vectors
 
 To keep what is not included, use a [backup](#backup). Saved words can also be exported with **Export CSV** in Vocabulary.
@@ -1159,6 +1175,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 | Word meanings | The word and the sentence you saved it with |
 | LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |
 | Chat | Your question, the text of the articles in scope, the last three exchanges, **About you** and your chat instructions |
+| Stickies | The text you selected, your question, and the article's title and text (only the part around the selection when the article is longer than **Context per question**) |
 
 Semantic search, reading aloud and text extraction run only on your computer. The Claude CLI and Codex CLI providers use the accounts you signed in to those CLIs with.
 
