@@ -487,20 +487,31 @@ fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
         lines.sort_by(|a, b| a.y.total_cmp(&b.y));
     }
     let on = |l: &Line, y: f64| (l.y - y).abs() < 0.3 * l.size;
-    let has_room = |column: usize, lines: &[Line], next: usize| {
+    let padding: Vec<f64> = cells.iter().map(|(column, lines)| lines.iter().map(|l| l.x0).fold(f64::MAX, f64::min) - xs[*column]).collect();
+    let has_room = |cell: usize, next: usize| {
+        let (column, lines) = &cells[cell];
         let (before, after) = (&lines[next - 1], &lines[next]);
-        let padding = lines.iter().map(|l| l.x0).fold(f64::MAX, f64::min) - xs[column];
         let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
         let word = after.text.split_whitespace().next().unwrap_or_default().chars().count() as f64;
-        before.x1 + (word + 1.) * letter <= xs[column + 1] - padding
+        before.x1 + (word + 1.) * letter <= xs[column + 1] - padding[cell]
     };
-    let starts_row = |y: f64| cells.iter().all(|(column, lines)| lines.iter().position(|l| on(l, y)).is_some_and(|i| i > 0 && has_room(*column, lines, i)));
     let mut breaks = Vec::new();
     if let [(_, first), _, ..] = &cells[..]
         && cells.iter().all(|(_, lines)| on(&lines[0], first[0].y))
         && !band.iter().flatten().any(|g| g.vertical || g.turned)
     {
-        breaks.extend(first[1..].iter().map(|l| l.y).filter(|&y| starts_row(y)));
+        // Each cell's next line at or under the baseline: the baselines go down the band, so each line is passed once.
+        let mut next = vec![0; cells.len()];
+        for y in first[1..].iter().map(|l| l.y) {
+            for ((_, lines), i) in cells.iter().zip(&mut next) {
+                while lines.get(*i).is_some_and(|l| l.y < y && !on(l, y)) {
+                    *i += 1;
+                }
+            }
+            if cells.iter().zip(&next).enumerate().all(|(cell, ((_, lines), &i))| lines.get(i).is_some_and(|l| on(l, y)) && i > 0 && has_room(cell, i)) {
+                breaks.push(y);
+            }
+        }
     }
     let mut rows = vec![vec![Vec::new(); band.len()]; breaks.len() + 1];
     for (column, glyphs) in band.iter().enumerate() {
