@@ -3268,12 +3268,15 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_double_rule_parts_two_columns() {
+    fn a_double_rule_parts_two_cells() {
         let mut ops = ruled(&[72., 200., 202.4, 400.], &[110., 130., 150.], "strokes");
         ops += &(shown(78., 124., "Method") + &shown(208., 124., "Returns"));
         ops += &(shown(78., 144., "TT.now()") + &shown(208., 144., "an interval"));
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "Method\tReturns\nTT.now()\tan interval")]);
+        // LaTeX's \hline\hline: a second bar under the first row's, their middles 2.4pt apart.
+        let rules = |xs: &[f64], ys: &[f64]| ruled(xs, ys, "bars") + &format!("{} {} {} 0.4 re f\n", xs[0], 792. - (ys[1] + 2.4) - 0.2, xs[2] - xs[0]);
+        assert_eq!(kinds(&to_ir(&tables_page(&rules), None).unwrap()), TABLES_PAGE);
     }
 
     #[test]
