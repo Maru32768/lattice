@@ -434,7 +434,10 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
                 cells[row][column].push(g);
             }
         }
-        if runs_on(p, grid, &grids, &cells) {
+        // shortcut: a page that turns keeps every grid that holds enough text, as numbers set across in the columns beside
+        // a table (縦中横) sit on its baselines by chance; tell them from a row's other cells if a partly ruled table turns
+        // up in vertical writing.
+        if !turns && runs_on(p, grid, &grids, &cells) {
             continue;
         }
         // The first band is the head, one row: a head's cells may each set a unit under their name, which breaks as rows do.
@@ -5088,6 +5091,21 @@ pub(crate) mod tests {
         let again: Vec<i64> = s.get_article(id, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
         assert_eq!(again, ids, "re-extraction reads the stored PDF");
         assert!(import(&s, b"not a pdf", None).is_err());
+    }
+
+    #[test]
+    fn a_number_set_across_beside_a_table_on_a_turned_page_leaves_it_a_table() {
+        // Two columns of vertical writing, a table set across between them, and in a third column a number set across
+        // (縦中横) on the baseline of the table's first row.
+        let columns = "BT /F3 10 Tf 1 0 0 1 540 700 Tm <034B034D034F03510353> Tj 1 0 0 1 200 700 Tm <03540356034B034D034F> Tj ET\n";
+        let cells = shown(306., 125., "Pros") + &shown(386., 125., "Long") + &shown(306., 165., "Cons") + &shown(386., 165., "Slow");
+        let table = ruled(&[300., 380., 460.], &[100., 140., 180.], "strokes") + &cells;
+        let number =
+            "BT /F3 10 Tf 1 0 0 1 500 700 Tm <034B034D> Tj ET BT /F1 10 Tf 1 0 0 1 494.4 667 Tm (25) Tj ET BT /F3 10 Tf 1 0 0 1 500 657 Tm <034F0351> Tj ET\n";
+        for ops in [columns.to_string() + &table, columns.to_string() + number + &table] {
+            let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+            assert!(kinds(&ir).contains(&("table", "Pros\tLong\nCons\tSlow")), "{:?}", kinds(&ir));
+        }
     }
 
     #[test]
