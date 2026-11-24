@@ -1,5 +1,6 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
+import { emit } from "@tauri-apps/api/event";
 import type {
   ArticleFilter,
   ArticleRow,
@@ -36,6 +37,8 @@ import type {
   TailscaleStatus,
   R2Settings,
   SnapshotSettings,
+  Sticky,
+  StickyKind,
   R2Status,
   RelevanceStatus,
   ReviewItem,
@@ -300,6 +303,8 @@ function search(query: string, filter: ArticleFilter | null, ids: number[] | nul
 
 /** Memos by article id. */
 const notes = new Map<number, string>();
+const stickies: Sticky[] = [];
+let nextSticky = 1;
 /** Genres added in settings ahead of any article. */
 const addedGenres = new Set<string>();
 
@@ -649,6 +654,59 @@ export const handlers = {
     return m;
   },
   chat_threads: () => threads,
+  sticky_ask: ({
+    articleId,
+    blockId,
+    kind,
+    quote,
+    question,
+  }: {
+    articleId: number;
+    blockId: number | null;
+    kind: StickyKind;
+    quote: string;
+    question: string;
+  }): Sticky => {
+    if (Array.from(quote).length > 2000) {
+      reject("stickies.badQuote", { max: 2000 });
+    }
+    if (question.includes("the model is down") && !(window as unknown as { __modelUp?: boolean }).__modelUp) {
+      reject("stickies.malformed");
+    }
+    const created_at = new Date(NOW).toISOString();
+    const block = blocksOf(article(articleId)).find((b) => b.id === blockId);
+    const citation = (n: number, block_id: number, text: string) => ({ n, block_id, article_id: articleId, url: "", title: "", heading: null, text });
+    const sticky: Sticky = {
+      id: nextSticky++,
+      article_id: articleId,
+      block_id: block?.id ?? null,
+      kind,
+      quote,
+      created_at,
+      messages: [
+        {
+          id: nextSticky,
+          question,
+          answer: "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います。出典のない番号 [7] と消えた出典 [2] はそのままです。",
+          citations: [...(block ? [citation(1, block.id, block.text)] : []), citation(2, 999_999, "gone")],
+          provider: "claude-cli",
+          model: "opus",
+          created_at,
+        },
+      ],
+    };
+    stickies.push(sticky);
+    void emit("stickies-changed", articleId);
+    return sticky;
+  },
+  list_stickies: ({ articleId }: { articleId: number }): Sticky[] => stickies.filter((s) => s.article_id === articleId),
+  delete_sticky: ({ id }: { id: number }) => {
+    const [gone] = stickies.splice(
+      stickies.findIndex((s) => s.id === id),
+      1,
+    );
+    void emit("stickies-changed", gone.article_id);
+  },
   get_chat_budget: (): ChatBudget => store.chatBudget,
   set_chat_budget: ({ budget }: { budget: ChatBudget }) => void (store.chatBudget = budget),
   get_auto_summarize: (): AutoSummarize => store.autoSummarize,

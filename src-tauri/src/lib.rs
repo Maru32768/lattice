@@ -28,12 +28,13 @@ use lattice_core::network;
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::srs::Grade;
+use lattice_core::stickies::{Sticky, StickyKind};
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
 use lattice_core::{
-    backup, classify, export, favicons, feed_filter, feed_folders, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, summarize,
-    translate, vocab,
+    backup, classify, export, favicons, feed_filter, feed_folders, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, stickies,
+    summarize, translate, vocab,
 };
 use tauri::{Emitter, Manager, State, Webview};
 use tauri_plugin_autostart::ManagerExt as _;
@@ -46,7 +47,7 @@ use ts_rs::TS;
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
 const OVERLAY_LLM_CONCURRENCY: usize = 3;
-/// Chat questions in flight at once; also outside the job queue so they never wait behind it.
+/// Questions in flight at once, a chat's and the stickies'; also outside the job queue so they never wait behind it.
 const CHAT_LLM_CONCURRENCY: usize = 2;
 const OVERLAY_MAX_SNIPPETS: usize = 24;
 const OVERLAY_MAX_SNIPPET_BYTES: usize = 20_000;
@@ -1070,6 +1071,36 @@ fn chat_delete_thread(app: State<'_, App>, thread_id: i64) -> Result<(), String>
     app.store.delete_chat_thread(thread_id).map_err(err)
 }
 
+/// Asks about a passage of an article; the answer is stored as a sticky.
+#[tauri::command]
+async fn sticky_ask(
+    handle: tauri::AppHandle,
+    app: State<'_, App>,
+    article_id: i64,
+    block_id: Option<i64>,
+    kind: StickyKind,
+    quote: String,
+    question: String,
+) -> Result<Sticky, String> {
+    let _permit = app.chat_llm.acquire().await.map_err(err)?;
+    let sticky = stickies::ask(&app.store, &app.providers.llm, article_id, block_id, kind, &quote, &question).await?;
+    let _ = handle.emit("stickies-changed", article_id);
+    Ok(sticky)
+}
+
+#[tauri::command(async)]
+fn list_stickies(app: State<'_, App>, article_id: i64) -> Result<Vec<Sticky>, String> {
+    stickies::list(&app.store, article_id)
+}
+
+#[tauri::command(async)]
+fn delete_sticky(handle: tauri::AppHandle, app: State<'_, App>, id: i64) -> Result<(), String> {
+    if let Some(article_id) = stickies::delete(&app.store, id)? {
+        let _ = handle.emit("stickies-changed", article_id);
+    }
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn get_chat_budget(app: State<'_, App>) -> Result<chat::Budget, String> {
     chat::budget(&app.store)
@@ -1791,6 +1822,9 @@ pub fn run() {
             chat_threads,
             chat_messages,
             chat_delete_thread,
+            sticky_ask,
+            list_stickies,
+            delete_sticky,
             get_chat_budget,
             set_chat_budget,
             get_auto_summarize,

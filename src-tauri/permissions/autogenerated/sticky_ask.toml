@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sticky-ask"
+description = "Enables the sticky_ask command without any pre-configured scope."
+commands.allow = ["sticky_ask"]
+
+[[permission]]
+identifier = "deny-sticky-ask"
+description = "Denies the sticky_ask command without any pre-configured scope."
+commands.deny = ["sticky_ask"]
