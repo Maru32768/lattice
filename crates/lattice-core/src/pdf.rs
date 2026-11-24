@@ -1554,8 +1554,15 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
             Some(_) => (long().map(|l| l.x0).fold(f64::MAX, f64::min), long().map(|l| l.x1).fold(f64::MIN, f64::max)),
             None => (of_side().map(|l| l.x0).fold(f64::MAX, f64::min), of_side().map(|l| l.x1).fold(f64::MIN, f64::max)),
         };
+        // A box set wider than the body (a book's aside) would make every body line look short of the edge. Justified
+        // lines end at one place, ragged ones nowhere in particular: where a fifth of the lines of prose end is a
+        // block's edge. Rows of a table or of code end together too, with cells across them or well short of the column.
+        let mut ends: Vec<f64> = of_side().filter(|l| l.wide_gaps == 0 && l.x1 - l.x0 >= 0.5 * (hi - lo)).map(|l| l.x1).collect();
+        ends.sort_by(f64::total_cmp);
+        let edges: Vec<f64> =
+            ends.chunk_by(|a, b| b - a < 0.25).filter(|at| at.len() >= 4 && at.len() * 5 >= ends.len()).filter_map(|at| at.last().copied()).collect();
         for l in lines.iter_mut().filter(|l| l.side == s) {
-            (l.left, l.right) = (lo, hi);
+            (l.left, l.right) = (lo, edges.iter().copied().find(|e| *e >= l.x1 - 0.25).unwrap_or(hi));
         }
     }
     if !two {
@@ -2419,6 +2426,23 @@ pub(crate) mod tests {
         let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
         assert!(texts.contains(&"Aside The progress of machines"), "{texts:?}");
         assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq")), "{texts:?}");
+    }
+
+    #[test]
+    fn a_box_set_wider_than_the_body_leaves_the_body_its_own_right_edge() {
+        const ASIDE: &str = "an aside is set in a box that reaches further out to the side than the body of the page around it does";
+        const BODY: &str = "the leader sends every write to all of the replicas and then waits for them";
+        let aside = (0..5).map(|i| (80., 100. + 11.5 * i as f64, 9.5, ASIDE));
+        let first = aside.chain((0..6).map(|i| (L, 300. + 12. * i as f64, 10., BODY))).collect();
+        let second = (0..4).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([(L, 148., 10., "and that is the end of it.")]).collect();
+        let bytes = pdf(&[first, second], None);
+        let ir = to_ir(&bytes, None).unwrap();
+        let body: Vec<&Block> = ir.blocks.iter().filter(|b| b.text.starts_with(BODY)).collect();
+        assert_eq!(body.len(), 1, "the paragraph runs on to the next page: {:?}", kinds(&ir));
+        assert!(body[0].text.ends_with("the end of it."));
+        let r = regions(&bytes).unwrap();
+        let pages: Vec<usize> = r.iter().filter(|x| x.text.starts_with(BODY) || x.text.ends_with("the end of it.")).map(|x| x.page).collect();
+        assert_eq!(pages, [0, 1], "and both of its pieces are translated");
     }
 
     #[test]
