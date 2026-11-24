@@ -3068,6 +3068,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn rules_drawn_under_a_transform_are_tables_where_they_show() {
+        // Moved down by a `cm`, and flipped and scaled as Chrome's printing writes a page.
+        let moved = |x: f64, y: f64| (x, 892. - y);
+        let flipped = |x: f64, y: f64| (x / 0.75, y / 0.75);
+        for (cm, to) in [("1 0 0 1 0 -100", &moved as &dyn Fn(f64, f64) -> (f64, f64)), ("0.75 0 0 -0.75 0 792", &flipped)] {
+            let bytes = tables_page(&|xs, ys| format!("q {cm} cm\n{}Q\n", outlined(xs, ys, to, "h S")));
+            assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), TABLES_PAGE, "{cm}");
+        }
+    }
+
+    #[test]
     fn rules_that_do_not_box_every_cell_with_text_leave_the_text_as_it_was() {
         let cells = shown(78., 130., "Cell one") + &shown(178., 130., "Cell two") + &shown(78., 180., "Cell three") + &shown(178., 180., "Cell four");
         let text = shown(72., 100., "Some prose above the cells.") + &cells;
