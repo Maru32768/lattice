@@ -62,19 +62,18 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     const measure = () => {
       const els = [...view.querySelectorAll<HTMLElement>("[id^='b-']")];
       const viewTop = view.getBoundingClientRect().top;
-      let top: number | undefined;
+      let top = viewTop;
       let rooms = 0;
       const boxes = new Map<HTMLElement, { top: number; bottom: number; height: number }>();
       for (const el of els) {
         const r = el.getBoundingClientRect();
         const room = roomOf(el);
-        if (top === undefined && viewTop < r.bottom + room) {
-          top = (room ? Math.min(viewTop, r.bottom - 1) : viewTop) - rooms;
-        }
+        // A pixel more than the room passed: the top is then still inside the block.
+        top -= Math.min(room, Math.max(0, viewTop - r.bottom + 1));
         boxes.set(el, { top: r.top - rooms, bottom: r.bottom - rooms, height: r.height });
         rooms += room;
       }
-      return { els, top: top ?? viewTop - rooms, boxOf: (el: HTMLElement) => boxes.get(el)! };
+      return { els, top, boxOf: (el: HTMLElement) => boxes.get(el)! };
     };
     const placeAt = (prose: boolean) => {
       const { els, top, boxOf } = measure();

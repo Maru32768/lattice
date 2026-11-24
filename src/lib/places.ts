@@ -115,11 +115,11 @@ export function blockOf<B extends { id: number; text: string }>(blocks: B[], pla
  * text that reaches below the edge. Null above the first block, where the view opens anyway. `boxOf` a block is in the
  * same px as `top`.
  */
-export function placeIn<E extends Element>(
-  els: E[],
+export function placeIn(
+  els: HTMLElement[],
   top: number,
-  blockAt: (el: E) => { id: number; text: string } | undefined,
-  boxOf: (el: E) => Pick<DOMRect, "top" | "bottom" | "height"> = (el) => el.getBoundingClientRect(),
+  blockAt: (el: HTMLElement) => { id: number; text: string } | undefined,
+  boxOf: (el: HTMLElement) => Pick<DOMRect, "top" | "bottom" | "height"> = (el) => el.getBoundingClientRect(),
 ): ReadingPlace | null {
   if (!els[0] || boxOf(els[0]).top > top) {
     return null;
