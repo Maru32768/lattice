@@ -954,15 +954,22 @@ export function Reader({
   /** The passage selected in this article's blocks, by the block it starts in, and where to put the bar. */
   function selectionPassage() {
     const sel = window.getSelection();
-    const quote = sel?.toString().trim();
     const root = blocksEl.current;
     const view = scrollEl.current;
-    if (!sel || !quote || !root || !view) {
+    if (!sel || !root || !view) {
+      return null;
+    }
+    root.toggleAttribute("data-quoting", true);
+    const quote = sel.toString().trim();
+    root.toggleAttribute("data-quoting", false);
+    if (!quote) {
       return null;
     }
     const range = sel.getRangeAt(0);
-    const start = range.startContainer;
-    const el = (start instanceof Element ? start : start.parentElement)?.closest<HTMLElement>(".blk");
+    const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+    const blk = start?.closest(".blk");
+    // A block's tooltip is its last child: from there on the passage is the next block's.
+    const el = start?.closest(".pop") ? blk?.nextElementSibling : blk;
     const block = el && root.contains(el) ? blocks.find((b) => el.id === `b-${b.id}`) : undefined;
     // Text after the article in the selection (a drag out of a sticky) is none of the passage. A triple click on the
     // last paragraph ends there too, before any text.

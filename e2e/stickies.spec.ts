@@ -799,6 +799,41 @@ test("the other language of a sentence, shown under its block, and a block's lab
   ]);
 });
 
+test("a drag goes on into an open tooltip and across it, and the passage is the blocks' text on both sides", async ({ app }) => {
+  await openSnapshot(app);
+  const japanese = /[ぁ-ん]/u;
+  const [from, third] = [await inLine(app, "#b-102", 1), await boxOf(app.locator("#b-106 p"))];
+  const pop = app.locator("#b-102 .pop");
+  /** Presses, with the tooltip of the first paragraph open, and drags into it and on to the third paragraph. */
+  const across = async (press: "text" | "tooltip") => {
+    await app.evaluate(() => getSelection()!.removeAllRanges());
+    await app.locator(".art-title").hover();
+    await expect(pop).toBeHidden();
+    await app.locator("#b-102 .sent").hover();
+    await expect(pop).toBeVisible();
+    const box = await boxOf(pop);
+    // The tooltip's first line, under what it says of itself.
+    const line = box.y + 46;
+    await app.mouse.move(...(press === "text" ? from : ([box.x + 30, line] as const)));
+    await app.mouse.down();
+    await app.mouse.move(box.x + 150, line, { steps: 5 });
+    const inTooltip = await selected(app);
+    await app.mouse.move(third.x + 200, third.y + third.height - 10, { steps: 5 });
+    await app.mouse.up();
+    await bar(app).getByRole("button", { name: "用語" }).click();
+    return inTooltip;
+  };
+  expect(await across("text")).toMatch(/^Every transaction .* starts\. .*[ぁ-ん]/u);
+  expect(await across("tooltip")).toMatch(japanese);
+  await expect.poll(async () => (await asked(app)).length).toBe(2);
+  const [first, second] = await asked(app);
+  expect(first.blockId).toBe(102);
+  expect(first.quote).toMatch(/^Every transaction [^]*Readers never block writers\./);
+  expect(second.blockId, "the next block's").toBe(103);
+  expect(second.quote).toMatch(/^PostgreSQL implements [^]*Readers never block writers\./);
+  expect(first.quote + second.quote).not.toMatch(japanese);
+});
+
 test("a passage over the limit cannot be asked about", async ({ app }) => {
   await openSnapshot(app);
   const grow = (n: number) => app.locator("#b-102 .sent").evaluate((el, text) => (el.textContent = text), "𠮷".repeat(n));

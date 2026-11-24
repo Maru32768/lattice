@@ -34,4 +34,7 @@
 .sticky-acts { display: flex; justify-content: flex-end; gap: 6px; }
 .sticky > .error-text { margin: 0; font-size: 12px; }
 
+/* While the passage to ask about is read from the selection: neither is the block's text. */
+.blocks[data-quoting] :is(.blk-label, .pop) { user-select: none; }
+
 @media print { .stickies { display: none !important; } }
