@@ -420,7 +420,9 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
         if runs_on(p, grid, &grids, &cells) {
             continue;
         }
-        let rows: Vec<Vec<String>> = cells.iter().flat_map(|band| band_rows(band, xs, p.width)).collect();
+        // The first band is the head, one row: a head's cells may each set a unit under their name, which breaks as rows do.
+        let head = cells[0].iter().map(|glyphs| cell_text(glyphs, p.width)).collect();
+        let rows: Vec<Vec<String>> = std::iter::once(head).chain(cells[1..].iter().flat_map(|band| band_rows(band, xs, p.width))).collect();
         let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
             p.glyphs.retain(|g| cell(g).is_none());
@@ -3216,6 +3218,15 @@ pub(crate) mod tests {
         let unruled = [["Design", "Insert"], ["Adjacency List", "Easy"], ["Nested Sets", "Hard"], ["Closure Table", "Easy"]];
         let wrapped = [["Design", "Queries"], ["A tree kept as references", "Easy to insert, but hard to query"]];
         assert_eq!(ir.blocks.iter().map(|b| b.attrs.rows.clone()).collect::<Vec<_>>(), [rows(&unruled), rows(&wrapped)]);
+    }
+
+    #[test]
+    fn a_head_whose_cells_set_their_units_on_a_second_line_is_one_row() {
+        let mut ops = ruled(&[72., 200., 400.], &[110., 145., 165.], "strokes");
+        ops += &(shown(78., 124., "Latency") + &shown(78., 138., "(ms)") + &shown(206., 124., "Throughput") + &shown(206., 138., "(req/s)"));
+        ops += &(shown(78., 159., "12") + &shown(206., 159., "900"));
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "Latency (ms)\tThroughput (req/s)\n12\t900")]);
     }
 
     #[test]
