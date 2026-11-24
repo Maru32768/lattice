@@ -1851,8 +1851,8 @@ fn in_two_columns(lines: &[Line], tables: impl Iterator<Item = (Bounds, usize)>,
 
 /// Reading order of one page and its tables. In two columns (`in_two_columns`), lines and tables across the middle (title,
 /// wide figures) split the page into bands, read left column then right, and a table in a column is read where its top is
-/// in it. Otherwise the content order stands, and a table goes before the first line under it and across from it, as a
-/// figure goes before its caption.
+/// in it. Otherwise the content order stands, and a table goes after the nearest line over it or before the nearest under
+/// it, whichever is nearer, as its caption is: what is first under it in the content order may be a footer drawn first.
 fn order(mut lines: Vec<Line>, page: &Page) -> Read {
     let width = page.width;
     let side = |l: &Line| Side::of(l.x0, l.x1, width);
@@ -1876,8 +1876,18 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Read {
         }
     }
     if !two {
-        let under = |[x0, _, x1, y1]: Bounds| lines.iter().position(|l| l.y >= y1 && l.x0 < x1 && l.x1 > x0).unwrap_or(lines.len());
-        let mut tables: Vec<(usize, usize)> = page.tables.iter().enumerate().map(|(i, t)| (under(t.at), i)).collect();
+        let by = |[x0, y0, x1, y1]: Bounds| {
+            let gap = |l: &Line| {
+                if l.y <= y0 {
+                    y0 - l.y
+                } else {
+                    (l.y - l.size - y1).max(0.)
+                }
+            };
+            let near = lines.iter().enumerate().filter(|(_, l)| l.x0 < x1 && l.x1 > x0 && (l.y <= y0 || l.y >= y1));
+            near.min_by(|a, b| gap(a.1).total_cmp(&gap(b.1))).map_or(lines.len(), |(i, l)| i + usize::from(l.y <= y0))
+        };
+        let mut tables: Vec<(usize, usize)> = page.tables.iter().enumerate().map(|(i, t)| (by(t.at), i)).collect();
         tables.sort_unstable();
         return Read { lines, tables };
     }
@@ -5722,5 +5732,19 @@ pub(crate) mod tests {
         assert!(texts_of(&(prose.clone() + &after + &end(370.))).iter().any(|t| t == "Source: the maker of the machine"));
         let before = shown(72., 200., "Parts of the machine") + &table + &shown(72., 450., "Figure 1: The machine.");
         assert!(texts_of(&(prose + &before + &end(490.))).iter().any(|t| t == "Parts of the machine"));
+    }
+
+    #[test]
+    fn a_table_stays_by_its_caption_when_a_footer_is_drawn_first() {
+        let before = "A paragraph of prose comes before the table and it runs along the width of the page.";
+        let after = "A paragraph of prose comes after the table and it runs along the width of the page.";
+        let (caption, footer) = ("Table 1: Pros and cons.", "Made by the maker of the machine, all rights reserved.");
+        let (table, read) = (two_by_two([72., 172., 540.], [160., 200., 240.], PROS), "Strong\tLasting\nCostly\tEasy");
+        let foot = shown(72., 750., footer);
+        let over = shown(72., 100., before) + &shown(72., 150., caption) + &table + &shown(72., 270., after);
+        assert_eq!(texts_of(&(foot.clone() + &over)), [footer, before, caption, read, after]);
+        assert_eq!(texts_of(&(over + &foot)), [before, caption, read, after, footer]);
+        let under = shown(72., 100., before) + &table + &shown(72., 252., caption) + &shown(72., 290., after);
+        assert_eq!(texts_of(&(foot + &under)), [footer, before, read, caption, after]);
     }
 }
