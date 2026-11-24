@@ -32,6 +32,10 @@ function place(column: HTMLElement, room = true) {
   const article = scroller.querySelector<HTMLElement>(".blocks")!;
   const cards = (Array.from(column.children) as HTMLElement[]).map((el) => ({ el, block: article.querySelector<HTMLElement>(`#b-${el.dataset.block}`) }));
   const beside = cards.length > 0 && scroller.clientWidth >= COLUMN_FROM;
+  // An article without stickies is left alone, once the last one's room is gone.
+  if (cards.length === 0 && !column.hasAttribute("data-placed")) {
+    return;
+  }
 
   // The browser's scroll anchoring lets go of text whose own styles change, as they do here.
   const viewTop = scroller.getBoundingClientRect().top;
@@ -40,6 +44,7 @@ function place(column: HTMLElement, room = true) {
   const share = was?.height ? Math.min(1, (viewTop - was.top) / was.height) : 0;
 
   if (room) {
+    column.toggleAttribute("data-placed", cards.length > 0);
     column.toggleAttribute("data-beside", beside);
     const rooms = new Map<HTMLElement, number>();
     for (const { el, block } of beside ? [] : cards) {
@@ -63,7 +68,11 @@ function place(column: HTMLElement, room = true) {
 
   if (kept && was) {
     const now = kept.getBoundingClientRect();
-    scroller.scrollTop += now.top + share * now.height - (was.top + share * was.height);
+    const moved = now.top + share * now.height - (was.top + share * was.height);
+    // A write of the same value too can end a scroll that is under way.
+    if (moved) {
+      scroller.scrollTop += moved;
+    }
   }
 }
 
