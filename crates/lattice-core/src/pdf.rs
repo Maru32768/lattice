@@ -3068,6 +3068,27 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn rules_a_little_off_their_line_are_joined() {
+        // Each cell's sides stroked on their own, every other one 0.05pt off its line, as rounding leaves them.
+        let rules = |xs: &[f64], ys: &[f64]| {
+            let off = |i: usize, j: usize| 0.05 * ((i + j) % 2) as f64;
+            let mut ops = String::new();
+            for (i, &y) in ys.iter().enumerate() {
+                for (j, x) in xs.windows(2).enumerate() {
+                    ops += &format!("{} {y} m {} {y} l S\n", x[0], x[1], y = 792. - y + off(i, j));
+                }
+            }
+            for (j, &x) in xs.iter().enumerate() {
+                for (i, y) in ys.windows(2).enumerate() {
+                    ops += &format!("{x} {} m {x} {} l S\n", 792. - y[0], 792. - y[1], x = x + off(i, j));
+                }
+            }
+            ops
+        };
+        assert_eq!(kinds(&to_ir(&tables_page(&rules), None).unwrap()), TABLES_PAGE);
+    }
+
+    #[test]
     fn a_grid_with_text_in_exactly_half_its_cells_is_a_table() {
         let cells = shown(78., 130., "Strong") + &shown(178., 130., "It lasts.");
         let ops = shown(72., 100., "Pros of passion") + &ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
