@@ -142,6 +142,7 @@ pub enum OpKind {
     SetRead { article_id: i64, read: bool },
     SetFavorite { article_id: i64, favorite: bool },
     SaveUrl { url: String },
+    Translate { article_id: i64 },
 }
 
 /// What the app has to tell the rest of itself after an operation. Runners find their jobs by themselves
@@ -151,6 +152,8 @@ pub struct Effects {
     pub article: Option<i64>,
     pub vocab: bool,
     pub fetch: bool,
+    /// An LLM job was queued.
+    pub llm: bool,
     /// Feeds or their folders changed. A new feed may also have queued its entries' LLM filter.
     pub feeds: bool,
 }
@@ -213,6 +216,13 @@ pub fn apply(store: &Store, op: &MobileOp) -> Result<Outcome, String> {
                 return Ok(Outcome::Rejected(msg!("mobile.badUrl")));
             }
             Effects { article: saved.ids.first().copied(), fetch: true, ..Effects::default() }
+        }
+        OpKind::Translate { article_id } => {
+            if store.article_row(*article_id).map_err(err)?.is_none() {
+                return Ok(Outcome::Rejected(msg!("mobile.noArticle")));
+            }
+            translate::enqueue(store, *article_id, &translate::article_target(store, *article_id)?)?;
+            Effects { article: Some(*article_id), llm: true, ..Effects::default() }
         }
     };
     record(store, &op.id)?;
@@ -552,6 +562,23 @@ mod tests {
         assert!(first.fetch && first.article.is_some());
         apply(&s, &op("b", OpKind::SaveUrl { url: url.into() })).unwrap();
         assert_eq!(s.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn translating_queues_the_articles_translation_once() {
+        let s = store();
+        let id = saved_article(&s);
+        assert_eq!(
+            apply(&s, &op("a", OpKind::Translate { article_id: id })).unwrap(),
+            Outcome::Applied(Effects { article: Some(id), llm: true, ..Effects::default() })
+        );
+        apply(&s, &op("b", OpKind::Translate { article_id: id })).unwrap();
+        let queued: i64 = s
+            .conn()
+            .query_row("SELECT count(*) FROM processing_jobs WHERE type = ?1 AND article_id = ?2", params![translate::JOB_TYPE, id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(queued, 1);
+        assert!(matches!(apply(&s, &op("c", OpKind::Translate { article_id: id + 1 })).unwrap(), Outcome::Rejected(_)));
     }
 
     #[test]

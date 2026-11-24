@@ -88,6 +88,9 @@ pub(crate) fn on_applied(handle: &AppHandle, effects: &Effects) {
         app.wake_llm.iter().for_each(|w| w.notify_one());
         let _ = handle.emit("vocab-changed", ());
     }
+    if effects.llm {
+        app.wake_llm.iter().for_each(|w| w.notify_one());
+    }
     if effects.fetch {
         app.wake_net.iter().for_each(|w| w.notify_one());
     }

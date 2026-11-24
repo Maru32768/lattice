@@ -3,7 +3,7 @@ import type { ArticleDoc, ArticleRow, VocabCapture } from "../bindings";
 import { type PlainKey, useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "../reader/BlockView";
-import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
+import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "../reader/mixed";
 import { captureIn, isWord } from "../vocab/vocab";
 import { Crashed } from "./ErrorBoundary";
 import { FormatMismatch, type LocalOp, Unauthorized, loadArticle, loadImage, savedLanguage, saveLanguage, submit, withOps } from "./client";
@@ -198,6 +198,17 @@ export function ArticlePage({
   };
   const known = doc === null ? undefined : (row ?? (typeof doc === "object" ? doc.article : undefined));
   const article = known && withOps(known, ops);
+  const progress = writable && typeof doc === "object" && doc != null ? translationProgress(doc.blocks, doc.target_language) : null;
+  const translate =
+    progress && progress.done < progress.total
+      ? {
+          label: progress.done > 0 ? t("reader.translateRest") : t("reader.translate"),
+          onSelect: () => {
+            submit({ kind: "translate", article_id: id });
+            say("mobile.translateQueued");
+          },
+        }
+      : null;
   const menu = article
     ? [
         ...(writable
@@ -212,6 +223,7 @@ export function ArticlePage({
               },
             ]
           : []),
+        ...(translate ? [translate] : []),
         ...(/^https?:/i.test(article.original_url)
           ? [
               {
@@ -408,7 +420,19 @@ export function ArticlePage({
             <p>{doc.summary.text}</p>
           </details>
         )}
-        {untranslated && <p className="m-note">{t("mobile.notTranslated")}</p>}
+        {untranslated && (
+          <p className="m-note">
+            {t("mobile.notTranslated")}
+            {translate && (
+              <>
+                {" "}
+                <button className="btn" onClick={translate.onSelect}>
+                  {translate.label}
+                </button>
+              </>
+            )}
+          </p>
+        )}
         {mode !== "original" && nothing && <p className="m-note">{t(nothing)}</p>}
         {blocks.length === 0 && <p className="m-note">{t("mobile.noText")}</p>}
         <OpenLink.Provider value={openLink}>

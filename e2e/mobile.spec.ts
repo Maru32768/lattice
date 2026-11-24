@@ -864,6 +864,37 @@ test("the article's menu copies its URL and says so", async ({ page }) => {
   await expect(page.locator("textarea")).toHaveCount(0);
 });
 
+test("the article's translation can be asked of the PC, from the menu or where it says there is none", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await pickInMenu(page, "残りを翻訳");
+  await expect(page.getByRole("status")).toHaveText(/PCに翻訳を頼みました/);
+
+  const untranslated = ARTICLE.blocks.map((b) => ({ ...b, translation: null, units: undefined }));
+  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, blocks: untranslated } }));
+  await page.reload();
+  await page.getByRole("button", { name: "訳文" }).click();
+  await expect(page.getByText("まだ翻訳されていません")).toBeVisible();
+  await page.getByRole("button", { name: "翻訳する" }).click();
+  await expect
+    .poll(() =>
+      sentOps(seen)
+        .filter((o) => o.op.kind === "translate")
+        .map((o) => o.op),
+    )
+    .toEqual([
+      { kind: "translate", article_id: 1 },
+      { kind: "translate", article_id: 1 },
+    ]);
+
+  const done = ARTICLE.blocks.filter((b) => b.translation != null);
+  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, blocks: done } }));
+  await page.reload();
+  await page.getByRole("button", { name: "メニュー" }).click();
+  await expect(page.getByRole("menuitem", { name: "URLをコピー" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /翻訳/ }), "nothing is left to translate").toHaveCount(0);
+});
+
 test("a read-only server offers no operations and marks nothing", async ({ page }) => {
   const seen = await start(page, {
     index: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], read_only: true, articles: [row(1, "First article")] },
@@ -872,7 +903,7 @@ test("a read-only server offers no operations and marks nothing", async ({ page 
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("heading", { name: "First article" }).waitFor();
   await page.getByRole("button", { name: "メニュー" }).click();
-  await expect(page.getByRole("menuitem", { name: /お気に入り|未読|既読/ })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: /お気に入り|未読|既読|翻訳/ })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "URLをコピー" }), "copying changes nothing").toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "原文" }).click();
