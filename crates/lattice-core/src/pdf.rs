@@ -276,14 +276,14 @@ fn is_title(d: &Draft, body: f64) -> bool {
     matches!(d.lines.as_slice(), [l] if titles(l, body))
 }
 
-/// A line with no full stop, of three words set like the body or of one set larger: not code, a formula, a label or a
-/// table's row. It starts with a capital, has little but letters, and ends in a word or leads to an equation.
+/// A line that starts with a capital, with little but letters and no full stop: set larger than the body, or three words
+/// of its size that end in one or lead to an equation. Code, a formula, a label and a table's row are none of those.
 fn titles(l: &Line, body: f64) -> bool {
     let t = l.text.as_str();
-    let larger = l.size > 1.03 * body;
-    let enough = words(t) >= 3 || larger && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
+    let larger = l.size > 1.03 * body && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
     let closed = t.split_whitespace().last().is_some_and(|w| w == "=" || w.trim_start_matches(['(', '“', '‘']).starts_with(char::is_alphabetic));
-    l.size > 0.97 * body && t.starts_with(char::is_uppercase) && !t.ends_with('.') && enough && closed && mostly_letters(t)
+    let like_body = l.size > 0.97 * body && words(t) >= 3 && closed;
+    (larger || like_body) && t.starts_with(char::is_uppercase) && !t.ends_with('.') && mostly_letters(t)
 }
 
 fn words(t: &str) -> usize {
@@ -2547,8 +2547,9 @@ pub(crate) mod tests {
             (L, 230., 10., "irmovq $15,%rbx # Load constant 15"),
             (L, 320., 10., "Late cache prefetches 2.65%"),
             (L, 350., 10., "Here is how to run the program from the shell:3"),
-            (L, 380., 10.5, "Interrupts"),
+            (L, 380., 10.5, "Practice Problem 3 (page 36)"),
             (L, 400., 10.5, "II"),
+            (L, 420., 10.5, "Interrupts"),
             (L, 440., 10., "Aside Moore's Law"),
             (L, 260., 10., "Another long line of body text that runs across the whole of the column to its end,"),
             (L, 272., 10., "which the page needs for most of its text to be set at the size of the body."),
@@ -2558,7 +2559,10 @@ pub(crate) mod tests {
         assert!(texts.contains(&"Aside Comparing x86-64 to Y86-64 instruction encodings"), "{texts:?}");
         assert!(texts.contains(&"Here is how to run the program from the shell:3"), "a footnote's mark after the last word: {texts:?}");
         assert!(texts.contains(&"Aside Moore’s Law"), "a possessive is a word: {texts:?}");
-        assert!(texts.contains(&"Interrupts") && !texts.contains(&"II"), "a word set larger than the body: {texts:?}");
+        assert!(
+            texts.contains(&"Interrupts") && texts.contains(&"Practice Problem 3 (page 36)") && !texts.contains(&"II"),
+            "set larger than the body: {texts:?}"
+        );
         assert!(!texts.iter().any(|t| t.starts_with("RF:") || t.starts_with("irmovq") || t.starts_with("Late")), "{texts:?}");
     }
 
