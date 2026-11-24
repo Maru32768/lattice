@@ -3336,7 +3336,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_band_of_a_thousand_rows_no_rule_parts_is_read_in_linear_time() {
+    fn a_band_of_a_thousand_rows_no_rule_parts_is_read_in_seconds() {
         // Each of the two cells holds a thousand lines of one letter in 1pt type, 0.7pt apart, so each starts a row. With
         // every glyph's row looked up among all the rows for each row, this took 30 s in a debug build.
         let mut ops = ruled(&[72., 300., 540.], &[40., 60., 780.], "strokes") + &shown(78., 55., "Head") + &shown(306., 55., "Head");
@@ -5527,5 +5527,71 @@ pub(crate) mod tests {
         assert_eq!(read(&(few + &prose + &column(560., 200., label))), read(&(prose + &column(560., 200., label))));
         let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &column(560., 200., label)));
         assert!(blocks.contains(&"table: Strong\tLasting\nCostly\tEasy".to_string()), "{blocks:?}");
+    }
+
+    #[test]
+    fn tables_one_paragraph_runs_on_past_keep_their_reading_order() {
+        // The paragraph runs from the left column, past a table at its foot, into the right column, and ends over one there.
+        let mut ops = two_by_two(LEFT, [400., 445., 490.], PROS) + &two_by_two(RIGHT, [170., 215., 260.], CONS);
+        for i in 0..20 {
+            ops += &shown(72., 100. + 12. * i as f64, &format!("Left column line {i} of the body runs on"));
+        }
+        for i in 0..4 {
+            ops += &shown(322., 100. + 12. * i as f64, &format!("and it runs on {i} in the right column"));
+        }
+        ops += &shown(322., 148., "where it ends.");
+        for i in 0..20 {
+            ops += &shown(322., 280. + 12. * i as f64, &format!("Right column line {i} of the body runs on."));
+        }
+        let texts = texts_of(&ops);
+        let left = texts.iter().position(|t| t == "Strong\tLasting\nCostly\tEasy").unwrap();
+        assert!(texts[left + 1] == "Fast\tCheap\nSlow\tDear" && texts[left + 2].starts_with("Right column line 0"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_table_is_not_read_among_the_notes_beside_it() {
+        // Notes down the right margin, drawn before the body from the bottom up.
+        let mut ops: String = (0..7).map(|i| shown(470., 310. - 40. * i as f64, &format!("Note {i}."))).collect();
+        let before = "A paragraph of prose comes before the table and runs on.";
+        ops += &(shown(72., 100., before) + &two_by_two(LEFT, [110., 160., 200.], PROS));
+        ops += &shown(72., 240., "Then a paragraph of prose follows the table and runs on across the page.");
+        let texts = texts_of(&ops);
+        let before = texts.iter().position(|t| t == before).unwrap();
+        assert_eq!(texts[before + 1], "Strong\tLasting\nCostly\tEasy", "{texts:?}");
+    }
+
+    #[test]
+    fn tables_side_by_side_are_read_left_then_right_whatever_their_heights() {
+        // Set in two columns, they would be read column by column; among lines across the page, only their order says.
+        let above = "A sentence of prose that runs along the whole width of the page comes before the tables.";
+        let below = "A sentence of prose that runs along the whole width of the page comes after the tables.";
+        let tables = two_by_two(LEFT, [120., 170., 210.], PROS) + &two_by_two(RIGHT, [120., 170., 230.], CONS);
+        let texts = texts_of(&(shown(72., 100., above) + &tables + &shown(72., 260., below)));
+        assert_eq!(texts, [above, "Strong\tLasting\nCostly\tEasy", "Fast\tCheap\nSlow\tDear", below]);
+    }
+
+    #[test]
+    fn rows_no_rule_parts_drawn_from_the_bottom_up_are_rows() {
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
+        ops += &(shown(78., 166., "Nested Sets") + &shown(206., 166., "Hard"));
+        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
+        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert"));
+        assert_eq!(texts_of(&ops), ["Design\tInsert\nAdjacency List\tEasy\nNested Sets\tHard\nClosure Table\tEasy"]);
+    }
+
+    #[test]
+    fn tables_in_a_tier_of_vertical_writing_are_read_from_the_right() {
+        // Two tiers of columns (段), and in the upper one two tables, the left one set a little higher.
+        let column = |x: f64, top: f64, cid: &str| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - top - 8.8, cid.repeat(20));
+        let upper = column(520., 60., "034B") + &column(360., 60., "034D") + &column(200., 60., "034F");
+        let lower = column(520., 450., "0351") + &column(360., 450., "0353") + &column(200., 450., "0354");
+        let table = |x: f64, top: f64, words| two_by_two([x, x + 40., x + 80.], [top, top + 40., top + 80.], words);
+        let tables = table(400., 100., ["Pros", "Long", "Cons", "Slow"]) + &table(250., 90., ["Fast", "Free", "Dear", "Big"]);
+        let bytes = japanese(&[vec![]], "Identity-V", &(format!("BT /F3 10 Tf {upper}{lower}ET\n") + &tables));
+        assert!(glyphs(&bytes, true).unwrap().1[0].vertical);
+        let text = texts(&to_ir(&bytes, None).unwrap()).join("|");
+        let at = |w: &str| text.find(w).unwrap_or_else(|| panic!("{w} in {text}"));
+        assert!(at("ああ") < at("Pros") && at("Pros") < at("いい") && at("いい") < at("Fast") && at("Fast") < at("うう"), "{text}");
     }
 }
