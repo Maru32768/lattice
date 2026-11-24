@@ -2754,6 +2754,10 @@ pub(crate) mod tests {
         }
         let paragraph = || vec![(90., 112., 10., "A new paragraph of the text is set in from the edge on its first line")];
         assert!(item(&[ITEM, last], paragraph()).ends_with("and the others."), "an indented paragraph");
+        let next = vec![(90., 100., 10., "The client is told."), (81., 112., 10., "•"), (90., 112., 10., "To serve more reads.")];
+        assert!(item(&[ITEM, last], next).ends_with("The client is told."), "the item's last line over the next item");
+        let label = vec![(90., 100., 7., "time in seconds"), (90., 112., 10., "them, however far away.")];
+        assert!(!item(&[ITEM, ITEM], label).contains("seconds"), "a figure's label");
     }
 
     #[test]
@@ -2893,6 +2897,16 @@ pub(crate) mod tests {
             let second = [(x, 100., size, next)].into_iter().chain(second).collect();
             let ir = to_ir(&pdf(&[first(last), second], None), None).unwrap();
             assert!(ir.blocks[0].text.starts_with(BODY) && ir.blocks[0].text.contains(next), "{:?}", kinds(&ir));
+        }
+        for (x, size, next, after) in [
+            (L, 10.8, "Practice Problem 3 (page 36)", 112.),
+            (L + 7., 10., "Instruction memory and decode stage", 140.),
+            (L + 10., 10., "300 of them have been given to the leader of the replicas and to all", 112.),
+        ] {
+            let second = (0..4).map(|i| (L, after + 12. * i as f64, 10., BODY));
+            let second = [(x, 100., size, next)].into_iter().chain(second).collect();
+            let ir = to_ir(&pdf(&[first("to answer with the same stored value, which is the one that is the mem"), second], None), None).unwrap();
+            assert!(ir.blocks[0].text.ends_with("the mem"), "a box's title, a label or an indented paragraph: {:?}", kinds(&ir));
         }
         let code = (L, 160., 9., "node_self_current_idx that it has given to each of the copies and sets there, so");
         let first_page = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([code]).collect();
