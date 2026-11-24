@@ -224,8 +224,9 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     }
     // A turned page's lines lie across its height, not down it.
     let upright: Vec<&Line> = lines.iter().filter(|l| doc.pages.get(l.page).is_some_and(|p| !p.vertical)).collect();
-    let top = upright.iter().map(|l| l.y - l.size).fold(f64::MAX, f64::min);
-    let bottom = upright.iter().map(|l| l.y + 0.3 * l.size).fold(f64::MIN, f64::max);
+    let boxes = || tables.iter().filter(|(_, page, _)| !doc.pages[*page].vertical).map(|(.., t)| t.at);
+    let top = upright.iter().map(|l| l.y - l.size).chain(boxes().map(|at| at[1])).fold(f64::MAX, f64::min);
+    let bottom = upright.iter().map(|l| l.y + 0.3 * l.size).chain(boxes().map(|at| at[3])).fold(f64::MIN, f64::max);
     for r in &mut out {
         if let Some(page) = doc.pages.get(r.page) {
             give_room(r, page, top, bottom);
@@ -238,7 +239,7 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
 /// Keeps out of the outer part of the page, where the viewer has its buttons.
 const PAGE_EDGE: f64 = 0.05;
 
-/// A region as far up or down as the document's text goes has only the margin beyond it, and what is
+/// A region as far up or down as the document's text and tables go has only the margin beyond it, and what is
 /// printed there (a running header, a table) stops it. One that ends short of that has a figure or the like
 /// beyond it, which is not in the glyphs: figures are skipped.
 fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
@@ -3406,10 +3407,18 @@ pub(crate) mod tests {
                 shown(78., top + 25., "Strong") + &shown(178., top + 25., "Lasting") + &shown(78., top + 70., "Costly") + &shown(178., top + 70., "Easy");
             ruled(&[72., 172., 540.], &[top, top + 45., top + 90.], "strokes") + &cells
         };
-        let ops = table(110.) + &shown(72., 300., "Body text runs on as a sentence of prose between the tables.") + &table(400.);
-        let r = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap();
-        // The text's box runs from 290 to 303.
-        assert_eq!(r.iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>(), [(90., 97.)]);
+        let text = shown(72., 300., "Body text runs on as a sentence of prose between the tables.");
+        let rooms = |pages: &[String]| {
+            let contents: Vec<(usize, &str)> = pages.iter().map(String::as_str).enumerate().collect();
+            let r = regions(&with_contents(&pdf(&vec![vec![]; pages.len()], None), &contents)).unwrap();
+            r.iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>()
+        };
+        // Tables of the body, between which and the text a chart may be.
+        assert_eq!(rooms(&[table(110.) + &text + &table(400.)]), [(0., 0.)]);
+        // On its own page the text is as far up and down as the body goes; the running tables, in the margins, stop it.
+        let running = |top: f64, words| two_by_two([72., 172., 540.], [top, top + 12., top + 24.], words);
+        let page = || running(20., PROS) + &text + &running(740., CONS);
+        assert_eq!(rooms(&[page(), page()]), [(246., 437.); 2]);
     }
 
     #[test]
