@@ -939,6 +939,19 @@ test("the place that the Page view gets of a code block leaves out the cards bet
   expect(Math.abs(page!.at * next.height + code.height), "the code block above its start").toBeLessThan(20);
 });
 
+test("a passage extended by the keyboard is asked about as it is then", async ({ app }) => {
+  await openSnapshot(app);
+  await drag(app, "#b-105", "#b-105");
+  await expect(bar(app)).toBeVisible();
+  const whole = await app.evaluate(() => getSelection()!.toString());
+  for (let i = 0; i < 4; i++) {
+    await app.keyboard.press("Shift+ArrowLeft");
+  }
+  await bar(app).getByRole("button", { name: "詳しく" }).click();
+  await expect(card(app, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  expect((await asked(app))[0].quote).toBe(whole.slice(0, -4));
+});
+
 test("the print of an article leaves its stickies out, and the room that the text of a narrow pane makes for them", async ({ shell }) => {
   await startNarrow(shell);
   const pages = async () => (await shell.pdf()).toString("latin1").match(/[/]Type [/]Page[^s]/g)!.length;

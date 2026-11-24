@@ -1142,6 +1142,8 @@ export function Reader({
           onPointerDown={(e) => onSticky(e) && setCap(null)}
           // Not on the blocks alone: a drag over a passage often ends in the margin.
           onMouseUp={(e) => onSticky(e) || offerBar()}
+          // Nor here: the text of a block that cannot take the focus leaves it to the scroller.
+          onKeyUp={(e) => e.shiftKey && !onSticky(e) && offerBar()}
         >
           <article className="reader">
             <div className="art-meta">
@@ -1292,7 +1294,7 @@ export function Reader({
             )}
 
             <OpenLink.Provider value={onLink}>
-              <div className="prose blocks" ref={blocksEl} onKeyUp={(e) => e.shiftKey && offerBar()}>
+              <div className="prose blocks" ref={blocksEl}>
                 {blocks.map((b, i) => (
                   <ReaderBlock
                     key={b.id}
