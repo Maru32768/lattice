@@ -5535,10 +5535,24 @@ pub(crate) mod tests {
         assert_eq!(tables, ["Pros\tLong\nCons\tSlow", "Fast\tFree\nDear\tBig"]);
     }
 
+    /// A column of vertical writing, its middle at `x` and its top at `top`.
+    fn set_down(x: f64, top: f64, cids: &str) -> String {
+        format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{cids}> Tj ET\n", 792. - top - 8.8)
+    }
+
+    const TEN_DOWN: &str = "034B034D034F035103530354035603580359035A";
+
+    /// A form set across whose row heads are set down.
+    fn form() -> String {
+        let heads = [105., 225., 345.].map(|top| set_down(115., top, TEN_DOWN)).concat();
+        let cells = shown(178., 160., "Ann Author") + &shown(178., 280., "42 Main Street") + &shown(178., 400., "None");
+        let table = ruled(&[72., 172., 540.], &[100., 220., 340., 460.], "strokes") + &heads + &cells;
+        shown(72., 80., "Fill in this form.") + &table + &shown(72., 500., "Ask the desk.")
+    }
+
     #[test]
     fn a_page_of_a_document_set_across_stays_upright_whatever_is_set_down_by_its_tables() {
-        let column = |x: f64, top: f64, cids: &str| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{cids}> Tj ET\n", 792. - top - 8.8);
-        let (ten, label) = ("034B034D034F035103530354035603580359035A", "034B034D034F03510353");
+        let label = "034B034D034F03510353";
         let read = |ops: &str| {
             let bytes = japanese(&[vec![]], "Identity-V", ops);
             assert!(!glyphs(&bytes, true).unwrap().1[0].vertical);
@@ -5546,17 +5560,14 @@ pub(crate) mod tests {
             (kinds(&to_ir(&bytes, None).unwrap()).into_iter().map(|(kind, text)| format!("{kind}: {text}")).collect::<Vec<_>>(), regions)
         };
         // A form whose row heads are set down, more of them than of what is set across outside it.
-        let heads = [105., 225., 345.].map(|top| column(115., top, ten)).concat();
-        let cells = shown(178., 160., "Ann Author") + &shown(178., 280., "42 Main Street") + &shown(178., 400., "None");
-        let form = ruled(&[72., 172., 540.], &[100., 220., 340., 460.], "strokes") + &heads + &cells;
-        let (blocks, lines) = read(&(shown(72., 80., "Fill in this form.") + &form + &shown(72., 500., "Ask the desk.")));
+        let (blocks, lines) = read(&form());
         assert_eq!((blocks[0].as_str(), blocks[2].as_str()), ("paragraph: Fill in this form.", "paragraph: Ask the desk."));
         assert!(blocks[1].starts_with("table: ") && blocks.len() == 3 && lines == ["Fill in this form.", "Ask the desk."], "{blocks:?} {lines:?}");
         // Text set across in a grid that holds too little to be a table, or that is one, and a label set down beside it.
         let prose: String = (0..5).map(|i| shown(78., 110. + 12. * i as f64, &format!("Prose {i} set across in the first cell."))).collect();
         let few = ruled(&[72., 306., 540.], &[90., 400., 700.], "strokes");
-        assert_eq!(read(&(few + &prose + &column(560., 200., label))), read(&(prose + &column(560., 200., label))));
-        let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &column(560., 200., label)));
+        assert_eq!(read(&(few + &prose + &set_down(560., 200., label))), read(&(prose + &set_down(560., 200., label))));
+        let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &set_down(560., 200., label)));
         assert!(blocks.contains(&"table: Strong\tLasting\nCostly\tEasy".to_string()), "{blocks:?}");
     }
 
@@ -5592,7 +5603,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn tables_side_by_side_are_read_left_then_right_whatever_their_heights() {
+    fn tables_side_by_side_with_level_tops_are_read_left_then_right() {
         // Set in two columns, they would be read column by column; among lines across the page, only their order says.
         let above = "A sentence of prose that runs along the whole width of the page comes before the tables.";
         let below = "A sentence of prose that runs along the whole width of the page comes after the tables.";
@@ -5774,5 +5785,121 @@ pub(crate) mod tests {
                 "{texts:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_book_of_vertical_writing_whose_cover_is_set_across_turns_a_page_with_a_table_set_across() {
+        let cover = vec![(72., 100., 10., "The cover of the book is set across.")];
+        let columns: String = (0..4).map(|i| set_down(500. - 12. * i as f64, 100., &TEN_DOWN.repeat(3))).collect();
+        let table = two_by_two([72., 172., 300.], [600., 640., 680.], ["Pros", "It lasts long.", "Cons", "It costs time."]);
+        let ops = set_down(500., 100., TEN_DOWN) + &set_down(488., 100., "03540356") + &table;
+        let bytes = with_contents(&japanese(&[cover, vec![], vec![]], "Identity-V", &ops), &[(1, &columns)]);
+        let pages = glyphs(&bytes, true).unwrap().1;
+        assert_eq!(pages.iter().map(|p| p.vertical).collect::<Vec<_>>(), [false, true, true]);
+    }
+
+    #[test]
+    fn a_form_in_a_document_set_across_stays_upright_whatever_page_of_it_is_set_down() {
+        let prose: String = (0..10).map(|i| shown(72., 100. + 14. * i as f64, "A line of prose set across runs along the page.")).collect();
+        let columns = set_down(500., 100., TEN_DOWN) + &set_down(488., 100., "03540356");
+        for (first, second) in [(&columns, &prose), (&prose, &columns)] {
+            let bytes = with_contents(&japanese(&[vec![], vec![], vec![]], "Identity-V", &form()), &[(0, first), (1, second)]);
+            assert!(!glyphs(&bytes, true).unwrap().1[2].vertical);
+            let lines: Vec<String> = regions(&bytes).unwrap().into_iter().filter(|r| r.page == 2).map(|r| r.text).collect();
+            assert_eq!(lines, ["Fill in this form.", "Ask the desk."]);
+        }
+    }
+
+    #[test]
+    fn a_page_set_across_in_vertical_writing_is_not_turned_for_a_label_set_down_it() {
+        let prose = shown(72., 100., "The cat sat on the mat by the door, as it does every day.") + &shown(72., 112., "Then it slept.");
+        let bytes = after_a_page_of_columns(&(prose + &set_down(560., 200., "034B034D")));
+        assert!(!glyphs(&bytes, true).unwrap().1[1].vertical);
+        let lines: Vec<String> = regions(&bytes).unwrap().into_iter().filter(|r| r.page == 1).map(|r| r.text).collect();
+        assert_eq!(lines, ["The cat sat on the mat by the door, as it does every day. Then it slept."]);
+    }
+
+    #[test]
+    fn a_table_on_a_later_page_of_a_paper_with_a_title_is_read_right_after_its_caption() {
+        let title = format!("BT /F1 20 Tf 72 {} Td (A Title Set Large) Tj ET\n", 792. - 80.);
+        let authors = shown(72., 110., "Ann Author and Bob Writer") + &shown(72., 124., "The University of Somewhere");
+        let first = title + &authors + &shown(72., 150., "Introduction") + &shown(72., 180., "A paragraph of prose opens the paper.");
+        let mut second = shown(72., 100., "Table 1: Pros and cons.") + &two_by_two([72., 172., 540.], [110., 160., 200.], PROS);
+        for i in 0..4 {
+            second += &shown(72., 230. + 30. * i as f64, &format!("Paragraph {i} of prose follows the table."));
+        }
+        let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(0, &first), (1, &second)]), None).unwrap();
+        assert_eq!(ir.meta.title.as_deref(), Some("A Title Set Large"));
+        let kinds: Vec<&str> = kinds(&ir).into_iter().map(|k| k.0).collect();
+        assert_eq!(kinds, ["heading", "paragraph", "caption", "table", "paragraph", "paragraph", "paragraph", "paragraph"]);
+    }
+
+    #[test]
+    fn a_table_across_both_columns_at_the_foot_of_the_page_is_read_after_both() {
+        let column =
+            |x: f64, side: &str| (0..10).map(|i| shown(x, 100. + 12. * i as f64, &format!("{side} column line {i} of the body runs on."))).collect::<String>();
+        let ops = column(72., "Left") + &shown(72., 220., "It ends.") + &column(322., "Right") + &two_by_two([72., 300., 540.], [250., 300., 350.], PROS);
+        let texts = texts_of(&ops);
+        assert!(texts.last().unwrap() == "Strong\tLasting\nCostly\tEasy" && texts[texts.len() - 2].starts_with("Right column line 0"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_table_atop_the_right_column_beside_a_taller_one_is_read_over_the_lines_under_it() {
+        let mut ops = two_by_two(LEFT, [100., 250., 400.], PROS) + &two_by_two(RIGHT, [104., 140., 180.], CONS);
+        for i in 0..12 {
+            ops += &shown(72., 420. + 12. * i as f64, &format!("Left column line {i} of the body runs on."));
+        }
+        ops += &shown(72., 564., "It ends.");
+        for i in 0..30 {
+            ops += &shown(322., 200. + 12. * i as f64, &format!("Right column line {i} of the body runs on."));
+        }
+        let texts = texts_of(&ops);
+        let right = texts.iter().position(|t| t == "Fast\tCheap\nSlow\tDear").unwrap();
+        assert!(texts[0] == "Strong\tLasting\nCostly\tEasy" && texts.get(right + 1).is_some_and(|t| t.starts_with("Right column line 0")), "{texts:?}");
+    }
+
+    #[test]
+    fn a_table_ruled_round_its_right_columns_with_a_sixth_of_the_text_is_left_as_text() {
+        let mut text = shown(72., 80., "A paragraph of prose runs on across the page as one column does.");
+        for (i, label) in ["Signs documents on any device", "Keeps an audit trail of a step", "Sends a reminder to a signer"].into_iter().enumerate() {
+            let y = 130. + 50. * i as f64;
+            text += &(shown(78., y, label) + &shown(316., y, "Yes it does") + &shown(426., y, "No"));
+        }
+        text += &shown(72., 290., "Another paragraph of prose runs on.");
+        let read = |ops: &str| to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap();
+        assert_eq!(read(&(ruled(&[310., 420., 540.], &[110., 160., 210., 260.], "strokes") + &text)), read(&text));
+    }
+
+    #[test]
+    fn a_running_box_over_the_right_column_is_dropped_and_the_left_columns_table_kept() {
+        let page = |n: usize| {
+            let mut ops = ruled(&[322., 422., 540.], &[18., 40., 60.], "strokes") + &shown(328., 30., "Spec 42") + &shown(428., 30., "Rev 3");
+            ops += &(shown(328., 52., &format!("Page {n}")) + &shown(428., 52., "Confidential"));
+            let words = [format!("Strong{n}"), "Lasting".into(), "Costly".into(), "Easy".into()];
+            ops += &two_by_two(LEFT, [100., 150., 190.], [&words[0], &words[1], &words[2], &words[3]]);
+            for i in 0..12 {
+                ops += &shown(72., 210. + 12. * i as f64, &format!("Left column line {i} of page {n} runs on."));
+                ops += &shown(322., 100. + 12. * i as f64, &format!("Right column line {i} of page {n} runs on."));
+            }
+            ops
+        };
+        let pages: Vec<String> = (1..=3).map(page).collect();
+        let bytes = with_contents(&pdf(&[vec![], vec![], vec![]], None), &[(0, &pages[0]), (1, &pages[1]), (2, &pages[2])]);
+        let ir = to_ir(&bytes, None).unwrap();
+        let tables: Vec<&str> = kinds(&ir).into_iter().filter(|k| k.0 == "table").map(|k| k.1).collect();
+        assert_eq!(tables, [1, 2, 3].map(|n| format!("Strong{n}\tLasting\nCostly\tEasy")), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_table_over_the_rest_of_a_sentence_a_footnote_cuts_is_read_before_it() {
+        let small = |x: f64, y: f64, text: &str| format!("BT /F1 8 Tf {x} {} Td ({text}) Tj ET\n", 792. - y);
+        let first = shown(72., 600., "A paragraph of prose opens the first page and it runs on along the line")
+            + &shown(72., 612., "until the very foot of the page, where it goes on past the table on the")
+            + &small(72., 700., "1 A footnote set small says where this comes from.");
+        let table = two_by_two([72., 172., 540.], [100., 150., 190.], PROS);
+        let second = table + &shown(72., 220., "next page and comes to its end here.");
+        let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(0, &first), (1, &second)]), None).unwrap();
+        let k = kinds(&ir);
+        assert!(k.last().unwrap().1.contains("past the table on the next page") && k[k.len() - 2].1 == "Strong\tLasting\nCostly\tEasy", "{k:?}");
     }
 }
