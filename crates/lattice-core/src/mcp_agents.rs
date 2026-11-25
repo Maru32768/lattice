@@ -526,6 +526,16 @@ fn tables_within(table: &Table) -> Vec<&Table> {
     own.flat_map(|table| std::iter::once(table).chain(tables_within(table))).collect()
 }
 
+/// Whether there is a comment above one of the tables within it that does not follow on from its own header, so that it
+/// may be about what is before it.
+fn has_comment_apart(table: &Table) -> bool {
+    let within = tables_within(table);
+    let places: Vec<isize> = within.iter().filter_map(|t| t.position()).collect();
+    let follows = |at: isize| table.position().is_some_and(|own| own < at && (own + 1..at).all(|between| places.contains(&between)));
+    let commented = within.iter().filter(|t| t.decor().prefix().and_then(|above| above.as_str()).is_some_and(|above| above.contains('#')));
+    commented.filter_map(|t| t.position()).any(|at| !follows(at))
+}
+
 /// The comments above the entry stay: they may be about the whole file.
 fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
     let servers = doc.get_mut(SERVERS)?;
@@ -534,15 +544,11 @@ fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
         return Some(doc.to_string());
     }
     let (mut key, item) = servers.as_table_mut()?.get_key_value_mut(CLIENT_NAME)?;
+    if item.as_table().is_some_and(has_comment_apart) {
+        return None;
+    }
     match item {
         Item::Table(table) if !table.is_dotted() => {
-            // A comment above one that stands after another table may be about that one.
-            let within = tables_within(table);
-            let places: Vec<isize> = std::iter::once(&*table).chain(within.iter().copied()).filter_map(Table::position).collect();
-            let apart = places.iter().max()? - places.iter().min()? >= places.len() as isize;
-            if apart && within.iter().any(|t| t.decor().prefix().and_then(|above| above.as_str()).is_none_or(|above| above.contains('#'))) {
-                return None;
-            }
             table.clear();
             table.decor_mut().set_suffix(MARK);
         }
@@ -1168,6 +1174,10 @@ http_headers = {
         let split = format!("[mcp_servers.lattice-dev]\n{AT}\n[tui]\na = 1\n");
         assert!(codex_file(&format!("{split}# b = 2\n\n{apart}"), true).await.unwrap_err().contains(CANNOT_KEEP), "that is [tui]'s");
         assert_eq!(codex_file(&format!("{split}\n{apart}"), true).await.unwrap(), "[tui]\na = 1\n");
+        let dotted = format!("[mcp_servers]\nlattice-dev.{AT}\n\n[tui]\na = 1\n# b = 2\n\n{apart}");
+        for before in [format!("# My Codex settings\n\n{apart}\n[mcp_servers.lattice-dev]\n{AT}\n"), dotted] {
+            assert!(codex_file(&before, true).await.unwrap_err().contains(CANNOT_KEEP), "{before}");
+        }
         let commented = format!("mcp_servers = {{\n  a = {{ command = \"a\" }}, # a\n  # ours\n  lattice-dev = {{ {AT} }}, # l\n}} # all\n");
         assert!(codex_file(&commented, true).await.unwrap_err().contains(CANNOT_KEEP));
         for before in [other, "mcp_servers = \"none\"\n", "a.x = 1\nb = 2\na.y = 3\n"] {
