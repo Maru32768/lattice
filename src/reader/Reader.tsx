@@ -1159,7 +1159,7 @@ export function Reader({
           }}
           // Nor here: the text of a block that cannot take the focus leaves it to the scroller. Visual mode, which takes no
           // Shift, goes on from a passage that has the bar.
-          onKeyUp={(e) => (e.shiftKey || passage) && !onSticky(e) && offerBar()}
+          onKeyUp={(e) => (e.shiftKey || (passage && !cap.status && !cap.error)) && !onSticky(e) && offerBar()}
         >
           <article className="reader">
             <div className="art-meta">

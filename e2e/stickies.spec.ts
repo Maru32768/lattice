@@ -1613,6 +1613,19 @@ test("a drag goes on into an open tooltip and across it, and the passage is the 
   expect(first.quote + second.quote).not.toMatch(japanese);
 });
 
+test("what came of saving a word stays as a key is pressed", async ({ app }) => {
+  await openSnapshot(app);
+  const word = await boxOf(app.locator("#b-106 p"));
+  await app.mouse.dblclick(word.x + 10, word.y + 12);
+  await bar(app)
+    .getByRole("button", { name: /単語を登録/ })
+    .click();
+  await expect(bar(app)).toContainText("登録しました");
+  await app.keyboard.press("Control");
+  await frames(app);
+  await expect(bar(app)).toContainText("登録しました");
+});
+
 test("a word in a sentence's tooltip can be saved, and not asked about", async ({ app }) => {
   await openSnapshot(app);
   await app.locator("#b-103 .sent").hover();
