@@ -969,11 +969,12 @@ test("the cards are under their block in a narrow pane, and beside it in a wider
   expect(await roomless()).toBe(true);
   // The pane keeps what the sidebar and the list leave.
   const pane = await doc(shell).evaluate((el) => el.clientWidth);
-  await shell.setViewportSize({ width: 1500 - pane + 735, height: 900 });
+  await shell.setViewportSize({ width: 1500 - pane + 720, height: 900 });
+  expect(await doc(shell).evaluate((el) => el.clientWidth)).toBe(720);
   await expect.poll(beside).toBe(true);
   const text = await boxOf(shell.locator(".reader .blocks"));
   expect(text.width, "the text gives up width").toBeGreaterThan(240);
-  await shell.setViewportSize({ width: 1500 - pane + 700, height: 900 });
+  await shell.setViewportSize({ width: 1500 - pane + 719, height: 900 });
   await expect.poll(under).toBe(true);
 
   // Asked here it is under those before too.
