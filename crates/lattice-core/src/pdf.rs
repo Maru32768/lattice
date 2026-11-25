@@ -1839,9 +1839,7 @@ fn in_two_columns<'a>(lines: impl Iterator<Item = &'a Line>, width: f64) -> bool
 fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
     // A table set across on a turned page tells nothing of its columns.
     let guides = |l: &&Line| l.table.is_none() || !page.vertical;
-    // A table across the middle has rows that part at a gap there, as if in two columns.
-    let in_half = |l: &&Line| l.table.is_none_or(|t| Side::of(page.tables[t].at[0], page.tables[t].at[2], page.width) != Side::Full);
-    let two = in_two_columns(lines.iter().filter(guides), page.width) && in_two_columns(lines.iter().filter(guides).filter(in_half), page.width);
+    let two = in_two_columns(lines.iter().filter(guides), page.width);
     if two {
         for l in &mut lines {
             l.side = Side::of(l.x0, l.x1, page.width);
@@ -5999,13 +5997,39 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_heading_by_a_table_whose_rows_part_in_the_middle_stays_a_heading() {
-        let (xs, ys) = ([72., 306., 540.], [100., 120., 140., 160., 180.]);
-        let cell = |x: f64, i: usize| shown(x, ys[i] + 14., &format!("Cell {i} of the table here"));
-        let cells: String = (0..4).map(|i| cell(76., i) + &cell(310., i)).collect();
-        let ops = ruled(&xs, &ys, "strokes") + &cells + &sized(72., 220., 14., "Current State of the Compliance") + &across(250., "A line is read");
-        let ir = to_ir(&pages_of(&[String::new(), ops]), None).unwrap();
-        assert_eq!(kinds(&ir).into_iter().map(|k| k.0).collect::<Vec<_>>(), ["table", "heading", "paragraph"]);
+    fn a_table_across_the_last_page_leaves_its_columns_two() {
+        // The right column holds less than a fifth of the text beside the table's.
+        let (xs, ys) = ([72., 170., 310., 430., 540.], [80., 100., 120., 140., 160., 180., 200.]);
+        let cells = |y: &f64| shown(76., y + 14., "Method") + &shown(174., y + 14., "Data set number 1 of 9") + &shown(314., y + 14., "1.0 plus or minus 1");
+        let table = ruled(&xs, &ys, "strokes") + &ys[..6].iter().map(|y| cells(y) + &shown(434., y + 14., "1 hour and 1 min")).collect::<String>();
+        let left = |i: usize| shown(72., 260. + 12. * i as f64, "Left column line of the body runs on to its edge");
+        let right = |i: usize| shown(316., 260. + 12. * i as f64, "Right column line of the body runs on to its edge");
+        let rows: String = (0..26)
+            .map(|i| {
+                left(i)
+                    + &if i < 6 {
+                        right(i)
+                    } else {
+                        String::new()
+                    }
+            })
+            .collect();
+        let bytes = pages_of(&[table + &rows]);
+        let texts = blocks_of(&bytes);
+        let body = texts[1..].join(" ");
+        assert!(body.find("Right").unwrap() > body.rfind("Left").unwrap(), "{texts:?}");
+        assert_eq!(regions(&bytes).unwrap().iter().map(|r| &r.text[..4]).collect::<Vec<_>>(), ["Left", "Righ"]);
+    }
+
+    #[test]
+    fn a_table_drawn_before_the_text_over_it_is_read_after_it_where_its_rows_part_in_the_middle() {
+        let (xs, ys) = ([72., 308., 540.], [200., 220., 240., 260., 280., 300., 320., 340.]);
+        let cells = |y: &f64| shown(76., y + 14., "Strong in all kinds of weather") + &shown(312., y + 14., "Costly to make and to keep for long");
+        let table = ruled(&xs, &ys, "strokes") + &ys[..7].iter().map(cells).collect::<String>();
+        let ops =
+            table + &across(100., "The text over it is read") + &shown(72., 190., "Table 1: Strong and weak.") + &across(360., "The text under it is read");
+        let texts = texts_of(&ops);
+        assert!(texts[0].starts_with("The text over") && texts[1].starts_with("Table 1") && texts[2].starts_with("Strong"), "{texts:?}");
     }
 
     #[test]
