@@ -254,9 +254,9 @@ impl Agents {
             Some(dir) => (dir.clone(), dir.clone()),
             None => dirs::home_dir().map(|home| (home.join(".claude"), home)).ok_or_else(|| Failure::failed("no home folder"))?,
         };
-        // Its older file, which Claude Code (2.1.327) uses where there is one.
+        // Its older file, which Claude Code (2.1.327) uses where there is one that is not empty.
         let older = settings.join(".config.json");
-        let path = if older.exists() {
+        let path = if std::fs::metadata(&older).is_ok_and(|file| file.is_file() && file.len() > 0) {
             older
         } else {
             folder.join(".claude.json")
@@ -834,7 +834,7 @@ mod tests {
         holds(&ours);
         s.set(".config.json", &json!({ "mcpServers": { CLIENT_NAME: { "command": "mine" } } }).to_string());
         assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentOther"), "the file Claude Code uses");
-        std::fs::remove_file(s.dir.join(".config.json")).unwrap();
+        s.set(".config.json", "");
         assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false), "a registration that is left uses it");
         assert!(calls().is_empty());
         s.delete(&r);
