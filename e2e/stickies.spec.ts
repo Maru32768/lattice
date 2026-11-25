@@ -1684,7 +1684,8 @@ test("a drag past the text's edge over the column selects to the line's end, ove
   await startLong(shell);
   await askElsewhere(shell, LONG_ID, paraId(8));
   await expect(cards(shell)).toHaveCount(1);
-  await scrollTo(shell, paraBlock(8), "center");
+  // The last of them well in view: a drag to the view's edge scrolls.
+  await scrollTo(shell, paraBlock(3), "start");
   const c = await boxOf(cards(shell).first());
   const x = c.x + c.width / 2;
   for (const [name, i] of [
@@ -2687,6 +2688,25 @@ test("cards that the pinned one has given way to stay as others are asked on, an
   await staysStill(shell, 0, [() => followUp(above).click(), async () => expect((await boxOf(held)).y).toBeGreaterThan(at + 20), ...write]);
   expect((await boxOf(held)).y).toBe(at);
   expect(await off(2, 31)).toBe(down);
+});
+
+test("a child is right below its parent where that stays far above its block, as what was between them goes", async ({ shell }) => {
+  await startCrowded(shell);
+  await shell.setViewportSize({ width: 1500, height: 1800 });
+  await Promise.all([askMany(shell, LONG_ID, paraId(30), 2), expect.poll(() => release(shell, "sticky_ask")().then(() => cards(shell).count())).toBe(4)]);
+  const parent = cards(shell).first();
+  await parent.evaluate((el) => el.scrollIntoView());
+  await askOn(shell, "用語", parent);
+  await release(shell, "sticky_ask")();
+  await expect(child(shell, "用語").locator(".answer")).toBeVisible();
+  for (const id of [3, 4]) {
+    await invoke(shell, "delete_sticky", { id });
+  }
+  await expect(cards(shell)).toHaveCount(3);
+  await frames(shell);
+  const { y, height } = await boxOf(parent);
+  expect(y + height).toBeLessThan((await boxOf(shell.locator(paraBlock(30)))).y - 100);
+  expect((await boxOf(child(shell, "用語"))).y - y - height).toBeCloseTo(10, 0);
 });
 
 test("a sticky that gets the id of the pinned one, which is gone, is not pinned", async ({ shell }) => {
