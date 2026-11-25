@@ -544,6 +544,27 @@ test("in a narrow pane a card that opens at the bottom of the view moves the tex
   expect(await scrollTop(shell)).toBe(opened + 30);
 });
 
+test("closing a card that is not the one opened last moves no text", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(40), "center");
+  await askAbout(shell, "質問", paraBlock(40));
+  await expect(field(shell)).toHaveCount(1);
+  await scrollTo(shell, paraBlock(44), "end");
+  const top = await scrollTop(shell);
+  await askAbout(shell, "質問", paraBlock(44));
+  await expect(field(shell)).toHaveCount(2);
+  expect(await scrollTop(shell)).toBeGreaterThan(top + 50);
+  await expect(cards(shell).first()).toBeInViewport();
+  const y = async () => (await boxOf(shell.locator(paraBlock(39)))).y;
+  const before = await y();
+  await cards(shell)
+    .first()
+    .getByRole("button", { name: "キャンセル" })
+    .evaluate((el: HTMLElement) => el.click());
+  await expect(cards(shell)).toHaveCount(1);
+  expect(Math.abs((await y()) - before)).toBeLessThan(2);
+});
+
 test("the line being read stays at the top of the view through a narrow pane and a wide one, however often", async ({ shell }) => {
   await shell.setViewportSize({ width: 1200, height: 800 });
   await startLong(shell, 12);
