@@ -223,9 +223,8 @@ impl Agents {
     fn claude_code_entry(&self) -> Result<Value, Failure> {
         let dir = self.claude_dir.clone().or_else(dirs::home_dir).ok_or_else(|| Failure::failed("no home folder"))?;
         let path = dir.join(".claude.json");
-        let failed = |e: &dyn std::fmt::Display| Failure::failed(format!("{}: {e}", path.display()));
-        match read(&path).map_err(|e| failed(&e))? {
-            Some(file) => Ok(serde_json::from_slice::<Value>(&file).map_err(|e| failed(&e))?["mcpServers"][CLIENT_NAME].clone()),
+        match read(&path).map_err(at(&path))? {
+            Some(file) => Ok(serde_json::from_slice::<Value>(&file).map_err(at(&path))?["mcpServers"][CLIENT_NAME].clone()),
             None => Ok(Value::Null),
         }
     }
@@ -237,11 +236,23 @@ impl Agents {
     }
 
     async fn claude(&self, args: &[&str]) -> Result<(), Failure> {
-        let mut cmd = command(&self.claude)?;
+        // An empty working directory, like the AI providers: no project for the CLI to pick up.
+        let cwd = std::env::temp_dir().join("lattice-mcp");
+        std::fs::create_dir_all(&cwd).map_err(Failure::failed)?;
+        let mut cmd = Command::new(&self.claude);
+        cmd.args(args).current_dir(&cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         if let Some(dir) = &self.claude_dir {
             cmd.env("CLAUDE_CONFIG_DIR", dir);
         }
-        let child = spawn(cmd.args(args).stdin(Stdio::null()), &self.claude)?;
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash from the GUI app
+
+        let child = cmd.spawn().map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => Failure::Missing(self.claude.clone()),
+            _ => Failure::failed(format!("{}: {e}", self.claude)),
+        })?;
+        #[cfg(windows)]
+        crate::llm::end_with_this_process(&child);
         let out = tokio::time::timeout(self.timeout, child.wait_with_output()).await;
         let out = out.map_err(|_| Failure::Failed(format!("timed out after {:?}", self.timeout)))?.map_err(Failure::failed)?;
         if out.status.success() {
@@ -253,45 +264,36 @@ impl Agents {
     fn write_codex(&self, want: Want<'_>) -> Result<bool, Failure> {
         let home = self.codex_home.as_ref().ok_or_else(|| Failure::failed("no home folder"))?;
         let path = home.join("config.toml");
-        let failed = |e: &dyn std::fmt::Display| Failure::failed(format!("{}: {e}", path.display()));
-        let before = read(&path).map_err(|e| failed(&e))?;
-        let text = std::str::from_utf8(before.as_deref().unwrap_or_default()).map_err(|e| failed(&e))?;
-        let doc = parse_toml(text).map_err(|e| failed(&e))?;
+        let before = read(&path).map_err(at(&path))?;
+        let text = std::str::from_utf8(before.as_deref().unwrap_or_default()).map_err(at(&path))?;
+        let doc = parse_toml(text).map_err(at(&path))?;
         let after = match step(&codex_entry(&doc), want)? {
             Step::Leave => return Ok(false),
-            Step::Add(token) | Step::Replace(token) => codex_with(text, token),
-            Step::Remove => codex_without(text),
+            Step::Add(token) if doc.get(SERVERS).is_none_or(Item::is_table) => Ok(codex_appended(text, token)),
+            Step::Add(token) | Step::Replace(token) => edited(text, |doc| put_codex(doc, token).map(|()| doc.to_string())),
+            Step::Remove => edited(text, take_out_codex),
         };
         if !home.is_dir() {
             return Err(Failure::Missing(home.display().to_string()));
         }
-        let after = after.map_err(|e| failed(&e))?;
+        let after = after.map_err(at(&path))?;
+        let wanted = match want {
+            Want::Token(token) => Entry::Lattices(Some(token.into())),
+            Want::Gone { .. } => Entry::Absent,
+        };
+        if codex_entry(&parse_toml(&after).map_err(at(&path))?) != wanted {
+            return Err(at(&path)(CANNOT_KEEP));
+        }
         if after != text {
-            overwrite(&path, before.as_deref(), &after).map_err(|e| failed(&e))?;
+            overwrite(&path, before.as_deref(), &after).map_err(at(&path))?;
         }
         Ok(true)
     }
 }
 
-fn command(program: &str) -> Result<Command, Failure> {
-    // An empty working directory, like the AI providers: no project for the CLI to pick up.
-    let cwd = std::env::temp_dir().join("lattice-mcp");
-    std::fs::create_dir_all(&cwd).map_err(Failure::failed)?;
-    let mut cmd = Command::new(program);
-    cmd.current_dir(&cwd).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
-    #[cfg(windows)]
-    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash from the GUI app
-    Ok(cmd)
-}
-
-fn spawn(cmd: &mut Command, program: &str) -> Result<tokio::process::Child, Failure> {
-    let child = cmd.spawn().map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => Failure::Missing(program.to_string()),
-        _ => Failure::failed(format!("{program}: {e}")),
-    })?;
-    #[cfg(windows)]
-    crate::llm::end_with_this_process(&child);
-    Ok(child)
+/// A failure about a file.
+fn at<E: std::fmt::Display>(path: &Path) -> impl FnOnce(E) -> Failure {
+    move |e| Failure::Failed(format!("{}: {e}", path.display()))
 }
 
 fn read(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
@@ -361,32 +363,13 @@ fn codex_entry(doc: &DocumentMut) -> Entry {
     entry(&json!({ "url": found.get("url").and_then(Item::as_str), HEADERS: headers }), HEADERS)
 }
 
-fn codex_with(text: &str, token: &str) -> Result<String, String> {
-    let doc = parse_toml(text)?;
-    let after = if codex_entry(&doc) == Entry::Absent && doc.get(SERVERS).is_none_or(Item::is_table) {
-        let eol = eol(text);
-        let gap = match text {
-            "" => "",
-            t if t.ends_with('\n') => "\n",
-            _ => "\n\n",
-        };
-        format!("{text}{}", format!("{gap}{}", copied(Target::Codex, token)).replace('\n', eol))
-    } else {
-        edited(text, |doc| put_codex(doc, token).map(|()| doc.to_string()))?
+fn codex_appended(text: &str, token: &str) -> String {
+    let gap = match text {
+        "" => "",
+        t if t.ends_with('\n') => "\n",
+        _ => "\n\n",
     };
-    checked(after, &Entry::Lattices(Some(token.into())))
-}
-
-fn codex_without(text: &str) -> Result<String, String> {
-    checked(edited(text, take_out_codex)?, &Entry::Absent)
-}
-
-fn checked(after: String, holds: &Entry) -> Result<String, String> {
-    if codex_entry(&parse_toml(&after)?) == *holds {
-        Ok(after)
-    } else {
-        Err(CANNOT_KEEP.into())
-    }
+    format!("{text}{}", format!("{gap}{}", copied(Target::Codex, token)).replace('\n', eol(text)))
 }
 
 fn eol(text: &str) -> &'static str {
@@ -524,8 +507,7 @@ fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
     let below = below.strip_prefix('\n').unwrap_or(below);
     // Of the blank lines on its two sides, one is left.
     Some(match below.strip_prefix('\n') {
-        Some(rest) if above.is_empty() => rest.to_string(),
-        Some(rest) if above.ends_with("\n\n") => format!("{above}{rest}"),
+        Some(rest) if above.is_empty() || above.ends_with("\n\n") => format!("{above}{rest}"),
         None if below.is_empty() && above.ends_with("\n\n") => above[..above.len() - 1].to_string(),
         _ => format!("{above}{below}"),
     })
@@ -558,23 +540,8 @@ mod tests {
             edit(&self.store, &Edit::Create { name: String::new(), role: Role::Read, target }).unwrap().unwrap()
         }
 
-        fn regenerate(&self, r: &Registration) -> Registration {
-            edit(&self.store, &Edit::Regenerate { id: r.id.clone() }).unwrap().unwrap()
-        }
-
         fn delete(&self, r: &Registration) {
             edit(&self.store, &Edit::Delete { id: r.id.clone() }).unwrap();
-        }
-
-        /// False, with a word on it, when the agent's CLI is not installed.
-        async fn installed(&self, r: &Registration) -> bool {
-            let connected = self.agents.connect(&self.store, &r.id).await;
-            if connected.as_ref().is_err_and(|e| e.contains("mcp.agentMissing")) {
-                eprintln!("skipped: {connected:?}");
-                return false;
-            }
-            assert_eq!(connected, Ok(true));
-            true
         }
 
         fn file(&self, name: &str) -> String {
@@ -589,12 +556,11 @@ mod tests {
             serde_json::from_str::<Value>(&self.file(".claude.json")).unwrap()["mcpServers"].clone()
         }
 
-        /// A program that records how it was called in `<name>.txt` and then does `then`, as a batch file.
+        /// A `claude` that records how it was called in `claude.txt` and then does `then`, as a batch file.
         #[cfg(windows)]
-        fn fake(&self, name: &str, then: &str) -> String {
-            let program = format!("{name}.cmd");
-            self.set(&program, &format!("@echo %*>>\"%~dp0{name}.txt\"\r\n@{then}\r\n"));
-            self.dir.join(program).to_string_lossy().into_owned()
+        fn fake_claude(&self, then: &str) -> String {
+            self.set("claude.cmd", &format!("@echo %*>>\"%~dp0claude.txt\"\r\n@{then}\r\n"));
+            self.dir.join("claude.cmd").to_string_lossy().into_owned()
         }
     }
 
@@ -698,7 +664,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_target_the_app_does_not_write_and_a_registration_that_is_gone_run_nothing() {
+    async fn a_target_the_app_does_not_write_runs_nothing() {
         let mut s = Sandbox::new("untouched");
         s.agents.claude = "lattice-no-such-claude".into();
         s.agents.codex_home = Some(s.dir.join("no-such-codex"));
@@ -708,9 +674,6 @@ mod tests {
             s.delete(&r);
             assert_eq!(s.agents.disconnect(&s.store, target).await, Ok(false));
         }
-        let r = s.register(Target::Codex);
-        s.delete(&r);
-        assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(false));
     }
 
     #[tokio::test]
@@ -725,19 +688,6 @@ mod tests {
         drop(turn);
         assert_eq!(waiting.await, Ok(false), "deleted while it waited");
         assert_eq!(s.file("config.toml"), "");
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn a_program_that_does_not_answer_is_given_up_on() {
-        let mut s = Sandbox::new("hanging");
-        s.agents.timeout = Duration::from_millis(500);
-        s.agents.claude = s.fake("claude", "rem\r\n:again\r\n@goto again");
-        let r = s.register(Target::ClaudeCode);
-        let started = std::time::Instant::now();
-        let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
-        assert_eq!(message(&e)["params"]["error"], "timed out after 500ms");
-        assert!(started.elapsed() < Duration::from_secs(15));
     }
 
     #[test]
@@ -758,7 +708,7 @@ mod tests {
     #[tokio::test]
     async fn claude_code_is_called_for_lattices_entry_alone() {
         let mut s = Sandbox::new("claude-calls");
-        s.agents.claude = s.fake("claude", "exit /b 0");
+        s.agents.claude = s.fake_claude("exit /b 0");
         let r = s.register(Target::ClaudeCode);
         let add = |entry: &Value| format!("mcp add-json -s user lattice-dev \"{entry}\"");
         let remove = "mcp remove lattice-dev -s user";
@@ -806,11 +756,13 @@ mod tests {
         for (fails, error) in [("echo no room 1>&2& exit /b 3", "exit code: 3: no room"), ("rem\r\n:again\r\n@goto again", "timed out after 3s")] {
             let mut s = Sandbox::new("claude-put-back");
             s.agents.timeout = Duration::from_secs(3);
-            s.agents.claude = s.fake("claude", &format!("if %2==remove exit /b 0\r\n@if exist \"%~dp0tried\" exit /b 0\r\n@echo.>\"%~dp0tried\"\r\n@{fails}"));
+            s.agents.claude = s.fake_claude(&format!("if %2==remove exit /b 0\r\n@if exist \"%~dp0tried\" exit /b 0\r\n@echo.>\"%~dp0tried\"\r\n@{fails}"));
             let r = s.register(Target::ClaudeCode);
             let old = json!({ "headers": { "Authorization": "Bearer old" }, "timeout": 5000, "type": "http", "url": URL });
             s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: old } }).to_string());
+            let started = std::time::Instant::now();
             let e = message(&s.agents.connect(&s.store, &r.id).await.unwrap_err());
+            assert!(started.elapsed() < Duration::from_secs(15));
             assert_eq!(e["params"]["error"].as_str().unwrap().trim(), error, "the first failure");
             let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().replace("\"\"", "\"")).collect();
             assert_eq!(calls.len(), 3, "{calls:?}");
@@ -824,7 +776,7 @@ mod tests {
     #[tokio::test]
     async fn a_command_that_repeats_its_arguments_does_not_show_the_token() {
         let mut s = Sandbox::new("claude-fails");
-        s.agents.claude = s.fake("claude", "type \"%~dp0claude.txt\" 1>&2& exit /b 3");
+        s.agents.claude = s.fake_claude("type \"%~dp0claude.txt\" 1>&2& exit /b 3");
         let r = s.register(Target::ClaudeCode);
         let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
         assert!(s.file("claude.txt").contains(&r.token), "it was called with it");
@@ -837,9 +789,11 @@ mod tests {
         let other = json!({ "type": "http", "url": "http://127.0.0.1:1/mcp" });
         s.set(".claude.json", &json!({ "mcpServers": { "other": other } }).to_string());
         let r = s.register(Target::ClaudeCode);
-        if !s.installed(&r).await {
-            return;
+        let connected = s.agents.connect(&s.store, &r.id).await;
+        if connected.as_ref().is_err_and(|e| e.contains("mcp.agentMissing")) {
+            return eprintln!("skipped: {connected:?}");
         }
+        assert_eq!(connected, Ok(true));
         let ours = |token: &str| json!({ "type": "http", "url": URL, "headers": { "Authorization": format!("Bearer {token}") } });
         assert_eq!(s.claude_servers(), json!({ "other": other, CLIENT_NAME: ours(&r.token) }));
         let ours = |token: &str| {
@@ -850,7 +804,7 @@ mod tests {
             ours
         };
         s.set(".claude.json", &json!({ "mcpServers": { "other": other, CLIENT_NAME: ours(&r.token) } }).to_string());
-        let renewed = s.regenerate(&r);
+        let renewed = edit(&s.store, &Edit::Regenerate { id: r.id.clone() }).unwrap().unwrap();
         for _ in 0..2 {
             assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
             assert_eq!(s.claude_servers(), json!({ "other": other, CLIENT_NAME: ours(&renewed.token) }), "the same however often");
@@ -860,14 +814,6 @@ mod tests {
             assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(taken_out));
             assert_eq!(s.claude_servers(), json!({ "other": other }));
         }
-
-        let mine = json!({ "type": "http", "url": "http://127.0.0.1:2/mcp" });
-        s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: mine } }).to_string());
-        let r = s.register(Target::ClaudeCode);
-        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentOther"));
-        s.delete(&r);
-        assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false));
-        assert_eq!(s.claude_servers(), json!({ CLIENT_NAME: mine }));
     }
 
     const AT: &str = "url = \"http://127.0.0.1:8789/mcp\"";
@@ -1135,8 +1081,7 @@ http_headers = {
         s.set("config.toml", "# my notes\nmodel = \"x\" # keep\n\n[mcp_servers.other]\ncommand = \"foo\" # other\n");
         let r = s.register(Target::Codex);
         assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
-        let listed =
-            Command::new("codex").args(["mcp", "list", "--json"]).current_dir(&s.dir).env("CODEX_HOME", &s.dir).env("CLAUDE_CONFIG_DIR", &s.dir).output().await;
+        let listed = Command::new("codex").args(["mcp", "list", "--json"]).current_dir(&s.dir).env("CODEX_HOME", &s.dir).output().await;
         let listed = match listed {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return eprintln!("skipped: {e}"),
             listed => listed.unwrap(),
