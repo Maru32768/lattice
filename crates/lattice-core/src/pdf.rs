@@ -95,8 +95,8 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
 
 fn ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
-    let (lines, body, front, tables) = lay_out(&doc);
-    let blocks = to_blocks(&lines, body, &figures(&doc), &tables, &figure_prefix(bytes));
+    let (lines, body, front) = lay_out(&doc);
+    let blocks = to_blocks(&lines, body, &figures(&doc), &doc.pages, &figure_prefix(bytes));
     let Some(first) = blocks.iter().find(|b| b.kind != BlockKind::Image) else {
         return Err(msg!("pdf.noText"));
     };
@@ -205,14 +205,14 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
 
 fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let doc = read(bytes)?;
-    let (lines, body, _, tables) = lay_out(&doc);
+    let (lines, body, _) = lay_out(&doc);
     let vocab = vocabulary(&lines);
     let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
     let mut out = Vec::new();
     // shortcut: a turned page has no regions, as a box over a column would need turning back and a translation set
     // down it; give them one when vertical text turns up for the Page view to translate.
     let on_upright_page = |piece: &[&Line]| doc.pages.get(piece[0].page).is_some_and(|p| !p.vertical);
-    for (block, d) in drafts(&lines, body, &tables).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
+    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
         } else {
@@ -224,9 +224,12 @@ fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     }
     // A turned page's lines lie across its height, not down it.
     let upright: Vec<&Line> = lines.iter().filter(|l| doc.pages.get(l.page).is_some_and(|p| !p.vertical)).collect();
-    let boxes = || tables.iter().filter(|(_, page, _)| !doc.pages[*page].vertical).map(|(.., t)| t.at);
-    let top = upright.iter().map(|l| l.y - l.size).chain(boxes().map(|at| at[1])).fold(f64::MAX, f64::min);
-    let bottom = upright.iter().map(|l| l.y + 0.3 * l.size).chain(boxes().map(|at| at[3])).fold(f64::MIN, f64::max);
+    let extent = |l: &Line| match l.table {
+        Some(t) => (doc.pages[l.page].tables[t].at[1], doc.pages[l.page].tables[t].at[3]),
+        None => (l.y - l.size, l.y + 0.3 * l.size),
+    };
+    let top = upright.iter().map(|l| extent(l).0).fold(f64::MAX, f64::min);
+    let bottom = upright.iter().map(|l| extent(l).1).fold(f64::MIN, f64::max);
     for r in &mut out {
         if let Some(page) = doc.pages.get(r.page) {
             give_room(r, page, top, bottom);
@@ -243,7 +246,7 @@ const PAGE_EDGE: f64 = 0.05;
 /// printed there (a running header, a table) stops it. One that ends short of that has a figure or the like
 /// beyond it, which is not in the glyphs: figures are skipped.
 fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
-    let across = |g: &&Glyph| g.x < r.x1 && g.end > r.x0;
+    let across = |g: &&Glyph| g.table.is_none() && g.x < r.x1 && g.end > r.x0;
     let tables = || page.tables.iter().map(|t| t.at).filter(|&[x0, _, x1, _]| x0 < r.x1 && x1 > r.x0);
     if r.y0 <= top + r.size {
         let above = page.glyphs.iter().filter(across).filter(|g| g.y < r.y0).map(|g| g.y + 0.3 * g.size);
@@ -275,7 +278,7 @@ fn laid_out_text(d: &Draft) -> bool {
         return false;
     };
     let short = !last.text.ends_with(['.', '!', '?', ':', ';', ',', '。', '！', '？', '、']) && d.lines.iter().all(|l| l.x1 - l.x0 < 0.85 * (l.right - l.left));
-    d.kind == Kind::Paragraph && (short || d.lines.iter().any(|l| l.tabular()))
+    d.kind == Kind::Table || d.kind == Kind::Paragraph && (short || d.lines.iter().any(|l| l.tabular()))
 }
 
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
@@ -384,35 +387,19 @@ fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Opt
     })
 }
 
-/// A table where it is read: before the line at the index, and on the page.
-type ReadAt<'a> = (usize, usize, &'a Table);
-
-/// The document's lines in reading order, without running headers, the size of its body text, the front matter taken
-/// off the first page, and the tables of the body (`body_tables`) in reading order.
-fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front, Vec<ReadAt<'_>>) {
+/// The document's lines in reading order, without running headers and each table as one line, the size of its body
+/// text, and the front matter taken off the first page.
+fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
     let mut lines = Vec::new();
     for (i, page) in doc.pages.iter().enumerate() {
         lines.push(page_lines(i, &page.glyphs.iter().collect::<Vec<_>>(), page.width));
     }
     drop_running_lines(&mut lines, &doc.pages);
-    let body_tables = body_tables(&doc.pages);
-    let (mut all, mut tables) = (Vec::new(), Vec::new());
-    for (i, (lines, page)) in lines.into_iter().zip(&doc.pages).enumerate() {
-        let read = order(lines, page);
-        let kept = read.tables.into_iter().filter(|&(_, table)| body_tables.contains(&(i, table)));
-        tables.extend(kept.map(|(at, table)| (all.len() + at, i, &page.tables[table])));
-        all.extend(read.lines);
-    }
-    let body = body_size(&all);
+    let body = body_size(lines.iter().flatten());
+    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p)).collect();
     let half = doc.pages.first().map_or(0., |p| p.height / 2.);
-    let front = take_front_matter(&mut all, body, half);
-    // A table among the lines the front matter took is read where the body starts.
-    for (at, ..) in &mut tables {
-        if *at > front.taken.start {
-            *at = at.saturating_sub(front.taken.len()).max(front.taken.start);
-        }
-    }
-    (all, body, front, tables)
+    let front = take_front_matter(&mut lines, body, half);
+    (lines, body, front)
 }
 
 /// A table read from a `Grid`: its box, in points from the page's top left, and the text of its cells row by row.
@@ -421,19 +408,23 @@ struct Table {
     rows: Vec<Vec<String>>,
 }
 
-/// The tables of the page's grids that hold text in half their cells or more, their glyphs taken off the page. A glyph is
-/// in the cell its middle is in. A turned glyph is left to the page unless it `turns`, as the page drops it as a label.
+/// The tables of the page's grids that hold text in half their cells or more. A glyph is in the cell its middle is in. One
+/// in a table stays on the page, marked: the layout reads a table's lines as any others, and so finds where the table goes.
+/// A turned glyph is left out of a table unless the page `turns`, as the page drops it as a label.
 fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
     let mut tables = Vec::new();
     let two = !turns && !grids.is_empty() && {
         // Less the turned ones, which the page drops.
-        let set = || p.glyphs.iter().filter(|g| !g.turned);
-        let outside: Vec<&Glyph> = set().filter(|g| !grids.iter().any(|grid| grid.cell(g).is_some())).collect();
-        let inside = |grid: &Grid| set().filter(|g| grid.cell(g).is_some()).map(|g| g.text.chars().count()).sum();
-        in_two_columns(&page_lines(0, &outside, p.width), grids.iter().map(|grid| (grid.at, inside(grid))), p.width)
+        let mut set: Vec<Glyph> = p.glyphs.iter().filter(|g| !g.turned).cloned().collect();
+        for g in &mut set {
+            g.table = grids.iter().position(|grid| grid.cell(g).is_some());
+        }
+        // Less the lines of a table across the middle: its rows part at a gap there.
+        let part = |l: &&Line| l.table.is_none_or(|t| Side::of(grids[t].at[0], grids[t].at[2], p.width) != Side::Full);
+        in_two_columns(page_lines(0, &set.iter().collect::<Vec<_>>(), p.width).iter().filter(part), p.width)
     };
     for grid in &grids {
-        let cell = |g: &Glyph| grid.cell(g).filter(|_| turns || !g.turned);
+        let cell = |g: &Glyph| grid.cell(g).filter(|_| g.table.is_none() && (turns || !g.turned));
         let Grid { at, xs, ys } = grid;
         let mut cells = vec![vec![Vec::new(); xs.len() - 1]; ys.len() - 1];
         for g in &p.glyphs {
@@ -452,7 +443,11 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
         let rows: Vec<Vec<String>> = std::iter::once(head).chain(cells[1..].iter().flat_map(|band| band_rows(band, xs, p.width))).collect();
         let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
-            p.glyphs.retain(|g| cell(g).is_none());
+            for g in &mut p.glyphs {
+                if cell(g).is_some() {
+                    g.table = Some(tables.len());
+                }
+            }
             tables.push(Table { at: *at, rows });
         }
     }
@@ -538,7 +533,7 @@ fn cell_text(glyphs: &[&Glyph], width: f64) -> String {
         },
         down.width,
     );
-    block(Draft { kind: Kind::Paragraph, lines: lines.iter().collect(), start: 0 }, &vocabulary(&lines)).map(|b| b.text).unwrap_or_default()
+    block(Draft { kind: Kind::Paragraph, lines: lines.iter().collect() }, &vocabulary(&lines), &[]).map(|b| b.text).unwrap_or_default()
 }
 
 #[derive(Clone)]
@@ -555,6 +550,8 @@ struct Glyph {
     /// Turned a quarter clockwise to run down the page, and placed as in vertical writing: Latin set down a column on a
     /// page that is `turn`ed. On any other page it is a label, and dropped.
     turned: bool,
+    /// Which of its page's tables it is in.
+    table: Option<usize>,
 }
 
 /// How far a Japanese font's em box rises above its baseline, in ems.
@@ -1053,12 +1050,11 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
     std::panic::catch_unwind(|| {
         let (doc, mut pages) = glyphs(bytes, true)?;
         // A page drawn entirely inside forms (an included PDF) is read with them after all, unless they cannot be drawn.
-        let unread = |p: &Page| p.glyphs.is_empty() && p.tables.is_empty();
-        if pages.iter().any(unread)
+        if pages.iter().any(|p| p.glyphs.is_empty())
             && let Ok((_, all)) = glyphs(bytes, false)
         {
             for (p, a) in pages.iter_mut().zip(all) {
-                if unread(p) {
+                if p.glyphs.is_empty() {
                     *p = a;
                 }
             }
@@ -1126,8 +1122,6 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         } else {
             page.glyphs.retain(|g| !g.turned);
         }
-        // Down the page as it is read, as `order` takes them.
-        page.tables.sort_by(|a, b| a.at[1].total_cmp(&b.at[1]).then(a.at[0].total_cmp(&b.at[0])));
     }
     Ok((doc, out.pages))
 }
@@ -1178,6 +1172,7 @@ fn turn(page: &mut Page) {
         if let Some(r) = &mut run
             && !g.vertical
             && !g.turned
+            && g.table == r.table
             && (g.y - r.y).abs() < 0.3 * r.size
             && (g.x - r.end).abs() < 0.5 * r.size
         {
@@ -1442,7 +1437,7 @@ impl OutputDev for Glyphs {
         } else {
             x
         };
-        page.glyphs.push(Glyph { x, y, end: x + width * size, size, text: text.to_string(), face, vertical, turned });
+        page.glyphs.push(Glyph { x, y, end: x + width * size, size, text: text.to_string(), face, vertical, turned, table: None });
         Ok(())
     }
 
@@ -1500,6 +1495,8 @@ struct Line {
     /// Spaces too wide to be between words of prose: a justified line stretched those to 1.5 times
     /// the font size in the papers measured, a table's cells start at 2.1.
     wide_gaps: usize,
+    /// Which of its page's tables it is in.
+    table: Option<usize>,
 }
 
 impl Line {
@@ -1511,7 +1508,7 @@ impl Line {
 }
 
 /// Glyphs in content order -> lines: a new line where the baseline moves, the pen jumps back
-/// left, or it jumps the gutter in the middle of the page (columns written row by row). A script
+/// left, it jumps the gutter in the middle of the page (columns written row by row), or it enters or leaves a table. A script
 /// is measured from the letter it belongs to: `e` with both a superscript and a subscript moves
 /// further up and down than a line break would, and returns left to set the second under the first.
 fn page_lines(page: usize, glyphs: &[&Glyph], width: f64) -> Vec<Line> {
@@ -1523,7 +1520,10 @@ fn page_lines(page: usize, glyphs: &[&Glyph], width: f64) -> Vec<Line> {
             Some((prev, letter)) => {
                 let size = prev.size.max(g.size);
                 let back = g.x < prev.x - size && (g.x < letter.x || g.size >= SCRIPT * letter.size);
-                (g.y - letter.y).abs() > 0.6 * letter.size.max(g.size) || back || (prev.end < mid && g.x > mid && g.x - prev.end > 1.5 * size)
+                (g.y - letter.y).abs() > 0.6 * letter.size.max(g.size)
+                    || back
+                    || (prev.end < mid && g.x > mid && g.x - prev.end > 1.5 * size)
+                    || prev.table != g.table
             }
         };
         match groups.last_mut() {
@@ -1631,7 +1631,7 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     let x0 = ink.iter().map(|g| g.x).fold(f64::MAX, f64::min);
     let x1 = ink.iter().map(|g| g.end).fold(f64::MIN, f64::max);
     let wide_gaps = gaps.iter().filter(|&&gap| gap > 1.8 * main as f64 / 10.).count();
-    Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, marked, side: Side::Full, left: x0, right: x1, wide_gaps })
+    Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, marked, side: Side::Full, left: x0, right: x1, wide_gaps, table: glyphs[0].table })
 }
 
 /// Which of a line's glyphs make up a formula, which the page view then shows as printed: `t_abs(e)` or
@@ -1756,7 +1756,7 @@ fn push_clean(out: &mut String, s: &str) {
 /// Drops page numbers and the running headers and footers: lines in the top or bottom margin
 /// that repeat (digits aside) on at least a third of the pages. A footer that names the current
 /// section repeats on few, but its number goes up with the page: those are the lines whose number
-/// is as far from the page's index on at least a third of the pages.
+/// is as far from the page's index on at least a third of the pages. A table goes whole or not at all (`body_tables`).
 fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     // A turned page has the top and the bottom of the page at its sides.
     let margin = |l: &Line| {
@@ -1779,7 +1779,7 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     };
     let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
     let mut numbered: HashMap<i64, HashSet<usize>> = HashMap::new();
-    for l in lines.iter().flatten() {
+    for l in lines.iter().flatten().filter(|l| l.table.is_none()) {
         if let Some(k) = key(l) {
             seen.entry(k).or_default().insert(l.page);
         }
@@ -1793,8 +1793,12 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
         let number = k.chars().all(|c| c == '#' || !c.is_alphanumeric()) || (k.len() <= 6 && k.chars().all(|c| matches!(c, 'i' | 'v' | 'x')));
         number || often(seen.get(k))
     };
+    let tables = body_tables(pages);
     for page in lines.iter_mut() {
-        page.retain(|l| key(l).is_none_or(|k| !running(&k)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))));
+        page.retain(|l| match l.table {
+            Some(t) => tables.contains(&(l.page, t)),
+            None => key(l).is_none_or(|k| !running(&k)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))),
+        });
     }
 }
 
@@ -1831,15 +1835,12 @@ fn body_tables(pages: &[Page]) -> HashSet<(usize, usize)> {
     all().filter(|&(i, _, t)| key(i, t).is_none_or(|k| !running(&k))).map(|(i, j, _)| (i, j)).collect()
 }
 
-/// Whether a page is set in two columns: each half holds a fifth of the text. A table, given as its box and its number of
-/// characters, counts in its column, as its text would as lines. One across the middle does not count: its rows, as lines,
-/// part at a gap there.
-fn in_two_columns(lines: &[Line], tables: impl Iterator<Item = (Bounds, usize)>, width: f64) -> bool {
-    let lines = lines.iter().map(|l| (Side::of(l.x0, l.x1, width), l.text.chars().count()));
-    let tables = tables.map(|([x0, _, x1, _], chars)| (Side::of(x0, x1, width), chars)).filter(|&(side, _)| side != Side::Full);
+/// Whether a page is set in two columns: each half holds a fifth of the text.
+fn in_two_columns<'a>(lines: impl Iterator<Item = &'a Line>, width: f64) -> bool {
     let (mut left, mut right, mut total) = (0, 0, 0);
-    for (side, chars) in lines.chain(tables) {
-        match side {
+    for l in lines {
+        let chars = l.text.chars().count();
+        match Side::of(l.x0, l.x1, width) {
             Side::Left => left += chars,
             Side::Right => right += chars,
             Side::Full => {}
@@ -1849,23 +1850,20 @@ fn in_two_columns(lines: &[Line], tables: impl Iterator<Item = (Bounds, usize)>,
     left * 5 >= total && right * 5 >= total
 }
 
-/// Reading order of one page and its tables. In two columns (`in_two_columns`), lines and tables across the middle (title,
-/// wide figures) split the page into bands, read left column then right, and a table in a column is read where its top is
-/// in it. Otherwise the content order stands, and a table goes after the nearest line over it or before the nearest under
-/// it, whichever is nearer, as its caption is: what is first under it in the content order may be a footer drawn first.
-fn order(mut lines: Vec<Line>, page: &Page) -> Read {
-    let width = page.width;
-    let side = |l: &Line| Side::of(l.x0, l.x1, width);
-    // Not on a turned page, where a table set across under columns that stop short of it would make two tiers of one.
-    let tables = page.tables.iter().filter(|_| !page.vertical);
-    let two = in_two_columns(&lines, tables.map(|t| (t.at, t.rows.iter().flatten().map(|c| c.chars().count()).sum())), width);
+/// Reading order of one page, with each table as the first line of it that is read. In two columns, lines across the
+/// middle (title, wide figures) split the page into bands, read left column then right. Otherwise the content order
+/// stands, except that a table goes before what is drawn right before it and lies under it: captions drawn first.
+fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
+    // A table set across on a turned page tells nothing of its columns.
+    let guides = |l: &&Line| l.table.is_none() || !page.vertical;
+    let two = in_two_columns(lines.iter().filter(guides), page.width);
     if two {
         for l in &mut lines {
-            l.side = side(l);
+            l.side = Side::of(l.x0, l.x1, page.width);
         }
     }
     for s in [Side::Left, Side::Right, Side::Full] {
-        let of_side = || lines.iter().filter(|l| l.side == s);
+        let of_side = || lines.iter().filter(guides).filter(|l| l.side == s);
         let long = || of_side().filter(|l| l.text.chars().count() >= 20);
         let (lo, hi) = match long().next() {
             Some(_) => (long().map(|l| l.x0).fold(f64::MAX, f64::min), long().map(|l| l.x1).fold(f64::MIN, f64::max)),
@@ -1875,89 +1873,39 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Read {
             (l.left, l.right) = (lo, hi);
         }
     }
-    if !two {
-        let by = |[x0, y0, x1, y1]: Bounds| {
-            let gap = |l: &Line| {
-                if l.y <= y0 {
-                    y0 - l.y
-                } else {
-                    (l.y - l.size - y1).max(0.)
-                }
-            };
-            let near = lines.iter().enumerate().filter(|(_, l)| l.x0 < x1 && l.x1 > x0 && (l.y <= y0 || l.y >= y1));
-            let Some((i, l)) = near.min_by(|a, b| gap(a.1).total_cmp(&gap(b.1))) else {
-                return lines.len();
-            };
-            // Not between the parts of a line that a wide gap parts.
-            let on = |part: &&Line| (part.y - l.y).abs() < 0.3 * l.size;
-            if l.y <= y0 {
-                i + lines[i..].iter().take_while(on).count()
-            } else {
-                i - lines[..i].iter().rev().take_while(on).count()
+    if two {
+        lines.sort_by(|a, b| a.y.total_cmp(&b.y));
+    }
+    let mut seen = HashSet::new();
+    lines.retain(|l| l.table.is_none_or(|t| seen.insert(t)));
+    let mut out: Vec<Line> = Vec::with_capacity(lines.len());
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    for mut l in lines {
+        let table = l.table.map(|t| page.tables[t].at);
+        if let Some([x0, _, x1, _]) = table {
+            (l.x0, l.x1) = (x0, x1);
+            if two {
+                l.side = Side::of(x0, x1, page.width);
             }
-        };
-        let mut tables: Vec<(usize, usize)> = page.tables.iter().enumerate().map(|(i, t)| (by(t.at), i)).collect();
-        tables.sort_unstable();
-        return Read { lines, tables };
-    }
-    lines.sort_by(|a, b| a.y.total_cmp(&b.y));
-    let mut tables = page.tables.iter().enumerate().peekable();
-    let mut columns = Columns::default();
-    for l in lines {
-        while let Some((i, t)) = tables.next_if(|(_, t)| t.at[1] < l.y) {
-            columns.on(Side::of(t.at[0], t.at[2], width)).table(i);
         }
-        columns.on(l.side).lines.push(l);
-    }
-    for (i, t) in tables {
-        columns.on(Side::of(t.at[0], t.at[2], width)).table(i);
-    }
-    std::mem::take(columns.on(Side::Full))
-}
-
-/// Lines in reading order, and the tables among them: the index of the line each is read before, and its own on the page.
-#[derive(Default)]
-struct Read {
-    lines: Vec<Line>,
-    tables: Vec<(usize, usize)>,
-}
-
-impl Read {
-    fn table(&mut self, i: usize) {
-        self.tables.push((self.lines.len(), i));
-    }
-
-    fn append(&mut self, next: &mut Read) {
-        self.tables.extend(next.tables.drain(..).map(|(at, i)| (self.lines.len() + at, i)));
-        self.lines.append(&mut next.lines);
-    }
-}
-
-/// A page set in two columns, read so far: whole down to the last line or table across the middle, and the columns under it.
-#[derive(Default)]
-struct Columns {
-    above: Read,
-    left: Read,
-    right: Read,
-}
-
-impl Columns {
-    /// What the next line or table on `side` is read after. One across the middle is read after both columns above it.
-    fn on(&mut self, side: Side) -> &mut Read {
-        match side {
-            Side::Left => &mut self.left,
-            Side::Right => &mut self.right,
+        match l.side {
+            Side::Left => left.push(l),
+            Side::Right => right.push(l),
             Side::Full => {
-                self.above.append(&mut self.left);
-                self.above.append(&mut self.right);
-                &mut self.above
+                out.append(&mut left);
+                out.append(&mut right);
+                let under = table.filter(|_| !two).map_or(0, |[x0, _, x1, y1]| out.iter().rev().take_while(|o| o.y >= y1 && o.x0 < x1 && o.x1 > x0).count());
+                out.insert(out.len() - under, l);
             }
         }
     }
+    out.append(&mut left);
+    out.append(&mut right);
+    out
 }
 
 /// The size most of the text is set in.
-fn body_size(lines: &[Line]) -> f64 {
+fn body_size<'a>(lines: impl Iterator<Item = &'a Line>) -> f64 {
     let mut sizes: HashMap<i64, usize> = HashMap::new();
     for l in lines {
         *sizes.entry((l.size * 10.).round() as i64).or_default() += l.text.chars().count();
@@ -1969,31 +1917,29 @@ fn body_size(lines: &[Line]) -> f64 {
 struct Front {
     title: Option<String>,
     author: Option<String>,
-    /// Where the lines it took were among the document's.
-    taken: std::ops::Range<usize>,
 }
 
 /// The title is the largest text in the top half of the first page, when it stands out. The
 /// lines between it and the first section heading on that page (authors, affiliations,
-/// addresses) are dropped from the body; the first of them is taken as the author line.
+/// addresses) are dropped from the body; the first of them is taken as the author line. Tables stay in the body.
 fn take_front_matter(lines: &mut Vec<Line>, body: f64, half: f64) -> Front {
-    let top = |l: &Line| l.page == 0 && l.y < half;
+    let top = |l: &Line| l.page == 0 && l.y < half && l.table.is_none();
     let Some(max) = lines.iter().filter(|l| top(l)).map(|l| l.size).reduce(f64::max).filter(|&m| m >= body * 1.3) else {
         return Front::default();
     };
     let Some(start) = lines.iter().position(|l| top(l) && l.size >= max - 0.5) else {
         return Front::default();
     };
-    let end = start + lines[start..].iter().take_while(|l| l.page == 0 && l.size >= max - 0.5).count();
+    let end = start + lines[start..].iter().take_while(|l| l.page == 0 && l.size >= max - 0.5 && l.table.is_none()).count();
     let mut title = String::new();
     for l in &lines[start..end] {
         join(&mut title, &l.text, &HashSet::new());
     }
-    let heading = lines[end..].iter().take_while(|l| l.page == 0).position(|l| section_level(l, body).is_some()).unwrap_or(0);
-    let author =
-        lines[end..end + heading].first().map(|l| l.text.trim_end_matches(['∗', '*', '†', '‡']).to_string()).filter(|a| a.len() <= 150 && !a.contains('@'));
-    lines.drain(start..end + heading);
-    Front { title: Some(title), author, taken: start..end + heading }
+    let heading = lines[end..].iter().take_while(|l| l.page == 0).position(|l| l.table.is_none() && section_level(l, body).is_some()).unwrap_or(0);
+    let (tables, byline): (Vec<Line>, Vec<Line>) = lines.drain(start..end + heading).skip(end - start).partition(|l| l.table.is_some());
+    let author = byline.first().map(|l| l.text.trim_end_matches(['∗', '*', '†', '‡']).to_string()).filter(|a| a.len() <= 150 && !a.contains('@'));
+    lines.splice(start..start, tables);
+    Front { title: Some(title), author }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -2003,48 +1949,32 @@ enum Kind {
     Caption,
     Item,
     Reference,
+    Table,
 }
 
 struct Draft<'a> {
     kind: Kind,
     lines: Vec<&'a Line>,
-    /// Where it is read from among the document's lines: its first line's index, or for a paragraph a float interrupted,
-    /// the line it goes on with after the float.
-    start: usize,
 }
 
-/// The drafts' blocks with the figures' and the tables' among them. A figure goes before the draft `place` puts it at, in
-/// drawing order. A table goes before the first draft that starts where `lay_out` reads it or later: a draft it is read
-/// in the middle of runs on past it, as text runs on past a float. Before the same draft, a table goes before the figures
-/// under it on its page, or in the column after its own. The figures' `src` starts with `prefix`.
-fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], tables: &[ReadAt], prefix: &str) -> Vec<Block> {
+/// The drafts' blocks with the figures' among them, each before the draft `place` puts it at, in drawing order. Their
+/// `src` starts with `prefix`.
+fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], pages: &[Page], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
-    let drafts = drafts(lines, body, tables);
-    let figures: Vec<(usize, usize, f64, Block)> = figures
+    let drafts = drafts(lines, body);
+    let mut out: Vec<(usize, Block)> = figures
         .iter()
         .map(|&(page, f)| {
             let at = place(&drafts, page, f);
             let label = drafts.get(at).filter(|d| d.kind == Kind::Caption).and_then(|d| caption_label(&d.lines[0].text));
             let src = format!("{prefix}{}.{}", f.id.0, f.id.1);
             let attrs = BlockAttrs { src: Some(src), ..Default::default() };
-            (at, page, f.y0, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
+            (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
         })
         .collect();
-    // Sorted by draft, then figures in drawing order at odd places and each table at the even place before the first
-    // figure it goes before, then the draft.
-    let mut out: Vec<((usize, usize), Block)> = Vec::new();
-    for &(read, page, t) in tables {
-        let at = read_before(&drafts, read);
-        // A table at the foot of one column is read before all that opens the next, figures over their caption as well.
-        let column = drafts.get(at).map(|d| &lines[d.start]).filter(|l| l.page == page);
-        let beside = column.is_some_and(|l| t.at[2] <= l.left || t.at[0] >= l.right);
-        let under = figures.iter().position(|f| f.0 == at && (beside || (f.1, f.2) > (page, t.at[1]))).unwrap_or(figures.len());
-        out.push(((at, 2 * under), Block::table(t.rows.clone())));
-    }
-    out.extend(figures.into_iter().enumerate().map(|(n, (at, .., b))| ((at, 2 * n + 1), b)));
-    out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some(((i, usize::MAX), block(d, &vocab)?))));
-    // Stable: tables at the same place keep their reading order.
-    out.sort_by_key(|&(at, _)| at);
+    // After the figures: the stable sort keeps each figure before the draft it goes before.
+    out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some((i, block(d, &vocab, pages)?))));
+    out.sort_by_key(|(at, _)| *at);
     out.into_iter().map(|(_, b)| b).collect()
 }
 
@@ -2138,11 +2068,6 @@ fn figures(doc: &Parsed) -> Vec<(usize, &Drawn)> {
         .collect()
 }
 
-/// The draft a table `lay_out` reads before the line at `read` goes before: the first to start there or later.
-fn read_before(drafts: &[Draft], read: usize) -> usize {
-    drafts.partition_point(|d| d.start < read)
-}
-
 /// The draft a figure goes before: the first that starts under it on its page and across from it (its caption, and in a
 /// right-hand column that column's next draft), else the first of a later page, else none.
 fn place(drafts: &[Draft], page: usize, f: &Drawn) -> usize {
@@ -2153,17 +2078,23 @@ fn place(drafts: &[Draft], page: usize, f: &Drawn) -> usize {
     drafts.iter().position(under).or_else(|| drafts.iter().position(|d| d.lines[0].page > page)).unwrap_or(drafts.len())
 }
 
-fn drafts<'a>(lines: &'a [Line], body: f64, tables: &[ReadAt]) -> Vec<Draft<'a>> {
+fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     let pitch = pitch(lines, body);
     let mut drafts: Vec<Draft> = Vec::new();
     let mut refs: Option<RefStyle> = None;
     for (i, l) in lines.iter().enumerate() {
-        if let Some(level) = heading_level(l, body) {
-            refs = is_references(&l.text).then(|| ref_style(&lines[i + 1..], body));
-            drafts.push(Draft { kind: Kind::Heading(level), lines: vec![l], start: i });
+        if l.table.is_some() {
+            drafts.push(Draft { kind: Kind::Table, lines: vec![l] });
             continue;
         }
-        let cur = drafts.last().map(|d| (d.kind, *d.lines.last().expect("a draft has a line"), d.lines[0]));
+        if let Some(level) = heading_level(l, body) {
+            refs = is_references(&l.text).then(|| ref_style(&lines[i + 1..], body));
+            drafts.push(Draft { kind: Kind::Heading(level), lines: vec![l] });
+            continue;
+        }
+        // Text runs on past a table, as past any float, and the table is read after it.
+        let last = drafts.iter().rposition(|d| d.kind != Kind::Table);
+        let cur = last.map(|i| &drafts[i]).map(|d| (d.kind, *d.lines.last().expect("a draft has a line"), d.lines[0]));
         let flows = cur.is_some_and(|(_, prev, _)| flows(prev, l, pitch));
         // "… as illustrated in" / "Figure 2-6. Even if …": a sentence broken before a reference, not a caption.
         let wrapped = flows && cur.is_some_and(|(_, prev, _)| prev.x1 >= prev.right - 2. * prev.size && prev.text.ends_with(char::is_alphanumeric));
@@ -2187,6 +2118,7 @@ fn drafts<'a>(lines: &'a [Line], body: f64, tables: &[ReadAt]) -> Vec<Draft<'a>>
                 Kind::Heading(_) => flows && (prev.size - l.size).abs() < 0.3 && (l.size >= body * 1.1 || prev.x1 >= prev.right - 3. * prev.size),
                 Kind::Caption => flows && (prev.size - l.size).abs() < 0.3,
                 Kind::Item => flows && l.x0 > first.x0 + 0.3 * l.size,
+                Kind::Table => false,
                 // A table's widest row would carry the short ones past `laid_out_text`.
                 Kind::Paragraph if prev.tabular() || l.tabular() => false,
                 Kind::Paragraph if (prev.size - l.size).abs() > 0.15 * prev.size.max(l.size) => false,
@@ -2199,17 +2131,17 @@ fn drafts<'a>(lines: &'a [Line], body: f64, tables: &[ReadAt]) -> Vec<Draft<'a>>
                 // a line that is not indented, and past a table only one in the middle of a sentence.
                 Kind::Paragraph => {
                     let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
-                    let whole = prev.text.ends_with(['.', '!', '?', ':', '。', '！', '？']) && tables.binary_search_by_key(&i, |&(read, ..)| read).is_ok();
+                    let past = drafts.last().is_some_and(|d| d.kind == Kind::Table);
+                    let whole = past && prev.text.ends_with(['.', '!', '?', ':', '。', '！', '？']);
                     across && !whole && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && l.x0 <= l.left + 0.8 * l.size
                 }
             });
         if continues {
-            drafts.last_mut().expect("continues a draft").lines.push(l);
+            drafts[last.expect("continues a draft")].lines.push(l);
         } else if let Some(cut) = start.is_none().then(|| interrupted(&drafts, l, body)).flatten() {
-            // The figure goes before the paragraph it interrupted, as a float would, and so does a table read there.
+            // The figure goes before the paragraph it interrupted, as a float would, and so does a table.
             let mut d = drafts.remove(cut);
             d.lines.push(l);
-            d.start = i;
             drafts.push(d);
         } else {
             drafts.push(Draft {
@@ -2219,11 +2151,10 @@ fn drafts<'a>(lines: &'a [Line], body: f64, tables: &[ReadAt]) -> Vec<Draft<'a>>
                     Kind::Paragraph
                 }),
                 lines: vec![l],
-                start: i,
             });
         }
     }
-    drop_figure_labels(&mut drafts, tables);
+    drop_figure_labels(&mut drafts);
     drafts
 }
 
@@ -2234,8 +2165,8 @@ fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     if !l.text.starts_with(char::is_lowercase) || l.x0 > l.left + 0.8 * l.size || l.tabular() {
         return None;
     }
-    let float = |d: &Draft| d.kind == Kind::Caption || d.kind == Kind::Paragraph && d.lines.iter().all(|x| x.size < body * 0.95);
-    let skipped: Vec<&Draft> = drafts.iter().rev().take_while(|d| float(d) || fragment(d)).collect();
+    let float = |d: &Draft| d.kind == Kind::Caption || matches!(d.kind, Kind::Paragraph | Kind::Table) && d.lines.iter().all(|x| x.size < body * 0.95);
+    let skipped: Vec<&Draft> = drafts.iter().rev().take_while(|d| float(d) || fragment(d) || d.kind == Kind::Table).collect();
     let i = drafts.len().checked_sub(skipped.len() + 1)?;
     let last = drafts[i].lines.last()?;
     let unfinished = drafts[i].kind == Kind::Paragraph && (last.size - body).abs() < 0.5 && !last.text.ends_with(['.', '!', '?', ':']);
@@ -2249,14 +2180,12 @@ fn fragment(d: &Draft) -> bool {
 }
 
 /// Drops the fragments next to a figure caption: labels drawn as page text, not inside the figure.
-fn drop_figure_labels(drafts: &mut Vec<Draft>, tables: &[ReadAt]) {
-    let parted: HashSet<usize> = tables.iter().map(|&(read, ..)| read_before(drafts, read)).collect();
+fn drop_figure_labels(drafts: &mut Vec<Draft>) {
     let mut junk = vec![false; drafts.len()];
     for (c, d) in drafts.iter().enumerate().filter(|(_, d)| d.kind == Kind::Caption && d.lines[0].text.starts_with("Fig")) {
         let page = d.lines[0].page;
         let near = |j: &usize| fragment(&drafts[*j]) && drafts[*j].lines[0].page == page;
-        let over = (0..c).rev().take_while(|j| !parted.contains(&(j + 1)) && near(j));
-        for j in over.chain((c + 1..drafts.len()).take_while(|j| !parted.contains(j) && near(j))) {
+        for j in (0..c).rev().take_while(near).chain((c + 1..drafts.len()).take_while(near)) {
             junk[j] = true;
         }
     }
@@ -2275,7 +2204,14 @@ fn flows(prev: &Line, l: &Line, pitch: f64) -> bool {
 fn pitch(lines: &[Line], body: f64) -> f64 {
     let mut r: Vec<f64> = lines
         .windows(2)
-        .filter(|w| w[0].page == w[1].page && w[0].side == w[1].side && (w[0].size - body).abs() < 0.5 && (w[1].size - body).abs() < 0.5)
+        .filter(|w| {
+            w[0].page == w[1].page
+                && w[0].side == w[1].side
+                && w[0].table.is_none()
+                && w[1].table.is_none()
+                && (w[0].size - body).abs() < 0.5
+                && (w[1].size - body).abs() < 0.5
+        })
         .map(|w| (w[1].y - w[0].y) / body)
         .filter(|r| (0.9..2.5).contains(r))
         .collect();
@@ -2283,7 +2219,7 @@ fn pitch(lines: &[Line], body: f64) -> f64 {
     r.get(r.len() / 2).copied().unwrap_or(1.2)
 }
 
-fn block(d: Draft, vocab: &HashSet<String>) -> Option<Block> {
+fn block(d: Draft, vocab: &HashSet<String>, pages: &[Page]) -> Option<Block> {
     let mut text = String::new();
     for l in &d.lines {
         join(&mut text, &l.text, vocab);
@@ -2293,6 +2229,7 @@ fn block(d: Draft, vocab: &HashSet<String>) -> Option<Block> {
         return None;
     }
     let (kind, attrs) = match d.kind {
+        Kind::Table => return d.lines[0].table.map(|t| Block::table(pages[d.lines[0].page].tables[t].rows.clone())),
         Kind::Paragraph => (BlockKind::Paragraph, BlockAttrs::default()),
         Kind::Heading(level) => (BlockKind::Heading, BlockAttrs { level: Some(level), ..Default::default() }),
         Kind::Caption => (BlockKind::Caption, BlockAttrs::default()),
@@ -2839,7 +2776,7 @@ pub(crate) mod tests {
             } else {
                 Face::Body
             };
-            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face, vertical: false, turned: false });
+            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face, vertical: false, turned: false, table: None });
             x += 5.;
         }
         out
@@ -3250,9 +3187,15 @@ pub(crate) mod tests {
             let ir = to_ir(&bytes, None).unwrap();
             assert_eq!(kinds(&ir), TABLES_PAGE, "{how}");
             assert_eq!((ir.blocks[1].attrs.rows.clone(), ir.blocks[3].attrs.rows.clone()), (rows(&first), rows(&second)), "{how}");
-            let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
-            assert_eq!(texts, ["Pros of passion", "Cons of passion"], "{how}");
         }
+    }
+
+    #[test]
+    fn the_cells_of_a_table_have_no_regions() {
+        let sentences = ["You care a lot about it.", "It holds over the years.", "It takes a lot of time.", "You stay where it is easy."];
+        let ops = shown(72., 100., "A sentence of prose comes before the table.") + &two_by_two([72., 300., 540.], [110., 160., 200.], sentences);
+        let texts: Vec<String> = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap().into_iter().map(|r| r.text).collect();
+        assert_eq!(texts, ["A sentence of prose comes before the table."]);
     }
 
     #[test]
@@ -4688,7 +4631,17 @@ pub(crate) mod tests {
     #[test]
     fn japanese_set_across_on_a_turned_page_takes_no_space_for_a_gap() {
         // Kana set across, 0.3 em apart: one run, with no space between Japanese, as `line` reads it.
-        let g = |x: f64, text: &str| Glyph { x, y: 400., end: x + 10., size: 10., text: text.into(), face: Face::Body, vertical: false, turned: false };
+        let g = |x: f64, text: &str| Glyph {
+            x,
+            y: 400.,
+            end: x + 10.,
+            size: 10.,
+            text: text.into(),
+            face: Face::Body,
+            vertical: false,
+            turned: false,
+            table: None,
+        };
         let mut page = Page { width: 612., height: 792., glyphs: vec![g(100., "目"), g(113., "次")], ..Default::default() };
         turn(&mut page);
         assert_eq!(page.glyphs.iter().map(|g| g.text.as_str()).collect::<Vec<_>>(), ["目次"]);
@@ -4714,7 +4667,7 @@ pub(crate) mod tests {
     #[test]
     fn a_turned_page_keeps_its_glyphs_and_images_on_it() {
         // On a page 612 wide: a glyph down the column at 500, and an image.
-        let glyph = Glyph { x: 500., y: 100., end: 510., size: 10., text: "あ".into(), face: Face::Body, vertical: true, turned: false };
+        let glyph = Glyph { x: 500., y: 100., end: 510., size: 10., text: "あ".into(), face: Face::Body, vertical: true, turned: false, table: None };
         let image = Drawn { id: (1, 0), x0: 100., y0: 200., x1: 300., y1: 400. };
         let mut page = Page { width: 612., height: 792., glyphs: vec![glyph], drawn: vec![image], ..Default::default() };
         turn(&mut page);
@@ -4909,7 +4862,17 @@ pub(crate) mod tests {
             let glyphs: Vec<Glyph> = text
                 .chars()
                 .enumerate()
-                .map(|(i, c)| Glyph { x: at(i), y: 100., end: at(i) + 10., size: 10., text: c.to_string(), face: Face::Body, vertical: false, turned: false })
+                .map(|(i, c)| Glyph {
+                    x: at(i),
+                    y: 100.,
+                    end: at(i) + 10.,
+                    size: 10.,
+                    text: c.to_string(),
+                    face: Face::Body,
+                    vertical: false,
+                    turned: false,
+                    table: None,
+                })
                 .collect();
             line(0, &glyphs.iter().collect::<Vec<_>>()).unwrap().text
         };
@@ -5925,5 +5888,243 @@ pub(crate) mod tests {
         let (one, two) = (table("Strong\tLasting\nCostly\tEasy"), table("Fast\tCheap\nSlow\tDear"));
         assert!(texts[one - 1].ends_with("Unit 1: percent") && texts[one + 1].starts_with("Table 2"), "{texts:?}");
         assert!(texts[two - 1].ends_with("Unit 2: percent") && texts[two + 1] == prose, "{texts:?}");
+    }
+
+    const PROS_TEXT: &str = "Strong\tLasting\nCostly\tEasy";
+    const CONS_TEXT: &str = "Fast\tCheap\nSlow\tDear";
+    const WIDE: [f64; 3] = [72., 172., 540.];
+
+    fn sized(x: f64, y: f64, size: f64, text: &str) -> String {
+        format!("BT /F1 {size} Tf {x} {} Td ({text}) Tj ET\n", 792. - y)
+    }
+
+    /// A line of prose across the page.
+    fn across(y: f64, words: &str) -> String {
+        shown(72., y, &full(words))
+    }
+
+    fn full(words: &str) -> String {
+        format!("{words} and it runs along the whole of the width of the page to the margin.")
+    }
+
+    fn pages_of(pages: &[String]) -> Vec<u8> {
+        let contents: Vec<(usize, &str)> = pages.iter().map(String::as_str).enumerate().collect();
+        with_contents(&pdf(&vec![vec![]; pages.len()], None), &contents)
+    }
+
+    /// The blocks' texts, a figure's as "image".
+    fn blocks_of(bytes: &[u8]) -> Vec<String> {
+        let blocks = to_ir(bytes, None).unwrap().blocks.into_iter();
+        blocks.map(|b| Some(b.text).filter(|_| b.kind != BlockKind::Image).unwrap_or("image".into())).collect()
+    }
+
+    #[test]
+    fn a_table_under_blocks_side_by_side_is_read_after_both() {
+        for depth in [1, 3] {
+            let mut ops = across(80., "The first line of the letter is read");
+            for (x, lines) in [(72., ["Bill to:", "Ann Author", "Main Street"]), (330., ["Ship to:", "Bob Writer", "Side Street"])] {
+                ops += &lines[..depth].iter().enumerate().map(|(i, l)| shown(x, 160. + 12. * i as f64, l)).collect::<String>();
+            }
+            let texts = texts_of(&(ops + &two_by_two(WIDE, [200., 240., 280.], PROS) + &across(320., "The last line is read")));
+            assert_eq!(texts.iter().rposition(|t| t == PROS_TEXT), Some(texts.len() - 2), "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn a_table_over_blocks_side_by_side_is_read_before_both() {
+        let ops = across(80., "The first line is read") + &two_by_two(WIDE, [100., 140., 180.], PROS);
+        let ops = ops + &shown(72., 200., "Signed for the buyer:") + &shown(330., 200., "Signed for the seller:") + &across(320., "The last line is read");
+        assert_eq!(
+            texts_of(&ops),
+            [&full("The first line is read"), PROS_TEXT, "Signed for the buyer:", "Signed for the seller:", &full("The last line is read")]
+        );
+    }
+
+    #[test]
+    fn a_table_set_in_from_the_short_caption_over_it_is_read_after_it() {
+        let xs = [220., 305., 390.];
+        let pair = |n: i32, y: f64, words| shown(72., y, &format!("Table {n}: Sizes.")) + &two_by_two(xs, [y + 8., y + 28., y + 48.], words);
+        let ops = across(80., "The first line is read") + &pair(1, 160., PROS) + &pair(2, 230., CONS);
+        let read = [&full("The first line is read"), "Table 1: Sizes.", PROS_TEXT, "Table 2: Sizes.", CONS_TEXT];
+        assert_eq!(texts_of(&ops), read);
+        assert_eq!(texts_of(&(ops + &across(300., "The last line is read")))[..5], read);
+    }
+
+    #[test]
+    fn a_table_under_a_heading_hung_in_the_margin_is_read_after_it() {
+        let body = |y: f64, words: &str| shown(180., y, &format!("{words} of the body is set in from the headings and runs on and on."));
+        let xs = [180., 300., 540.];
+        let mut ops = body(100., "The first line") + &body(112., "The second line");
+        ops += &(sized(72., 150., 12., "Parameters") + &two_by_two(xs, [160., 200., 240.], PROS));
+        ops += &(sized(72., 280., 12., "Returns") + &two_by_two(xs, [290., 330., 370.], CONS));
+        ops += &(sized(72., 410., 12., "Errors") + &body(440., "The last line") + &body(452., "The very last line"));
+        let texts = texts_of(&ops);
+        let order: Vec<&str> = texts.iter().map(String::as_str).filter(|t| !t.contains("of the body")).collect();
+        assert_eq!(order, ["Parameters", PROS_TEXT, "Returns", CONS_TEXT, "Errors"]);
+    }
+
+    #[test]
+    fn a_table_at_the_left_of_vertical_writing_is_read_after_its_caption() {
+        let columns = |x: f64, n: i32| (0..n).map(|i| set_down(x - 16. * i as f64, 80., &TEN_DOWN.repeat(5))).collect::<String>();
+        let caption = |x: f64| shown(x, 100., "Table 5 Pros and cons");
+        let at_the_left = columns(540., 8) + &caption(72.) + &two_by_two([72., 200., 400.], [120., 300., 600.], PROS);
+        let in_the_middle = |x1: f64| columns(540., 8) + &caption(210.) + &two_by_two([210., 300., x1], [120., 300., 600.], PROS) + &columns(190., 6);
+        for ops in [at_the_left, in_the_middle(400.), in_the_middle(395.)] {
+            let texts = blocks_of(&after_a_page_of_columns(&ops));
+            let at = texts.iter().position(|t| t == PROS_TEXT).unwrap();
+            assert_eq!(texts[at - 1], "Table 5 Pros and cons", "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn headings_parted_by_tables_alone_are_not_all_the_title() {
+        for number in [false, true] {
+            let heading = |i: usize, text: &str| {
+                if number {
+                    format!("{i} {text}")
+                } else {
+                    text.to_string()
+                }
+            };
+            let mut ops = sized(72., 80., 16., &heading(1, "Overview")) + &two_by_two(WIDE, [95., 115., 135.], PROS);
+            ops += &(sized(72., 170., 16., &heading(2, "Interfaces")) + &two_by_two(WIDE, [185., 205., 225.], CONS));
+            ops += &(sized(72., 260., 16., &heading(3, "Details")) + &across(290., "The first line is read") + &across(302., "The second line is read"));
+            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+            assert_eq!(ir.meta.title, Some(heading(1, "Overview")));
+            let (second, third) = (heading(2, "Interfaces"), heading(3, "Details"));
+            assert_eq!(kinds(&ir)[..4], [("table", PROS_TEXT), ("heading", &second), ("table", CONS_TEXT), ("heading", &third)]);
+        }
+    }
+
+    #[test]
+    fn headings_among_tables_alone_stay_headings() {
+        let mut ops = String::new();
+        for (i, heading) in ["Electrical data", "Mechanical data", "Ordering"].into_iter().enumerate() {
+            let y = 80. + 160. * i as f64;
+            let words = ["Widget made of steel", "About twelve of them", "Gadget made of brass", "About thirty of them"];
+            ops += &(sized(72., y, 14., heading) + &two_by_two([72., 300., 540.], [y + 14., y + 38., y + 62.], words));
+        }
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!(ir.meta.title.as_deref(), Some("Electrical data"));
+        let kinds: Vec<&str> = kinds(&ir).into_iter().map(|k| k.0).collect();
+        assert_eq!(kinds, ["table", "heading", "table", "heading", "table"]);
+    }
+
+    #[test]
+    fn tables_drawn_from_the_foot_of_the_page_up_are_read_from_its_top() {
+        let table = |y: f64, words| two_by_two(WIDE, [y, y + 20., y + 40.], words);
+        let ops = across(310., "The last line is read") + &table(230., CONS) + &table(110., PROS);
+        assert_eq!(texts_of(&ops), [PROS_TEXT, CONS_TEXT, &full("The last line is read")]);
+    }
+
+    #[test]
+    fn a_table_is_not_read_before_what_is_drawn_before_it_beside_it() {
+        // The left column holds little text, so the page is not taken as two, and the content order stands.
+        let letters = |x: f64, ys: [f64; 3]| two_by_two([x, x + 20., x + 40.], ys, ["a", "b", "c", "d"]);
+        let mut ops = shown(72., 200., "Left.") + &letters(142., [220., 240., 260.]) + &letters(142., [300., 320., 340.]);
+        ops += &two_by_two(RIGHT, [100., 130., 160.], PROS);
+        ops += &(0..20).map(|i| shown(322., 203. + 20. * i as f64, &format!("Right column line {i} of the body runs on."))).collect::<String>();
+        assert_eq!(texts_of(&ops)[..4], ["Left.", "a\tb\nc\td", "a\tb\nc\td", PROS_TEXT]);
+    }
+
+    #[test]
+    fn stacked_tables_keep_their_order_when_the_footer_is_drawn_first() {
+        let (head, foot) = ("The maker of the machine and its works", "Made by the maker of the machine, all rights reserved.");
+        let tables = two_by_two(WIDE, [120., 270., 420.], PROS) + &two_by_two(WIDE, [440., 540., 640.], CONS);
+        let ops = shown(72., 50., head) + &shown(72., 750., foot) + &across(100., "Invoice 42 to the buyer of the machine") + &tables;
+        assert_eq!(texts_of(&ops), [head, foot, &full("Invoice 42 to the buyer of the machine"), PROS_TEXT, CONS_TEXT]);
+    }
+
+    #[test]
+    fn stacked_tables_atop_the_page_are_read_first_when_the_header_is_drawn_last() {
+        let tables = two_by_two(WIDE, [70., 110., 150.], PROS) + &two_by_two(WIDE, [170., 210., 250.], CONS);
+        let ops = tables + &shown(72., 280., "A paragraph is read.") + &shown(72., 50., "The maker of the machine and its works");
+        assert_eq!(texts_of(&ops), [PROS_TEXT, CONS_TEXT, "A paragraph is read.", "The maker of the machine and its works"]);
+    }
+
+    #[test]
+    fn a_sentence_cut_by_a_table_in_small_print_is_whole_again_after_it() {
+        for (size, whole) in [(8., true), (10., false)] {
+            let cell = |x: f64, y: f64, text: &str| sized(x, y, size, text);
+            let table = ruled(&[72., 300., 540.], &[140., 160., 180.], "strokes") + &cell(76., 154., "Strong") + &cell(304., 154., "Lasting");
+            let table = table + &cell(76., 174., "Costly") + &cell(304., 174., "Easy");
+            let before = "A paragraph of prose comes before the table and runs along the width of the page until it is cut by it and";
+            let texts =
+                texts_of(&(shown(72., 100., before) + &table + &shown(72., 220., "comes to its end down here, where the sentence is whole again as it was.")));
+            assert_eq!(texts.iter().position(|t| t == PROS_TEXT), Some(usize::from(!whole)), "{texts:?}");
+            assert_eq!(texts.len(), 2 + usize::from(!whole), "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn a_picture_over_a_sentence_a_table_cuts_is_not_between_the_table_and_its_caption() {
+        let mut first = across(80., "The first paragraph is read");
+        for i in 0..4 {
+            first += &shown(72., 420. + 12. * i as f64, full(&format!("a sentence {i} under the picture")).trim_end_matches('.'));
+        }
+        let second = shown(72., 90., "Table 1: Pros and cons.") + &two_by_two(WIDE, [100., 150., 190.], PROS);
+        let second = second + &shown(72., 220., "and over the page it comes to its end here.");
+        let texts = blocks_of(&draw(&pages_of(&[first, second]), rgb(30, 10, [200, 0, 0]), &[(0, 72., 300., 200., 100.)]));
+        let at = texts.iter().position(|t| t == PROS_TEXT).unwrap();
+        assert!(texts.contains(&"image".to_string()) && texts[at - 1] == "Table 1: Pros and cons.", "{texts:?}");
+    }
+
+    #[test]
+    fn a_figure_over_the_side_of_a_table_its_first_cell_is_not_at_comes_before_it() {
+        let ops = across(80., "The first line is read") + &two_by_two(WIDE, [300., 340., 380.], PROS) + &across(420., "The last line is read");
+        let texts = blocks_of(&draw(&pages_of(&[ops]), rgb(30, 10, [200, 0, 0]), &[(0, 340., 120., 180., 100.)]));
+        assert_eq!(texts[1..3], ["image", PROS_TEXT]);
+    }
+
+    #[test]
+    fn a_figure_over_a_table_at_the_foot_of_the_right_column_is_read_before_it() {
+        let columns = |left: i32, right: i32| {
+            let column = |x: f64, side: &str, n: i32| {
+                (0..n).map(|i| shown(x, 100. + 12. * f64::from(i), &format!("{side} column line {i} runs on."))).collect::<String>()
+            };
+            column(72., "Left", left) + &column(322., "Right", right)
+        };
+        let pages = [columns(40, 10) + &two_by_two(RIGHT, [420., 460., 500.], PROS), columns(20, 20)];
+        let texts = blocks_of(&draw(&pages_of(&pages), rgb(30, 10, [200, 0, 0]), &[(0, 322., 300., 200., 100.)]));
+        let at = texts.iter().position(|t| t == PROS_TEXT).unwrap();
+        assert_eq!(texts[at - 1], "image", "{texts:?}");
+    }
+
+    #[test]
+    fn a_japanese_paragraph_that_ends_over_a_table_does_not_run_on_past_it() {
+        let set = |y: f64, cids: &str| format!("BT /F3 10 Tf 72 {} Td <{cids}> Tj ET\n", 792. - y);
+        let line = TEN_DOWN.repeat(4) + &TEN_DOWN[..20];
+        // It ends in 。, and then in あ.
+        for (end, whole) in [("027B", true), ("034B", false)] {
+            let first = set(600., &line) + &set(612., &(line[..line.len() - 4].to_string() + end)) + &two_by_two(WIDE, [640., 676., 712.], PROS);
+            let second = set(100., &line) + &set(112., "034B034D027B");
+            let texts = blocks_of(&with_contents(&japanese(&[vec![], vec![]], "Identity-H", &second), &[(0, &first)]));
+            assert_eq!((texts.iter().position(|t| t == PROS_TEXT), texts.len()), (Some(1), 2 + usize::from(whole)), "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn a_paragraph_runs_on_past_a_full_stop_at_the_page_foot_whatever_table_another_page_has() {
+        let first = across(600., "A paragraph of prose is read") + &across(612., "The second line of prose is read");
+        let second = across(100., "It goes on over the page and is read") + &shown(72., 112., "It ends here.");
+        let texts = blocks_of(&pages_of(&[first, second, two_by_two(WIDE, [100., 150., 190.], PROS) + &across(220., "The last paragraph is read")]));
+        assert_eq!((texts.iter().position(|t| t == PROS_TEXT), texts.len()), (Some(1), 3), "{texts:?}");
+    }
+
+    #[test]
+    fn a_translation_under_a_chart_has_no_room_over_it_where_a_table_goes_up_to_the_top() {
+        let first = two_by_two(WIDE, [60., 100., 140.], PROS) + &across(300., "The first paragraph is read");
+        let second = across(145., "The text under a chart is read") + &across(400., "The second paragraph is read");
+        let rooms: Vec<(usize, f64)> = regions(&pages_of(&[first, second])).unwrap().iter().map(|r| (r.page, r.room_up)).collect();
+        assert_eq!(rooms, [(0, 0.), (1, 0.), (1, 0.)]);
+    }
+
+    #[test]
+    fn a_label_turned_on_its_side_in_a_cell_does_not_make_two_columns() {
+        let table = two_by_two([310., 420., 540.], [110., 300., 490.], ["Yes", "No", "Yes", "Yes"]);
+        let rows = shown(78., 208., "Signs documents on any device") + &shown(78., 398., "Keeps an audit trail of steps");
+        let label = |i: i32| format!("BT /F1 10 Tf 0 -1 1 0 {} 670 Tm (A label turned a quarter down the page) Tj ET\n", 320 + 14 * i);
+        let ir = to_ir(&pages_of(&[table + &rows + &(0..3).map(label).collect::<String>()]), None).unwrap();
+        assert!(ir.blocks.iter().all(|b| b.kind != BlockKind::Table), "{:?}", kinds(&ir));
     }
 }
