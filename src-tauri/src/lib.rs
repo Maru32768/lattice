@@ -1084,9 +1084,8 @@ async fn sticky_ask(
     quote: String,
     question: String,
 ) -> Result<Sticky, String> {
-    let _permit = app.chat_llm.acquire().await.map_err(err)?;
     let new = stickies::Ask { article_id, block_id, parent, kind, quote: &quote, question: &question };
-    let sticky = stickies::ask(&app.store, &app.providers.llm, new).await?;
+    let sticky = stickies::ask(&app.store, &app.providers.llm, &app.chat_llm, new).await?;
     let _ = handle.emit("stickies-changed", sticky.article_id);
     Ok(sticky)
 }
@@ -1094,8 +1093,7 @@ async fn sticky_ask(
 /// Asks on in a sticky; the answer is stored in it.
 #[tauri::command]
 async fn sticky_follow_up(handle: tauri::AppHandle, app: State<'_, App>, id: i64, question: String) -> Result<Sticky, String> {
-    let _permit = app.chat_llm.acquire().await.map_err(err)?;
-    let sticky = stickies::follow_up(&app.store, &app.providers.llm, id, &question).await?;
+    let sticky = stickies::follow_up(&app.store, &app.providers.llm, &app.chat_llm, id, &question).await?;
     let _ = handle.emit("stickies-changed", sticky.article_id);
     Ok(sticky)
 }

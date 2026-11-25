@@ -6,6 +6,7 @@
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::sync::Semaphore;
 
 use crate::chat::{self, Citation, Source};
 use crate::llm::LlmProvider;
@@ -167,7 +168,8 @@ fn err(e: impl ToString) -> String {
 }
 
 /// Asks about a passage of the article, or of an answer, and stores the answer. Nothing is stored before the answer is in.
-pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, new: Ask<'_>) -> Result<Sticky, String> {
+/// What is asked on is read as the question is sent, before it waits for its `turn`: by then the ids may be another's.
+pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: Ask<'_>) -> Result<Sticky, String> {
     let quote = new.quote.trim();
     if quote.is_empty() || quote.chars().count() > MAX_QUOTE_CHARS {
         return Err(msg!("stickies.badQuote", max = MAX_QUOTE_CHARS));
@@ -188,14 +190,16 @@ pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, new: Ask<'_>) -> Result
     let new = Ask { block_id, quote, question, ..new };
     levels.push(Level { quote: quote.into(), turns: Vec::new() });
     let url = store.article_url(new.article_id).map_err(err)?;
+    let _turn = turn.acquire().await.map_err(err)?;
     let answer = answer(store, llm, new.article_id, block_id, &levels, &request(new.kind, question, &levels)).await?;
     save(store, &new, parent.as_ref(), url.as_deref(), &answer).map_err(err)?.ok_or_else(|| msg!("stickies.articleGone"))
 }
 
 /// Asks on in a sticky and stores the answer there. Nothing is stored before the answer is in.
-pub async fn follow_up<L: LlmProvider>(store: &Store, llm: &L, id: i64, question: &str) -> Result<Sticky, String> {
+pub async fn follow_up<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, id: i64, question: &str) -> Result<Sticky, String> {
     let question = chat::checked_question(question)?;
     let (asked, levels) = Asked::read(store, id).map_err(err)?.ok_or_else(|| msg!("stickies.gone"))?;
+    let _turn = turn.acquire().await.map_err(err)?;
     let answer = answer(store, llm, asked.article_id, asked.block_id, &levels, &request(StickyKind::Question, question, &levels)).await?;
     asked.add(store, question, &answer).map_err(err)?.ok_or_else(|| msg!("stickies.gone"))
 }
@@ -407,6 +411,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use serde_json::{Value, json};
+    use tokio::sync::Semaphore;
 
     use super::*;
     use crate::chat::Budget;
@@ -489,12 +494,17 @@ mod tests {
         quote: &str,
         question: &str,
     ) -> Result<Sticky, String> {
-        super::ask(s, llm, Ask { article_id, block_id, parent: None, kind, quote, question }).await
+        super::ask(s, llm, &Semaphore::new(1), Ask { article_id, block_id, parent: None, kind, quote, question }).await
     }
 
     /// Asks about a passage of the answer `n` of `of`.
     async fn ask_on<L: LlmProvider>(s: &Store, llm: &L, of: &Sticky, n: usize, kind: StickyKind, quote: &str, question: &str) -> Result<Sticky, String> {
-        super::ask(s, llm, Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), kind, quote, question }).await
+        super::ask(s, llm, &Semaphore::new(1), Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), kind, quote, question })
+            .await
+    }
+
+    async fn follow_up<L: LlmProvider>(s: &Store, llm: &L, id: i64, question: &str) -> Result<Sticky, String> {
+        super::follow_up(s, llm, &Semaphore::new(1), id, question).await
     }
 
     fn created_at(s: &Store, table: &str, id: i64) -> String {
@@ -833,7 +843,7 @@ mod tests {
         let other = add(&s, "https://a.dev/other", "Other", &[(Paragraph, "Other text.")]);
         let on = |article_id, parent| Ask { article_id, block_id: None, parent: Some(parent), kind: StickyKind::Term, quote: "q", question: "" };
         for bad in [on(a, 999), on(other, term.messages[0].id)] {
-            assert_eq!(super::ask(&s, &llm, bad).await.unwrap_err(), msg!("stickies.gone"), "{bad:?}: no such answer on the article");
+            assert_eq!(super::ask(&s, &llm, &Semaphore::new(1), bad).await.unwrap_err(), msg!("stickies.gone"), "{bad:?}: no such answer on the article");
         }
         assert!(llm.sent.lock().unwrap().is_empty());
         assert_eq!(rows(&s), (1, 1));
@@ -1026,6 +1036,51 @@ mod tests {
             };
             assert_eq!(e, msg!("stickies.articleGone"), "{then}, {child}");
             assert_eq!(rows(&s), (0, 0));
+        }
+    }
+
+    #[tokio::test]
+    async fn what_waits_for_its_turn_is_saved_to_what_it_was_sent_on() {
+        for case in ["follow-up", "child", "root"] {
+            let s = Store::open_in_memory().unwrap();
+            let a = add(&s, "https://a.dev/wal", "WAL", WAL);
+            let llm = Fake::new(ANSWER);
+            let on = ask(&s, &llm, a, None, StickyKind::Term, "A", "").await.unwrap();
+            let turn = Semaphore::new(1);
+            let held = turn.acquire().await.unwrap();
+            let sent = async {
+                match case {
+                    "follow-up" => super::follow_up(&s, &llm, &turn, on.id, "q").await,
+                    "child" => {
+                        let new = Ask { article_id: a, block_id: None, parent: Some(on.messages[0].id), kind: StickyKind::Term, quote: "q", question: "" };
+                        super::ask(&s, &llm, &turn, new).await
+                    }
+                    _ => {
+                        super::ask(&s, &llm, &turn, Ask { article_id: a, block_id: None, parent: None, kind: StickyKind::Term, quote: "q", question: "" }).await
+                    }
+                }
+            };
+            // While another ask has the turn, what this one is on goes, and its ids, the last ones, go to another.
+            let meanwhile = async {
+                tokio::task::yield_now().await;
+                if case == "root" {
+                    s.delete_article(a).unwrap();
+                    assert_eq!(add(&s, "https://a.dev/next", "Next", WAL), a);
+                } else {
+                    delete(&s, on.id).unwrap();
+                }
+                let x = ask(&s, &llm, a, None, StickyKind::Term, "X", "").await.unwrap();
+                assert_eq!((x.id, x.messages[0].id), (on.id, on.messages[0].id), "{case}: SQLite gives the last ids again");
+                drop(held);
+                x
+            };
+            let (sent, x) = tokio::join!(sent, meanwhile);
+            match case {
+                "follow-up" => assert_eq!(sent.unwrap_err(), msg!("stickies.gone")),
+                "child" => assert_eq!(sent.unwrap().parent, None, "a child of an answer that is gone"),
+                _ => assert_eq!(sent.unwrap_err(), msg!("stickies.articleGone")),
+            }
+            assert_eq!(list(&s, a).unwrap()[0], x, "{case}: nothing on the one that got the ids");
         }
     }
 
