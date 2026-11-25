@@ -131,6 +131,9 @@ async function askMany(page: Page, articleId: number, blockId: number, n: number
   await expect(cards(page)).toHaveCount(before + n);
 }
 
+/** What an observer does in the next frame is there too. */
+const frames = (page: Page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
 const hold = (shell: Page, cmd: string) => shell.addInitScript((c) => void (window.__e2eHold = [c]), cmd);
 
 test("詳しく: a passage over two paragraphs gets an answer beside the first, and no chat hears of it", async ({ shell }) => {
@@ -538,6 +541,63 @@ test("the line being read stays at the top of the view through a narrow pane and
   });
   await expect(column).toHaveCount(1);
   await expect.poll(() => passed(paraBlock(60))).toBeCloseTo(0, 1);
+});
+
+test("the line being read stays at the top of the view as a border is dragged there and back, a little at a time", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1200, height: 800 });
+  await startLong(shell, 4);
+  for (const block of [null, paraId(10), paraId(12), paraId(40), paraId(41), paraId(50)]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await expect(cards(shell)).toHaveCount(6);
+  await scrollTo(shell, paraBlock(45), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 33));
+  await frames(shell);
+  const passed = async () => (await boxOf(doc(shell))).y - (await boxOf(shell.locator(paraBlock(45)))).y;
+  const before = await passed();
+  const border = await boxOf(shell.locator(".splitter.at-list"));
+  const [x, y] = [border.x + border.width / 2, border.y + 300];
+  await shell.mouse.move(x, y);
+  await shell.mouse.down();
+  for (let i = 1; i <= 80; i++) {
+    const step = i % 40;
+    await shell.mouse.move(x - 5 * Math.min(step, 40 - step), y);
+    await frames(shell);
+  }
+  await shell.mouse.up();
+  expect(Math.abs((await passed()) - before)).toBeLessThan(1);
+});
+
+test("a view that starts in a card, or at the article's end, is there again after a pane of another width", async ({ shell }) => {
+  await startNarrow(shell);
+  for (const block of [paraId(40), paraId(50)]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await expect(cards(shell)).toHaveCount(2);
+  const resize = async (width: number) => {
+    await shell.setViewportSize({ width, height: 800 });
+    await expect(shell.locator(".stickies[data-beside]")).toHaveCount(width > 1200 ? 1 : 0);
+    await frames(shell);
+  };
+  for (const at of ["card", "end"] as const) {
+    await doc(shell).evaluate((el, at) => {
+      const card = el.querySelector(".sticky")!.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      el.scrollTop += at === "card" ? card + 60 : el.scrollHeight;
+    }, at);
+    await frames(shell);
+    const top = await scrollTop(shell);
+    for (let i = 0; i < 2; i++) {
+      await resize(1900);
+      await resize(1200);
+      expect(Math.abs((await scrollTop(shell)) - top), at).toBeLessThan(2);
+    }
+  }
+  // The end it has come to is where it stays as there is more to scroll to.
+  await resize(1900);
+  const top = await scrollTop(shell);
+  await askMany(shell, LONG_ID, paraId(79), 6);
+  await expect.poll(() => doc(shell).evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeGreaterThan(300);
+  expect(await scrollTop(shell)).toBe(top);
 });
 
 test("in a narrow pane the text being read stays still as an answer above it comes and goes", async ({ shell }) => {
