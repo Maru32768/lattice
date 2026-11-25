@@ -622,10 +622,12 @@ When you don't understand a passage, select it in the Reader. Click **Ask**, **E
 
 Stickies appear in a column to the right of the text, each at the height of the paragraph that its passage starts in. Where they would overlap, they move up or down. In a narrow pane, each sticky is directly under the paragraph that its passage starts in, and the text below moves down to make room.
 
+- **Ask a follow-up**: click **Ask a follow-up** on a sticky to write another question on it. The AI also gets the earlier questions and answers of that sticky.
+- When you don't understand something in an answer, select it and click **Ask**, **Explain** or **Term**. The new sticky appears directly below the one that you selected from, set in a little. The AI also gets what you selected for that sticky, and its questions and answers up to the one you selected from. It gets nothing from other stickies.
 - The numbers in an answer are citations. Click a number to go to the passage it cites. The AI can add general knowledge, and it says which part goes beyond the article.
-- If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. A sticky without an answer is kept only in the window where you asked, while Lattice runs.
+- If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. A sticky or a follow-up without an answer is kept only in the window where you asked, while Lattice runs.
 - You can select up to 2,000 characters, and a question can have up to 4,000.
-- **Delete the sticky** on a sticky deletes it. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
+- **Delete the sticky** on a sticky deletes it. Stickies made from its answers stay. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
 - Stickies are in the JSON export and in backups.
 
 ### Notes
@@ -1175,7 +1177,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 | Word meanings | The word and the sentence you saved it with |
 | LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |
 | Chat | Your question, the text of the articles in scope, the last three exchanges, **About you** and your chat instructions |
-| Stickies | The text you selected, your question, and the article's title and text (only the part of the text around the selection when the article is longer than **Context per question**) |
+| Stickies | The text you selected, your question, the earlier questions and answers of that sticky (for a sticky made from an answer, also the selected text, questions and answers of the stickies it comes from), and the article's title and text (only the part of the text around the selection when all of this is longer than **Context per question**) |
 
 Semantic search, reading aloud and text extraction run only on your computer. The Claude CLI and Codex CLI providers use the accounts you signed in to those CLIs with.
 
