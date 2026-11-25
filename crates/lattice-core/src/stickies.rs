@@ -571,7 +571,7 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         for (table, column) in [("stickies", "article_id"), ("stickies", "block_id"), ("sticky_messages", "sticky_id")] {
             let plan: String = s.conn().query_row(&format!("EXPLAIN QUERY PLAN SELECT 1 FROM {table} WHERE {column} = 1"), [], |r| r.get(3)).unwrap();
-            assert!(plan.contains(" INDEX "), "{plan}");
+            assert!(plan.starts_with("SEARCH ") && plan.contains(" INDEX "), "{plan}");
         }
     }
 }
