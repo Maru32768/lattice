@@ -172,7 +172,7 @@ test("詳しく: a passage over two paragraphs gets an answer beside the first, 
   const [beside, block, reader] = [await boxOf(detail), await boxOf(shell.locator("#b-102")), await boxOf(shell.locator(".reader"))];
   expect(Math.abs(beside.y - block.y), "at its block's height").toBeLessThan(1);
   expect(beside.x, "right of the text").toBeGreaterThanOrEqual(reader.x + reader.width);
-  await expect(shell.locator(".dpane")).not.toContainText("対話を閉じる");
+  await expect(shell.locator("[data-pane='chat']")).toHaveCount(0);
 });
 
 test("用語 asks at once; a word also offers 単語を登録, and code and tables can be asked about", async ({ app }) => {
