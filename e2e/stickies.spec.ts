@@ -863,6 +863,35 @@ test("a view in the header stays there through a narrow pane and a wide one", as
   }
 });
 
+test("the line being read stays at the top of the view as the text above it grows by what the text below it loses, and the pane's width changes", async ({
+  shell,
+}) => {
+  await startNarrow(shell, 40);
+  await askElsewhere(shell, LONG_ID, paraId(50));
+  await expect(cards(shell)).toHaveCount(1);
+  const pad = (above: number) =>
+    shell.evaluate(
+      ([a, b, above]) => {
+        document.querySelector<HTMLElement>(a)!.style.paddingBottom = `${above}px`;
+        document.querySelector<HTMLElement>(b)!.style.paddingBottom = `${300 - above}px`;
+      },
+      [paraBlock(10), paraBlock(70), above] as const,
+    );
+  await pad(0);
+  await scrollTo(shell, paraBlock(40), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 200));
+  await frames(shell);
+  const above = async () => (await boxOf(doc(shell))).y - (await boxOf(shell.locator(paraBlock(40)))).y;
+  const before = await above();
+  await pad(300);
+  await frames(shell);
+  for (const width of [1900, 1200]) {
+    await shell.setViewportSize({ width, height: 800 });
+    await frames(shell);
+  }
+  expect(Math.abs((await above()) - before)).toBeLessThan(1);
+});
+
 test("in a narrow pane a view of cards alone stays there as the text above it, and the pane's width, change", async ({ shell }) => {
   await startNarrow(shell, 4);
   await askMany(shell, LONG_ID, paraId(40), 8);
