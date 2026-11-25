@@ -452,8 +452,8 @@ fn put_codex(doc: &mut DocumentMut, token: &str) -> Option<()> {
             }
         })?;
     }
+    within(found, |entry| drop(entry.remove("bearer_token_env_var")))?;
     within(found, |entry| {
-        entry.remove("bearer_token_env_var");
         if !entry.contains_key(HEADERS) {
             entry.insert(HEADERS, toml_edit::value(fresh()));
         }
@@ -468,8 +468,9 @@ fn drop_authorization(headers: &mut dyn TableLike, but: Option<&str>) {
     }
 }
 
-/// Changes a table; None where the item is none. What stands before an inline table's closing brace is its last value's,
-/// so it is handed on to the one that is last afterwards.
+/// Changes a table; None where the item is none, or where taking a key out of an inline table of several lines would move
+/// or drop the comments of its neighbours. What stands before an inline table's closing brace is its last value's, so it
+/// is handed on to the one that is last afterwards.
 fn within(item: &mut Item, change: impl FnOnce(&mut dyn TableLike)) -> Option<()> {
     fn last(item: &mut Item) -> Option<&mut Decor> {
         item.as_inline_table_mut()?.iter_mut().last().map(|(_, value)| value.decor_mut())
@@ -479,7 +480,16 @@ fn within(item: &mut Item, change: impl FnOnce(&mut dyn TableLike)) -> Option<()
         decor.set_suffix("");
         suffix
     });
-    change(item.as_table_like_mut()?);
+    let comments = item.as_inline_table().is_some_and(|table| {
+        let text = table.to_string();
+        text.contains('\n') && text.contains('#')
+    });
+    let table = item.as_table_like_mut()?;
+    let keys = table.len();
+    change(table);
+    if comments && table.len() < keys {
+        return None;
+    }
     if let (Some(suffix), Some(decor)) = (before_brace, last(item)) {
         decor.set_suffix(suffix);
     }
@@ -1041,6 +1051,8 @@ http_headers = {
             // `toml_edit` would reorder the one and even out the line ends of the other.
             (format!("a.x = 1\nb = 2\na.y = 3\n[mcp_servers.lattice-dev]\n{AT}\n"), CANNOT_KEEP),
             (format!("a = 1\r\n[mcp_servers.lattice-dev]\n{AT}\n"), CANNOT_KEEP),
+            // Taking a key out would take its neighbour's comment along.
+            (format!("[mcp_servers]\nlattice-dev = {{\n  {AT}, # at\n  # sign in\n  bearer_token_env_var = \"T\" # tok\n}}\n"), CANNOT_KEEP),
         ] {
             let e = codex_file(&before, false).await.unwrap_err();
             assert!(e.contains("mcp.agentFailed") && e.contains("config.toml") && e.contains(reason), "{before}: {e}");
@@ -1052,6 +1064,8 @@ http_headers = {
         let s = Sandbox::new("codex-kept");
         let r = s.register(Target::Codex);
         s.delete(&r);
+        let commented = format!("mcp_servers = {{\n  a = {{ command = \"a\" }}, # a\n  # ours\n  lattice-dev = {{ {AT} }}, # l\n}} # all\n");
+        assert!(codex_file(&commented, true).await.unwrap_err().contains(CANNOT_KEEP));
         for before in [other, "mcp_servers = \"none\"\n", "a.x = 1\nb = 2\na.y = 3\n"] {
             s.set("config.toml", before);
             assert_eq!(s.agents.disconnect(&s.store, Target::Codex).await, Ok(false));
