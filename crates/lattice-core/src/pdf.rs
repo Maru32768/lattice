@@ -2268,8 +2268,9 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                     let past = drafts.last().is_some_and(|d| d.kind == Kind::Table);
                     let sentence = prev.text.trim_end_matches(['"', '\'', ')', ']', '”', '’', '）', '」', '』']);
                     let whole = sentence.ends_with(['.', '!', '?', ':', '。', '！', '？']);
-                    // "Table 1 What each finds", with no stop for `caption_label` to tell it by.
-                    let caption = ["Table", "TABLE", "表"].iter().any(|t| first.text.starts_with(t));
+                    // "Table 1 What each finds", with no stop for `caption_label` to tell it by, or a line of its own, as
+                    // one in other words or the unit of the table's values is.
+                    let caption = std::ptr::eq(prev, first) || ["Table", "TABLE", "表"].iter().any(|t| first.text.starts_with(t));
                     across
                         && !(past && (whole || caption))
                         && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-'))
@@ -6619,6 +6620,20 @@ Manual	No. 1234";
         ops += &(1..37).map(|i| line(316., 100. + 12. * i as f64, "Right")).collect::<String>();
         let texts = texts_of(&ops);
         assert!(texts.iter().any(|t| t == "Data collection") && texts.iter().any(|t| t.contains("runs on to it and it goes on here")), "{texts:?}");
+    }
+
+    #[test]
+    fn a_line_of_its_own_right_over_a_table_does_not_run_on_past_it() {
+        let line = |x: f64, y: f64, word: &str| shown(x, y, &format!("{word} column line of the body runs on to it"));
+        for (x, caption) in [(72., "Exhibit 1 What each of the methods found"), (230., "in millions")] {
+            let mut ops: String = (0..29).map(|i| line(72., 100. + 12. * i as f64, "Left")).collect();
+            ops += &(shown(72., 448., "Left column ends here.") + &shown(x, 480., caption) + &two_by_two([72., 180., 290.], [490., 510., 530.], PROS));
+            ops += &shown(316., 100., "The right column opens with a paragraph");
+            ops += &(1..37).map(|i| line(316., 100. + 12. * i as f64, "Right")).collect::<String>();
+            let texts = texts_of(&ops);
+            let at = texts.iter().position(|t| t == caption);
+            assert!(at.is_some_and(|at| texts[at + 1] == PROS_TEXT), "{texts:?}");
+        }
     }
 
     #[test]
