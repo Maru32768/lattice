@@ -221,8 +221,17 @@ impl Agents {
 
     /// Read from the file: `claude mcp get` connects to the server and prints text for people, with the token hidden.
     fn claude_code_entry(&self) -> Result<Value, Failure> {
-        let dir = self.claude_dir.clone().or_else(dirs::home_dir).ok_or_else(|| Failure::failed("no home folder"))?;
-        let path = dir.join(".claude.json");
+        let (settings, folder) = match &self.claude_dir {
+            Some(dir) => (dir.clone(), dir.clone()),
+            None => dirs::home_dir().map(|home| (home.join(".claude"), home)).ok_or_else(|| Failure::failed("no home folder"))?,
+        };
+        // Its older file, which Claude Code (2.1.327) uses where there is one.
+        let older = settings.join(".config.json");
+        let path = if older.exists() {
+            older
+        } else {
+            folder.join(".claude.json")
+        };
         match read(&path).map_err(at(&path))? {
             Some(file) => Ok(serde_json::from_slice::<Value>(&file).map_err(at(&path))?["mcpServers"][CLIENT_NAME].clone()),
             None => Ok(Value::Null),
@@ -740,6 +749,9 @@ mod tests {
         assert!(calls().is_empty(), "nothing for someone else's entry, nor over settings that cannot be read");
 
         holds(&ours);
+        s.set(".config.json", &json!({ "mcpServers": { CLIENT_NAME: { "command": "mine" } } }).to_string());
+        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentOther"), "the file Claude Code uses");
+        std::fs::remove_file(s.dir.join(".config.json")).unwrap();
         assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false), "a registration that is left uses it");
         assert!(calls().is_empty());
         s.delete(&r);
@@ -814,6 +826,13 @@ mod tests {
             assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(taken_out));
             assert_eq!(s.claude_servers(), json!({ "other": other }));
         }
+
+        s.set(".config.json", &json!({ "mcpServers": { CLIENT_NAME: ours("old") } }).to_string());
+        let r = s.register(Target::ClaudeCode);
+        assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
+        assert_eq!(s.claude_servers(), json!({ "other": other }), "Claude Code leaves it where it has the older file");
+        let servers = |file: &str| serde_json::from_str::<Value>(&s.file(file)).unwrap()["mcpServers"].clone();
+        assert_eq!(servers(".config.json"), json!({ CLIENT_NAME: ours(&r.token) }));
     }
 
     const AT: &str = "url = \"http://127.0.0.1:8789/mcp\"";
