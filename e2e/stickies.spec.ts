@@ -1388,6 +1388,49 @@ test("a passage selected from the margins is asked about, and one that Shift ext
   await expect.poll(async () => (await asked(app)).at(-1)?.quote.split(/\n+/).length).toBe(2);
 });
 
+test("a passage selected from the margins after another one, or extended there by Shift, can be asked about", async ({ shell }) => {
+  await startLong(shell, 8);
+  await scrollTo(shell, paraBlock(3), "center");
+  const scroll = async () => {
+    await doc(shell).evaluate((el) => (el.scrollTop += 10));
+    await expect(bar(shell)).toHaveCount(0);
+    return boxOf(shell.locator(`${paraBlock(3)} p`));
+  };
+  await drag(shell, paraBlock(2), paraBlock(2));
+  await expect(bar(shell)).toBeVisible();
+  let p = await scroll();
+  await shell.mouse.move(p.x - 30, p.y + 14);
+  await shell.mouse.down();
+  await shell.mouse.move(p.x + p.width + 30, p.y + 14, { steps: 5 });
+  await shell.mouse.up();
+  expect(await selected(shell)).toContain(para(3));
+  await expect(bar(shell)).toBeVisible();
+  await shell.keyboard.down("Shift");
+  for (const line of [2, 1, 3]) {
+    p = await scroll();
+    const before = await selected(shell);
+    await shell.mouse.click(p.x + p.width + 30, p.y + 14 + 31 * line);
+    expect(await selected(shell)).not.toBe(before);
+    await expect(bar(shell), `line ${line}`).toBeVisible();
+  }
+  await shell.keyboard.up("Shift");
+});
+
+test("a press that begins outside the article leaves what is selected without a bar", async ({ shell }) => {
+  await startLong(shell);
+  await drag(shell, paraBlock(2), paraBlock(2));
+  await doc(shell).evaluate((el) => (el.scrollTop += 20));
+  await expect(bar(shell)).toHaveCount(0);
+  const border = await boxOf(shell.locator(".splitter.at-list"));
+  await shell.mouse.move(border.x + border.width / 2, border.y + 300);
+  await shell.mouse.down();
+  await shell.mouse.move(border.x + 120, border.y + 300, { steps: 6 });
+  await shell.mouse.up();
+  expect(await selected(shell)).not.toBe("");
+  await frames(shell);
+  await expect(bar(shell)).toHaveCount(0);
+});
+
 test("a passage selected again, as after a scroll took its bar away, can be asked about", async ({ shell }) => {
   await startLong(shell);
   await drag(shell, paraBlock(2), paraBlock(2));
