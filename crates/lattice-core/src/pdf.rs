@@ -2367,14 +2367,15 @@ fn of_figure(d: &Draft) -> bool {
     d.kind == Kind::Caption && d.lines[0].text.starts_with("Fig")
 }
 
-/// Drops the fragments next to a figure caption: labels drawn as page text, not inside the figure.
+/// Drops the fragments next to a figure caption: labels drawn as page text, not inside the figure. One right over a table is
+/// the table's caption.
 fn drop_figure_labels(drafts: &mut Vec<Draft>) {
     let mut junk = vec![false; drafts.len()];
     for (c, d) in drafts.iter().enumerate().filter(|(_, d)| of_figure(d)) {
         let page = d.lines[0].page;
         let near = |j: &usize| fragment(&drafts[*j]) && drafts[*j].lines[0].page == page;
         for j in (0..c).rev().take_while(near).chain((c + 1..drafts.len()).take_while(near)) {
-            junk[j] = true;
+            junk[j] = drafts.get(j + 1).is_none_or(|next| next.kind != Kind::Table);
         }
     }
     let mut keep = junk.into_iter().map(|j| !j);
@@ -6918,6 +6919,15 @@ Manual	No. 1234";
         ops += &(shown(178., 408., "for other duties.") + &shown(72., 450., "where it goes on to its end under the figure and the table."));
         let texts = texts_of(&ops);
         assert!(texts.iter().any(|t| t == "Results of the test"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_short_caption_between_a_figures_and_its_table_is_no_label_of_the_figure() {
+        let mut ops: String = (0..4).map(|i| across(100. + 12. * i as f64, "The text over it is read")).collect();
+        ops += &(shown(72., 300., "Figure 1: The machine at work.") + &shown(72., 324., "Table 1 Strong and weak"));
+        let texts = texts_of(&(ops + &two_by_two(WIDE, [328., 342., 356.], PROS) + &across(380., "The text under it is read")));
+        let at = texts.iter().position(|t| t == "Table 1 Strong and weak");
+        assert!(at.is_some_and(|at| texts[at + 1] == PROS_TEXT), "{texts:?}");
     }
 
     #[test]
