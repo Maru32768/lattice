@@ -1276,7 +1276,7 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     };
     // A book draws a list's bullet as a full stop a third of the text's size, raised to the middle of the line.
     let bullet = match ink.as_slice() {
-        [mark, next, ..] => mark.size < 0.5 * base.size && matches!(mark.text.as_str(), "." | "·" | "•") && next.x > mark.end + 0.15 * mark.size,
+        [mark, next, ..] => mark.size < 0.5 * base.size && mark.text == "." && next.x > mark.end + 0.15 * mark.size,
         _ => false,
     };
     let formula = formula_glyphs(glyphs);
