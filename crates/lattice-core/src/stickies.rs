@@ -493,7 +493,10 @@ mod tests {
         let s = Arc::new(s);
         let store = s.clone();
         let mut llm = Fake::new(ANSWER);
-        llm.meanwhile = Box::new(move || store.exec_for_test("ALTER TABLE sticky_messages RENAME TO gone"));
+        llm.meanwhile = Box::new(move || {
+            assert_eq!(rows(&store), (0, 0), "nor while it waits for one");
+            store.exec_for_test("ALTER TABLE sticky_messages RENAME TO gone");
+        });
         ask(&s, &llm, a, None, StickyKind::Term, "fsync", "").await.unwrap_err();
         s.exec_for_test("ALTER TABLE gone RENAME TO sticky_messages");
         assert_eq!(rows(&s), (0, 0), "no sticky without its message");
