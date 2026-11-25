@@ -3469,9 +3469,17 @@ pub(crate) mod tests {
         let clip = |(x0, x1): (f64, f64), (y0, y1): (f64, f64)| format!("q {x0} {} {} {} re W n Q\n", 792. - y1, x1 - x0, y1 - y0);
         let clipped = [(72., 172.), (172., 540.)].map(|x| [(110., 160.), (160., 200.)].map(|y| clip(x, y)).concat()).concat();
         let shaded = outlined(&[72., 172., 540.], &[110., 160., 200.], &|x, y| (x, 792. - y), "h f");
+        let slanted = ruled(&[72., 172., 540.], &[110., 200.], "strokes") + &format!("72 {} m 540 {} l S\n", 792. - 153., 792. - 157.);
         // Round the second column and an empty third only, the first left on its own beside them.
         let some_columns = ruled(&[172., 300., 540.], &[110., 160., 200.], "strokes");
-        let shapes = [("rules across", across), ("a box round it all", boxed), ("a chart's grid", chart), ("one column", one_column), ("no text", empty)];
+        let shapes = [
+            ("rules across", across),
+            ("a box round it all", boxed),
+            ("a chart's grid", chart),
+            ("one column", one_column),
+            ("no text", empty),
+            ("a slanted rule", slanted),
+        ];
         let more = [("one row", one_row), ("a merged cell", merged), ("clipped cells", clipped), ("shaded cells", shaded), ("some columns", some_columns)];
         for (shape, rules) in shapes.into_iter().chain(more) {
             assert_eq!(read(&(rules + &text)), plain, "{shape}");
@@ -3631,7 +3639,13 @@ Saw	It cuts. It sings. It rests."]
         let head: &[&[&str]] = &[&["Item", "Qty", "Off"]];
         let items: &[&[&str]] = &[&["Widget", "4", ""], &["Gadget", "2", "10%"], &["Gizmo", "1", ""]];
         let total: &[&[&str]] = &[&["Total", "7", ""]];
-        no_table(&groups(&[72., 222., 382., 540.], 16., &[head, items, total]));
+        let xs = [72., 222., 382., 540.];
+        no_table(&groups(&xs, 16., &[head, items, total]));
+        // With a little room at the group's foot.
+        let y = |line: usize| 171. + 16. * line as f64;
+        let lines: Vec<(f64, &[&str])> =
+            [head, items].concat().into_iter().enumerate().map(|(i, cells)| (y(i), cells)).chain([(y(4) + 4., total[0])]).collect();
+        no_table(&grouped(&xs, &[160., 176., 228., 244.], &lines));
         // Names that each stand beside the rows of a group, and columns as wide as their text.
         let head: &[&[&str]] = &[&["Set", "Method", "Score"]];
         let first: &[&[&str]] = &[&["", "Baseline", "98.1"], &["MNIST", "Ours", "99.0"], &["", "Ours, large", "99.3"]];
@@ -3642,6 +3656,16 @@ Saw	It cuts. It sings. It rests."]
         let first: &[&[&str]] = &[&["id", "integer", ""], &["name", "text", "what it is called"], &["seen", "date", ""]];
         let second: &[&[&str]] = &[&["note", "text", "more"]];
         no_table(&groups(&[72., 222., 382., 540.], 14., &[head, first, second]));
+    }
+
+    #[test]
+    fn rows_over_an_empty_foot_of_their_group_are_rows() {
+        let rows: &[&[&str]] = &[&["Item", "Qty", "Price"], &["Widget", "4", "12.00"], &["Gadget", "2", "30.00"], &["Gizmo", "1", "9.00"]];
+        let y = |line: usize| 171. + 16. * line as f64;
+        let mut lines: Vec<(f64, &[&str])> = rows.iter().enumerate().map(|(i, cells)| (y(i), *cells)).collect();
+        lines.push((y(4) + 60., &["Total", "7", "51.00"]));
+        let table = as_table(rows) + "\nTotal\t7\t51.00";
+        assert_eq!(texts_of(&grouped(&[72., 222., 382., 540.], &[160., 176., 284., 300.], &lines)), [table]);
     }
 
     #[test]
@@ -3899,6 +3923,10 @@ Saw	It cuts. It sings. It rests."]
         ops += &(shown(78., 159., "12") + &shown(206., 159., "900"));
         let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "Latency (ms)\tThroughput (req/s)\n12\t900")]);
+        // Under years.
+        let head: &[&[&str]] = &[&["", "2023", "2024"], &["Item", "\\(a\\)", "\\(b\\)"]];
+        let body: &[&[&str]] = &[&["Widget", "4", "5"]];
+        assert_eq!(texts_of(&groups(&[72., 222., 382., 540.], 14., &[head, body])), ["Item\t2023 (a)\t2024 (b)\nWidget\t4\t5"]);
     }
 
     #[test]
@@ -6875,12 +6903,31 @@ Manual	No. 1234";
     fn a_table_with_text_across_its_rules_stays_text() {
         let name = shown(78., 226., "spark.dynamicAllocation.enabled") + &shown(250., 226., "false");
         // Over its empty neighbour, with the rule in a space; past the last rule; and a mark laid over the table.
+        let middle = 78. + wide("Installation of") + 1.4;
         let over = shown(78., 226., "Installation of the server") + &shown(78., 260., "One") + &shown(250., 260., "Two");
         let past = shown(78., 226., "Name") + &shown(250., 226., "spark.dynamicAllocation.enabled");
         let mark = shown(78., 226., "Name") + &shown(250., 226., "Value") + &sized(60., 244., 48., "CONFIDENTIAL");
         for cells in [name, over, past, mark] {
-            no_table(&(ruled(&[72., 170., 320.], &[200., 235., 270.], "strokes") + &shown(78., 214., "Setting") + &shown(250., 214., "Default") + &cells));
+            no_table(&(ruled(&[72., middle, 320.], &[200., 235., 270.], "strokes") + &shown(78., 214., "Setting") + &shown(250., 214., "Default") + &cells));
         }
+    }
+
+    #[test]
+    fn vertical_writing_that_runs_into_a_grid_over_its_rule_leaves_it_text() {
+        let columns: String = (0..4).map(|i| set_down(560. - 12. * i as f64, 100., &TEN_DOWN.repeat(3))).collect();
+        let cells = set_down(420., 210., "034B034D") + &set_down(460., 270., "034B034D") + &set_down(420., 270., "034B034D");
+        let grid = ruled(&[400., 440., 480.], &[200., 260., 320.], "strokes");
+        let tables = |first: &str| {
+            let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(columns.clone() + &grid + &cells + first)), None).unwrap();
+            kinds(&ir).iter().filter(|k| k.0 == "table").count()
+        };
+        assert_eq!((tables(&set_down(460., 210., "034B034D")), tables(&set_down(460., 160., TEN_DOWN))), (1, 0));
+    }
+
+    #[test]
+    fn a_word_drawn_on_another_line_from_where_one_ended_is_none_of_it() {
+        let words = shown(78., 124., "Strong") + &shown(78. + wide("Strong"), 164., "Costly") + &shown(178., 124., "Lasting") + &shown(178., 164., "Easy");
+        assert_eq!(texts_of(&(ruled(&WIDE, &[110., 140., 180.], "strokes") + &words)), [PROS_TEXT]);
     }
 
     #[test]
