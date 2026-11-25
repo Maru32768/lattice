@@ -250,12 +250,11 @@ export function LangSeg({
 /** What the bar over a selection takes below its end. */
 const BAR_HEIGHT = 44;
 
-/** The selection's ends as they are now: its own range moves along with it. */
-function selectedRange(): AbstractRange | null {
+function selectedRange() {
   const sel = window.getSelection();
-  return sel?.rangeCount ? new StaticRange(sel.getRangeAt(0)) : null;
+  return sel && !sel.isCollapsed ? sel.getRangeAt(0) : null;
 }
-const sameRange = (a: AbstractRange, b: AbstractRange) =>
+const sameRange = (a: Range, b: Range) =>
   a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
 
 /** Re-translating more blocks than this asks first. */
@@ -873,7 +872,7 @@ export function Reader({
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
   /** What was selected as the press that is held began, and none where it may select the same again: on the text. */
-  const pressed = useRef<AbstractRange | null>(null);
+  const pressed = useRef<Range | null>(null);
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
     passage?: { blockId: number; quote: string };
