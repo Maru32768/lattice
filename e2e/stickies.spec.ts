@@ -563,6 +563,82 @@ test("in a narrow pane the text being read stays still as an answer above it com
   await expect.poll(moved).toBeLessThan(1);
 });
 
+test("in a narrow pane the text in view stays there as cards at the top of the view change", async ({ shell }) => {
+  await startNarrow(shell);
+  const below = (i: number) => async () => (await boxOf(shell.locator(paraBlock(i)))).y - (await boxOf(doc(shell))).y;
+  /** The view starts `px` below the top of the card. */
+  const into = (n: number, px: number) =>
+    cards(shell)
+      .nth(n)
+      .evaluate((el, px) => {
+        el.closest(".doc-scroll")!.scrollTop += el.getBoundingClientRect().top - el.closest(".doc-scroll")!.getBoundingClientRect().top + px;
+        return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      }, px);
+
+  // A card that is cancelled.
+  await scrollTo(shell, paraBlock(40), "center");
+  await askAbout(shell, "質問", paraBlock(40));
+  await into(0, 60);
+  const next = below(41);
+  const before = await next();
+  await card(shell, "質問").getByRole("button", { name: "キャンセル" }).click();
+  await expect(cards(shell)).toHaveCount(0);
+  expect(await next()).toBeGreaterThanOrEqual(0);
+  expect(await next()).toBeLessThanOrEqual(before);
+
+  // The second of two that goes, and then the first, whose top is above the view.
+  for (const quote of ["one", "two"]) {
+    await askElsewhere(shell, LONG_ID, paraId(40), quote);
+  }
+  await expect(cards(shell)).toHaveCount(2);
+  const top = async () => (await boxOf(cards(shell).first())).y - (await boxOf(doc(shell))).y;
+  await into(0, 60);
+  const at = await top();
+  await invoke(shell, "delete_sticky", { id: 2 });
+  await expect(cards(shell)).toHaveCount(1);
+  expect(Math.abs((await top()) - at), "the card in view stays").toBeLessThan(2);
+  await invoke(shell, "delete_sticky", { id: 1 });
+  await expect(cards(shell)).toHaveCount(0);
+  expect(await next()).toBeGreaterThanOrEqual(0);
+
+  // An answer that comes in the card just above the view.
+  await askElsewhere(shell, LONG_ID, paraId(50), "three");
+  await expect(cards(shell)).toHaveCount(1);
+  const card50 = await boxOf(cards(shell).first());
+  await into(0, card50.height + 3);
+  const text = below(51);
+  const y = await text();
+  expect(y).toBeGreaterThan(0);
+  await askElsewhere(shell, LONG_ID, paraId(50), "four");
+  await expect(cards(shell)).toHaveCount(2);
+  await expect.poll(async () => Math.abs((await text()) - y)).toBeLessThan(2);
+});
+
+test("the text in view stays there as a pane with cards above the first block gets the column", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1200, height: 800 });
+  await startLong(shell);
+  for (const quote of ["one", "two", "three", "four"]) {
+    await askElsewhere(shell, LONG_ID, null, quote);
+  }
+  await expect(cards(shell)).toHaveCount(4);
+  await cards(shell)
+    .last()
+    .evaluate((el) => {
+      el.closest(".doc-scroll")!.scrollTop += el.getBoundingClientRect().top - el.closest(".doc-scroll")!.getBoundingClientRect().top + 60;
+      return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    });
+  const first = shell.locator(`#b-${LONG_ID * 100 + 1}`);
+  await expect(first).toBeInViewport();
+  for (let i = 0; i < 2; i++) {
+    await shell.setViewportSize({ width: 1900, height: 800 });
+    await expect(shell.locator(".stickies[data-beside]")).toHaveCount(1);
+    await expect(first).toBeInViewport();
+    await shell.setViewportSize({ width: 1200, height: 800 });
+    await expect(shell.locator(".stickies[data-beside]")).toHaveCount(0);
+    await expect(first).toBeInViewport();
+  }
+});
+
 test("in a narrow pane stickies that come all at once leave the text at the top of the view there", async ({ shell }) => {
   await hold(shell, "list_stickies");
   await startNarrow(shell);

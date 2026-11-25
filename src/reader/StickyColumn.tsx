@@ -13,7 +13,10 @@ import "./stickies.css";
 /** A pane narrower than this has no room for a column beside the text. */
 const COLUMN_FROM = 720;
 
-/** The text at the view's top: how much of a block is above it, and the px from that block's end down to it, where the block makes `room`. */
+/**
+ * The text at the view's top: how much of a block is above it, and the px from that block's end down to it, where the block
+ * makes `room`. Among the cards above the first block it is `.blocks` itself, from its top.
+ */
 interface Line {
   block: HTMLElement;
   share: number;
@@ -23,13 +26,13 @@ interface Line {
 
 function lineAt(scroller: HTMLElement): Line | undefined {
   const top = scroller.getBoundingClientRect().top;
-  const blocks = Array.from(scroller.querySelector(".blocks")!.children as HTMLCollectionOf<HTMLElement>);
-  const block = blocks.findLast((b) => b.getBoundingClientRect().top <= top);
+  const article = scroller.querySelector<HTMLElement>(".blocks")!;
+  const block = [article, ...(article.children as HTMLCollectionOf<HTMLElement>)].findLast((b) => b.getBoundingClientRect().top <= top);
   if (!block) {
     return undefined;
   }
   const r = block.getBoundingClientRect();
-  const share = r.height ? Math.min(1, (top - r.top) / r.height) : 0;
+  const share = block !== article && r.height ? Math.min(1, (top - r.top) / r.height) : 0;
   return { block, share, past: top - r.top - share * r.height, room: roomOf(block) };
 }
 
@@ -100,8 +103,9 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
 
   if (line) {
     const r = line.block.getBoundingClientRect();
-    // Among the cards under a block, where they are no more the block's end is nearest.
-    const past = resized ? Math.max(0, line.past - Math.max(0, line.room - roomOf(line.block))) : line.past;
+    // Among the cards a card stays, if it can. Else, and past them, it is the text below.
+    const now = roomOf(line.block);
+    const past = line.past <= Math.min(line.room, now) ? line.past : Math.max(0, line.past + now - line.room);
     const moved = r.top + line.share * r.height + past - scroller.getBoundingClientRect().top;
     // A write of the same value too can end a scroll that is under way.
     if (moved) {
