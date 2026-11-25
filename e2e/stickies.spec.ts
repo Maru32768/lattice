@@ -694,16 +694,21 @@ test("the line being read stays at the top of the view of an article translated 
 test("a view in the header stays there through a narrow pane and a wide one", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 800 });
   await startLong(shell);
+  // One that a narrow pane breaks into more lines.
+  await shell.locator(".art-title").evaluate((el) => (el.textContent += " — " + "a longer title ".repeat(6)));
   await askElsewhere(shell, LONG_ID, paraId(3));
   await expect(cards(shell)).toHaveCount(1);
   for (const top of [0, 30, 60, 120]) {
     await doc(shell).evaluate((el, top) => (el.scrollTop = top), top);
     await frames(shell);
     for (let i = 0; i < 2; i++) {
-      for (const width of [1200, 1500]) {
-        await shell.setViewportSize({ width, height: 800 });
-        await frames(shell);
+      await shell.setViewportSize({ width: 1200, height: 800 });
+      await frames(shell);
+      if (top === 0) {
+        expect(await scrollTop(shell), "the title, however tall it gets").toBe(0);
       }
+      await shell.setViewportSize({ width: 1500, height: 800 });
+      await frames(shell);
       expect(await scrollTop(shell)).toBe(top);
     }
   }
