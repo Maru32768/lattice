@@ -1,20 +1,22 @@
 //! Puts the app's MCP registrations in the agents' own user settings, and makes the text the settings screen copies where
 //! the app does not (design-review §23).
 //!
-//! Claude Code is written through its CLI and Codex through `codex app-server`, so the format of each settings file, its
-//! lock and its backups stay the agent's business. `codex mcp add` takes no literal header, only the name of an
-//! environment variable to read the token from, which the app cannot set for the user's shells.
+//! Claude Code is written through its CLI, so the format of its settings, its lock and its backups stay its business. Codex
+//! has no way in that keeps the user's file: `codex mcp add` takes no literal header, only the name of an environment
+//! variable the app cannot set for the user's shells, and `config/batchWrite` of `codex app-server` (0.164.0) breaks a file
+//! with a comment above an inline table. So `config.toml` is edited here.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::LazyLock;
 use std::time::Duration;
 
 use regex::Regex;
-use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines};
-use tokio::process::{ChildStdin, ChildStdout, Command};
+use serde_json::{Map, Value, json};
+use tokio::process::Command;
 use tokio::sync::Mutex;
+use toml_edit::{Decor, DocumentMut, InlineTable, Item, TableLike};
 
 use crate::mcp::{CLIENT_NAME, Target, registrations, url};
 use crate::msg;
@@ -25,8 +27,7 @@ use crate::store::Store;
 static WRITING: Mutex<()> = Mutex::const_new(());
 /// An error a CLI prints is cut to this before the settings screen shows it.
 const MAX_ERROR_CHARS: usize = 400;
-/// How long `codex app-server` gets to leave by itself once its change is made.
-const LEAVE: Duration = Duration::from_secs(3);
+const AUTHORIZATION: &str = "Authorization";
 
 /// What the settings screen copies for a registration.
 pub fn copied(target: Target, token: &str) -> String {
@@ -52,13 +53,12 @@ pub fn removal(target: Target) -> Option<String> {
     }
 }
 
-/// The agents' programs and the settings folders they are run on.
+/// Where the agents' settings are, and the program that changes them.
 pub struct Agents {
     claude: String,
-    codex: String,
     /// `CLAUDE_CONFIG_DIR`; None is the user's home folder.
     claude_dir: Option<PathBuf>,
-    /// `CODEX_HOME`; None leaves it to Codex.
+    /// `CODEX_HOME`; None when there is no home folder either.
     codex_home: Option<PathBuf>,
     /// For one change, however many processes it takes.
     timeout: Duration,
@@ -66,11 +66,11 @@ pub struct Agents {
 
 impl Default for Agents {
     fn default() -> Self {
+        let folder = |variable| std::env::var_os(variable).filter(|d| !d.is_empty()).map(PathBuf::from);
         Self {
             claude: "claude".into(),
-            codex: "codex".into(),
-            claude_dir: std::env::var_os("CLAUDE_CONFIG_DIR").filter(|d| !d.is_empty()).map(PathBuf::from),
-            codex_home: None,
+            claude_dir: folder("CLAUDE_CONFIG_DIR"),
+            codex_home: folder("CODEX_HOME").or_else(|| dirs::home_dir().map(|home| home.join(".codex"))),
             timeout: Duration::from_secs(30),
         }
     }
@@ -93,7 +93,7 @@ fn entry(found: &Value, headers: &str) -> Entry {
     if found["url"].as_str() != Some(&url()) {
         return Entry::SomeoneElses;
     }
-    let authorization = found[headers].as_object().and_then(|h| h.iter().find(|(name, _)| name.eq_ignore_ascii_case("authorization")));
+    let authorization = found[headers].as_object().and_then(|h| h.iter().find(|(name, _)| name.eq_ignore_ascii_case(AUTHORIZATION)));
     Entry::Lattices(authorization.and_then(|(_, value)| value.as_str()?.strip_prefix("Bearer ").map(String::from)))
 }
 
@@ -178,15 +178,15 @@ impl Agents {
         let Some(agent) = target.agent() else {
             return Ok(false);
         };
-        let change = async {
-            match target {
-                Target::ClaudeCode => self.write_claude_code(want).await,
-                Target::Codex => self.write_codex(want).await,
-                Target::ClaudeCodeProject | Target::Other => Ok(false),
+        let written = match target {
+            Target::ClaudeCode => {
+                let timed_out = |_| Err(Failure::failed(format!("timed out after {:?}", self.timeout)));
+                tokio::time::timeout(self.timeout, self.write_claude_code(want)).await.unwrap_or_else(timed_out)
             }
+            Target::Codex => self.write_codex(want),
+            Target::ClaudeCodeProject | Target::Other => Ok(false),
         };
-        let timed_out = || Err(Failure::failed(format!("timed out after {:?}", self.timeout)));
-        let written = tokio::time::timeout(self.timeout, change).await.unwrap_or_else(|_| timed_out()).map_err(|f| f.message(agent))?;
+        let written = written.map_err(|f| f.message(agent))?;
         if written {
             log::info!(
                 "{agent}: the MCP server {CLIENT_NAME} was {}",
@@ -223,10 +223,9 @@ impl Agents {
         let dir = self.claude_dir.clone().or_else(dirs::home_dir).ok_or_else(|| Failure::failed("no home folder"))?;
         let path = dir.join(".claude.json");
         let failed = |e: &dyn std::fmt::Display| Failure::failed(format!("{}: {e}", path.display()));
-        match std::fs::read(&path) {
-            Ok(file) => Ok(serde_json::from_slice::<Value>(&file).map_err(|e| failed(&e))?["mcpServers"][CLIENT_NAME].clone()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
-            Err(e) => Err(failed(&e)),
+        match read(&path).map_err(|e| failed(&e))? {
+            Some(file) => Ok(serde_json::from_slice::<Value>(&file).map_err(|e| failed(&e))?["mcpServers"][CLIENT_NAME].clone()),
+            None => Ok(Value::Null),
         }
     }
 
@@ -243,41 +242,26 @@ impl Agents {
         Err(Failure::Failed(format!("{}: {} {}", out.status, String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(&out.stdout))))
     }
 
-    async fn write_codex(&self, want: Want<'_>) -> Result<bool, Failure> {
-        let mut cmd = command(&self.codex)?;
-        if let Some(home) = &self.codex_home {
-            cmd.env("CODEX_HOME", home);
+    fn write_codex(&self, want: Want<'_>) -> Result<bool, Failure> {
+        let home = self.codex_home.as_ref().ok_or_else(|| Failure::failed("no home folder"))?;
+        let path = home.join("config.toml");
+        let failed = |e: &dyn std::fmt::Display| Failure::failed(format!("{}: {e}", path.display()));
+        let before = read(&path).map_err(|e| failed(&e))?;
+        let text = std::str::from_utf8(before.as_deref().unwrap_or_default()).map_err(|e| failed(&e))?;
+        let doc = parse_toml(text).map_err(|e| failed(&e))?;
+        let after = match step(&codex_entry(&doc), want)? {
+            Step::Leave => return Ok(false),
+            Step::Add(token) | Step::Replace(token) => codex_with(text, token),
+            Step::Remove => codex_without(text),
+        };
+        if !home.is_dir() {
+            return Err(Failure::Missing(home.display().to_string()));
         }
-        let mut child = spawn(cmd.arg("app-server").stdin(Stdio::piped()), &self.codex)?;
-        let mut server = AppServer {
-            stdin: child.stdin.take().expect("stdin piped"),
-            lines: BufReader::new(child.stdout.take().expect("stdout piped")).lines(),
-            last_id: 0,
-        };
-        let mut stderr = child.stderr.take().expect("stderr piped");
-        let mut said = Vec::new();
-        // Read all along: a full pipe would stop Codex before it answers.
-        let listen = async {
-            while stderr.read_buf(&mut said).await.is_ok_and(|n| n > 0) {}
-            std::future::pending::<()>().await;
-        };
-        let result = tokio::select! {
-            result = change_codex(&mut server, want) => result,
-            () = listen => unreachable!("listening never ends"),
-        };
-        // It leaves when its input closes.
-        drop(server);
-        match result {
-            Ok(written) => {
-                let _ = tokio::time::timeout(LEAVE, child.wait()).await;
-                Ok(written)
-            }
-            Err(Refusal::Said(failure)) => Err(failure),
-            Err(Refusal::Gone) => {
-                let _ = stderr.read_to_end(&mut said).await;
-                Err(Failure::Failed(format!("app-server ended: {}", String::from_utf8_lossy(&said))))
-            }
+        let after = after.map_err(|e| failed(&e))?;
+        if after != text {
+            overwrite(&path, before.as_deref(), &after).map_err(|e| failed(&e))?;
         }
+        Ok(true)
     }
 }
 
@@ -302,92 +286,222 @@ fn spawn(cmd: &mut Command, program: &str) -> Result<tokio::process::Child, Fail
     Ok(child)
 }
 
-/// `codex app-server`: JSON-RPC, one message a line.
-struct AppServer {
-    stdin: ChildStdin,
-    lines: Lines<BufReader<ChildStdout>>,
-    last_id: u64,
-}
-
-enum Refusal {
-    Said(Failure),
-    /// It ended, or stopped talking, before it answered.
-    Gone,
-}
-
-impl From<Failure> for Refusal {
-    fn from(failure: Failure) -> Self {
-        Self::Said(failure)
+fn read(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        file => file.map(Some),
     }
 }
 
-impl AppServer {
-    async fn send(&mut self, message: &Value) -> Result<(), Refusal> {
-        self.stdin.write_all(format!("{message}\n").as_bytes()).await.map_err(|_| Refusal::Gone)
+/// Puts `after` in place of `before`, whole or not at all.
+fn overwrite(path: &Path, before: Option<&[u8]>, after: &str) -> std::io::Result<()> {
+    // A linked file is replaced where it is, and the link stays.
+    let path = match path.canonicalize() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !path.is_symlink() => path.to_path_buf(),
+        found => found?,
+    };
+    if std::fs::metadata(&path).is_ok_and(|m| m.permissions().readonly()) {
+        return Err(std::io::ErrorKind::PermissionDenied.into());
     }
-
-    async fn call(&mut self, method: &str, params: Value) -> Result<Value, Refusal> {
-        self.last_id += 1;
-        self.send(&json!({ "id": self.last_id, "method": method, "params": params })).await?;
-        while let Some(line) = self.lines.next_line().await.map_err(|_| Refusal::Gone)? {
-            // Its notifications come in between, and a request of its own may carry the same number.
-            let Ok(mut reply) = serde_json::from_str::<Value>(&line) else {
-                continue;
-            };
-            if reply["id"] != json!(self.last_id) || !reply["method"].is_null() {
-                continue;
-            }
-            if let Some(error) = reply.get("error").filter(|e| !e.is_null()) {
-                return Err(Failure::Failed(error["message"].as_str().map_or_else(|| error.to_string(), String::from)).into());
-            }
-            return Ok(reply["result"].take());
+    let part = path.with_added_extension(format!("{CLIENT_NAME}.part"));
+    let write = || {
+        let mut file = std::fs::File::create(&part)?;
+        file.write_all(after.as_bytes())?;
+        file.sync_all()?;
+        // shortcut: a change made between this look and the rename is lost, take a lock once Codex has one for the file.
+        if read(&path)?.as_deref() != before {
+            return Err(std::io::Error::other("changed by something else meanwhile"));
         }
-        Err(Refusal::Gone)
+        std::fs::rename(&part, &path)
+    };
+    let written = write();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&part);
+    }
+    written
+}
+
+const SERVERS: &str = "mcp_servers";
+const HEADERS: &str = "http_headers";
+/// What cannot be in a TOML file, put on a line to find it again in the text.
+const MARK: &str = "\u{1}";
+const CANNOT_KEEP: &str = "it cannot be changed without rewriting other parts of it";
+
+/// The error's own text would quote a line, with whatever secret is on it.
+fn parse_toml(text: &str) -> Result<DocumentMut, String> {
+    text.parse::<DocumentMut>().map_err(|e| {
+        let line = e.span().and_then(|at| text.get(..at.start)).map_or(1, |above| above.matches('\n').count() + 1);
+        format!("line {line}: {}", e.message())
+    })
+}
+
+fn codex_entry(doc: &DocumentMut) -> Entry {
+    let Some(found) = doc.get(SERVERS).and_then(|servers| servers.get(CLIENT_NAME)) else {
+        return Entry::Absent;
+    };
+    let headers = found.get(HEADERS).and_then(Item::as_table_like).into_iter().flat_map(|headers| headers.iter());
+    let headers: Map<String, Value> = headers.filter_map(|(name, value)| Some((name.into(), value.as_str()?.into()))).collect();
+    entry(&json!({ "url": found.get("url").and_then(Item::as_str), HEADERS: headers }), HEADERS)
+}
+
+fn codex_with(text: &str, token: &str) -> Result<String, String> {
+    let doc = parse_toml(text)?;
+    let after = if codex_entry(&doc) == Entry::Absent && doc.get(SERVERS).is_none_or(Item::is_table) {
+        let eol = eol(text);
+        let gap = match text {
+            "" => "",
+            t if t.ends_with('\n') => "\n",
+            _ => "\n\n",
+        };
+        format!("{text}{}", format!("{gap}{}", copied(Target::Codex, token)).replace('\n', eol))
+    } else {
+        edited(text, |doc| put_codex(doc, token).map(|()| doc.to_string()))?
+    };
+    checked(after, &Entry::Lattices(Some(token.into())))
+}
+
+fn codex_without(text: &str) -> Result<String, String> {
+    checked(edited(text, take_out_codex)?, &Entry::Absent)
+}
+
+fn checked(after: String, holds: &Entry) -> Result<String, String> {
+    if codex_entry(&parse_toml(&after)?) == *holds {
+        Ok(after)
+    } else {
+        Err(CANNOT_KEEP.into())
     }
 }
 
-async fn change_codex(server: &mut AppServer, want: Want<'_>) -> Result<bool, Refusal> {
-    server.call("initialize", json!({ "clientInfo": { "name": "lattice", "version": env!("CARGO_PKG_VERSION") } })).await?;
-    server.send(&json!({ "method": "initialized" })).await?;
-    let read = server.call("config/read", json!({ "includeLayers": true })).await?;
-    // The user's own file. The merged settings could show a managed one's entry instead, and a profile is a layer too.
-    let user = read["layers"].as_array().and_then(|layers| layers.iter().find(|l| l["name"]["type"] == "user" && l["name"]["profile"].is_null()));
-    let (version, found) = user.map_or((&Value::Null, &Value::Null), |l| (&l["version"], &l["config"]["mcp_servers"][CLIENT_NAME]));
-    let edits = match step(&entry(found, "http_headers"), want)? {
-        Step::Leave => return Ok(false),
-        Step::Remove => vec![codex_edit(&[], Value::Null)],
-        Step::Add(token) | Step::Replace(token) => codex_put(found, token),
-    };
-    server.call("config/batchWrite", json!({ "edits": edits, "expectedVersion": version })).await?;
-    Ok(true)
+fn eol(text: &str) -> &'static str {
+    if text.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
 }
 
-/// A null takes the key out. Anything else joins what is there, so keys the user added to the entry stay.
-fn codex_edit(path: &[&str], value: Value) -> Value {
-    let strategy = if value.is_null() {
-        "replace"
-    } else {
-        "upsert"
+/// The text with the change to its document made. `toml_edit` writes LF, ends the last line, drops a byte order mark and
+/// may reorder dotted keys: the first three are put right, and text it would change in any other way is refused.
+fn edited(text: &str, change: impl FnOnce(&mut DocumentMut) -> Option<String>) -> Result<String, String> {
+    let body = text.trim_start_matches('\u{feff}');
+    let (mark, eol) = (&text[..text.len() - body.len()], eol(body));
+    let lines = body.replace("\r\n", "\n");
+    let mut doc = parse_toml(&lines)?;
+    let whole = doc.to_string();
+    let after = change(&mut doc).ok_or(CANNOT_KEEP)?;
+    if after == whole {
+        return Ok(text.into());
+    }
+    let added = match whole.strip_prefix(&lines) {
+        Some("") => "",
+        Some("\n") => "\n",
+        _ => return Err(CANNOT_KEEP.into()),
     };
-    let path = [&["mcp_servers", CLIENT_NAME], path].concat().join(".");
-    json!({ "keyPath": path, "value": value, "mergeStrategy": strategy })
+    if lines.replace('\n', eol) != body {
+        return Err(CANNOT_KEEP.into());
+    }
+    Ok(format!("{mark}{}", after.strip_suffix(added).unwrap_or(&after).replace('\n', eol)))
 }
 
 /// Besides the token, takes out what Codex would send in its place: `bearer_token_env_var` and `env_http_headers` win over
-/// `http_headers` (checked with 0.164.0), and a variable that is not set ends the connection.
-fn codex_put(found: &Value, token: &str) -> Vec<Value> {
-    let header = "Authorization";
-    let mut edits = Vec::new();
-    if !found["bearer_token_env_var"].is_null() {
-        edits.push(codex_edit(&["bearer_token_env_var"], Value::Null));
+/// `http_headers` (checked with 0.164.0), and a variable that is not set ends the connection. None where something has
+/// another form than Codex reads.
+fn put_codex(doc: &mut DocumentMut, token: &str) -> Option<()> {
+    let bearer = format!("Bearer {token}");
+    let fresh = || InlineTable::from_iter([(AUTHORIZATION, &bearer)]);
+    let servers = doc.get_mut(SERVERS)?;
+    if servers.get(CLIENT_NAME).is_none() {
+        let entry = InlineTable::from_iter([("url", toml_edit::Value::from(url())), (HEADERS, fresh().into())]);
+        return within(servers, |servers| drop(servers.insert(CLIENT_NAME, toml_edit::value(entry))));
     }
-    for table in ["http_headers", "env_http_headers"] {
-        let names = found[table].as_object().into_iter().flat_map(|headers| headers.keys());
-        let stale = names.filter(|name| name.eq_ignore_ascii_case(header) && !(table == "http_headers" && *name == header));
-        edits.extend(stale.map(|name| codex_edit(&[table, name], Value::Null)));
+    let found = servers.as_table_like_mut()?.get_mut(CLIENT_NAME)?;
+    let entry = found.as_table_like_mut()?;
+    if let Some(headers) = entry.get_mut("env_http_headers") {
+        within(headers, |headers| drop_authorization(headers, None))?;
     }
-    edits.push(codex_edit(&[], json!({ "url": url(), "http_headers": { header: format!("Bearer {token}") } })));
-    edits
+    if let Some(headers) = entry.get_mut(HEADERS) {
+        within(headers, |headers| {
+            drop_authorization(headers, Some(AUTHORIZATION));
+            match headers.get_mut(AUTHORIZATION) {
+                None => drop(headers.insert(AUTHORIZATION, toml_edit::value(&bearer))),
+                Some(item) if item.as_str() == Some(&bearer) => (),
+                Some(item) => {
+                    let mut new = toml_edit::Value::from(&bearer);
+                    if let Some(old) = item.as_value() {
+                        *new.decor_mut() = old.decor().clone();
+                    }
+                    *item = Item::Value(new);
+                }
+            }
+        })?;
+    }
+    within(found, |entry| {
+        entry.remove("bearer_token_env_var");
+        if !entry.contains_key(HEADERS) {
+            entry.insert(HEADERS, toml_edit::value(fresh()));
+        }
+    })
+}
+
+fn drop_authorization(headers: &mut dyn TableLike, but: Option<&str>) {
+    let stale = |name: &&str| name.eq_ignore_ascii_case(AUTHORIZATION) && Some(*name) != but;
+    let names: Vec<String> = headers.iter().map(|(name, _)| name).filter(stale).map(String::from).collect();
+    for name in names {
+        headers.remove(&name);
+    }
+}
+
+/// Changes a table; None where the item is none. What stands before an inline table's closing brace is its last value's,
+/// so it is handed on to the one that is last afterwards.
+fn within(item: &mut Item, change: impl FnOnce(&mut dyn TableLike)) -> Option<()> {
+    fn last(item: &mut Item) -> Option<&mut Decor> {
+        item.as_inline_table_mut()?.iter_mut().last().map(|(_, value)| value.decor_mut())
+    }
+    let before_brace = last(item).and_then(|decor| {
+        let suffix = decor.suffix().cloned();
+        decor.set_suffix("");
+        suffix
+    });
+    change(item.as_table_like_mut()?);
+    if let (Some(suffix), Some(decor)) = (before_brace, last(item)) {
+        decor.set_suffix(suffix);
+    }
+    Some(())
+}
+
+/// The comments above the entry stay: they may be about the whole file.
+fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
+    let servers = doc.get_mut(SERVERS)?;
+    if servers.is_inline_table() {
+        within(servers, |servers| drop(servers.remove(CLIENT_NAME)))?;
+        return Some(doc.to_string());
+    }
+    let (mut key, item) = servers.as_table_mut()?.get_key_value_mut(CLIENT_NAME)?;
+    match item {
+        Item::Table(table) if !table.is_dotted() => {
+            table.clear();
+            table.decor_mut().set_suffix(MARK);
+        }
+        _ => {
+            let above = item.as_table().and_then(|dotted| dotted.get_values().first()?.0.last()?.leaf_decor().prefix().cloned());
+            if let Some(above) = above {
+                key.leaf_decor_mut().set_prefix(above);
+            }
+            *item = toml_edit::value("");
+            item.as_value_mut()?.decor_mut().set_suffix(MARK);
+        }
+    }
+    let text = doc.to_string();
+    let (above, below) = text.split_once(MARK)?;
+    let above = &above[..above.rfind('\n').map_or(0, |at| at + 1)];
+    let below = below.strip_prefix('\n').unwrap_or(below);
+    // Of the blank lines on its two sides, one is left.
+    Some(match below.strip_prefix('\n') {
+        Some(rest) if above.is_empty() => rest.to_string(),
+        Some(rest) if above.ends_with("\n\n") => format!("{above}{rest}"),
+        None if below.is_empty() && above.ends_with("\n\n") => above[..above.len() - 1].to_string(),
+        _ => format!("{above}{below}"),
+    })
 }
 
 #[cfg(test)]
@@ -529,22 +643,6 @@ mod tests {
     }
 
     #[test]
-    fn what_codex_would_send_in_place_of_the_token_goes_and_the_users_other_keys_stay() {
-        let put = json!({
-            "keyPath": "mcp_servers.lattice-dev", "mergeStrategy": "upsert",
-            "value": { "url": URL, "http_headers": { "Authorization": "Bearer new" } },
-        });
-        assert_eq!(codex_put(&Value::Null, "new"), std::slice::from_ref(&put));
-        let found = json!({
-            "url": URL, "startup_timeout_sec": 5, "bearer_token_env_var": "TOKEN",
-            "http_headers": { "Authorization": "Bearer old", "authorization": "Bearer older", "X-Mine": "1" },
-            "env_http_headers": { "Authorization": "TOKEN", "X-Mine-Too": "VAR" },
-        });
-        let gone = |key: &str| json!({ "keyPath": format!("mcp_servers.lattice-dev.{key}"), "value": null, "mergeStrategy": "replace" });
-        assert_eq!(codex_put(&found, "new"), [gone("bearer_token_env_var"), gone("http_headers.authorization"), gone("env_http_headers.Authorization"), put]);
-    }
-
-    #[test]
     fn no_message_carries_a_token() {
         let token = "0123456789abcdef".repeat(4);
         let told = |error: String| message(&Failure::Failed(error).message("Codex"))["params"]["error"].as_str().unwrap().to_string();
@@ -556,22 +654,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_missing_program_is_named() {
+    async fn a_missing_program_or_settings_folder_is_named() {
         let mut s = Sandbox::new("missing");
+        let home = s.dir.join("no-such-codex");
         s.agents.claude = "lattice-no-such-claude".into();
-        s.agents.codex = "lattice-no-such-codex".into();
-        for (target, agent, program) in [(Target::ClaudeCode, "Claude Code", "lattice-no-such-claude"), (Target::Codex, "Codex", "lattice-no-such-codex")] {
+        s.agents.codex_home = Some(home.clone());
+        let home = home.to_string_lossy().into_owned();
+        for (target, agent, program) in [(Target::ClaudeCode, "Claude Code", "lattice-no-such-claude"), (Target::Codex, "Codex", &home)] {
             let r = s.register(target);
             let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
             assert_eq!(message(&e), json!({ "code": "mcp.agentMissing", "params": { "agent": agent, "program": program } }));
+            s.delete(&r);
+            assert_eq!(s.agents.disconnect(&s.store, target).await, Ok(false), "nothing to take out");
         }
+        assert!(!std::fs::exists(home).unwrap(), "no settings for an agent that is not there");
     }
 
     #[tokio::test]
     async fn a_target_the_app_does_not_write_and_a_registration_that_is_gone_run_nothing() {
         let mut s = Sandbox::new("untouched");
         s.agents.claude = "lattice-no-such-claude".into();
-        s.agents.codex = "lattice-no-such-codex".into();
+        s.agents.codex_home = Some(s.dir.join("no-such-codex"));
         for target in [Target::ClaudeCodeProject, Target::Other] {
             let r = edit(&s.store, &Edit::Create { name: format!("{target:?}"), role: Role::Read, target }).unwrap().unwrap();
             assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(false));
@@ -585,8 +688,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_change_waits_for_the_one_before_it_and_then_takes_the_token_as_stored() {
-        let mut s = Sandbox::new("turns");
-        s.agents.codex = "lattice-no-such-codex".into();
+        let s = Sandbox::new("turns");
         let r = s.register(Target::Codex);
         let turn = WRITING.lock().await;
         let waiting = s.agents.connect(&s.store, &r.id);
@@ -595,6 +697,7 @@ mod tests {
         s.delete(&r);
         drop(turn);
         assert_eq!(waiting.await, Ok(false), "deleted while it waited");
+        assert_eq!(s.file("config.toml"), "");
     }
 
     #[cfg(windows)]
@@ -602,28 +705,12 @@ mod tests {
     async fn a_program_that_does_not_answer_is_given_up_on() {
         let mut s = Sandbox::new("hanging");
         s.agents.timeout = Duration::from_millis(500);
-        // Reads all it is sent, and answers nothing.
-        s.agents.codex = "findstr".into();
         s.agents.claude = s.fake("claude", "rem\r\n:again\r\n@goto again");
-        for target in [Target::Codex, Target::ClaudeCode] {
-            let r = s.register(target);
-            let started = std::time::Instant::now();
-            let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
-            assert_eq!(message(&e)["params"]["error"], "timed out after 500ms", "{target:?}");
-            assert!(started.elapsed() < Duration::from_secs(15), "{target:?}");
-        }
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn a_codex_that_ends_before_answering_gives_what_it_said() {
-        let mut s = Sandbox::new("old-codex");
-        s.agents.codex = s.fake("codex", "echo error: unrecognized subcommand 1>&2& exit /b 2");
-        let r = s.register(Target::Codex);
-        let e = message(&s.agents.connect(&s.store, &r.id).await.unwrap_err());
-        assert_eq!(e["code"], "mcp.agentFailed");
-        assert_eq!(e["params"]["error"], "app-server ended: error: unrecognized subcommand");
-        assert_eq!(s.file("codex.txt").trim(), "app-server");
+        let r = s.register(Target::ClaudeCode);
+        let started = std::time::Instant::now();
+        let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
+        assert_eq!(message(&e)["params"]["error"], "timed out after 500ms");
+        assert!(started.elapsed() < Duration::from_secs(15));
     }
 
     #[cfg(windows)]
@@ -708,56 +795,277 @@ mod tests {
         assert_eq!(s.claude_servers(), json!({ CLIENT_NAME: mine }));
     }
 
-    #[tokio::test]
-    async fn the_installed_codex_takes_replaces_and_gives_up_the_registration() {
-        let s = Sandbox::new("codex");
-        let before = "# my notes\nmodel = \"x\" # keep\n\n[mcp_servers.other]\ncommand = \"foo\" # other\n";
+    const AT: &str = "url = \"http://127.0.0.1:8789/mcp\"";
+
+    /// What becomes of `before` when a registration is put in and, if `gone`, taken out again, with its token as `NEW`.
+    async fn codex_file(before: &str, gone: bool) -> Result<String, String> {
+        static RUN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let s = Sandbox::new(&format!("codex-{}", RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
         s.set("config.toml", before);
         let r = s.register(Target::Codex);
-        if !s.installed(&r).await {
+        let written = if gone {
+            s.delete(&r);
+            s.agents.disconnect(&s.store, Target::Codex).await.map(|done| assert!(done, "{before}"))
+        } else {
+            s.agents.connect(&s.store, &r.id).await.map(|done| assert!(done, "{before}"))
+        };
+        let after = s.file("config.toml");
+        let files: Vec<_> = std::fs::read_dir(&s.dir).unwrap().map(|f| f.unwrap().file_name()).collect();
+        assert_eq!(files, ["config.toml"], "nothing is left beside it");
+        if let Err(e) = written {
+            assert_eq!(after, before, "left alone");
+            return Err(e);
+        }
+        if !gone {
+            assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true), "{before}");
+            assert_eq!(s.file("config.toml"), after, "the same however often");
+            assert!(s.agents.disconnect(&s.store, Target::Codex).await == Ok(false) && s.file("config.toml") == after, "still in use");
+        }
+        Ok(after.replace(&r.token, "NEW"))
+    }
+
+    #[tokio::test]
+    async fn codex_gets_the_token_and_the_rest_of_its_file_stays_as_it_is() {
+        let token = "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { Authorization = \"Bearer NEW\" }\n";
+        for (before, after) in [
+            // Not there yet.
+            ("", token),
+            ("model = \"x\" # keep", "model = \"x\" # keep\n\n{TOKEN}"),
+            ("# my notes\nmodel = \"x\"\n\n[mcp_servers.other]\ncommand = \"foo\" # other\n\n# the end\n", "{BEFORE}\n{TOKEN}"),
+            ("[mcp_servers]\nother = { command = \"foo\" }\n[a]\n[b]\n[a.c]\n", "{BEFORE}\n{TOKEN}"),
+            ("mcp_servers.other.command = \"foo\"\n", "{BEFORE}\n{TOKEN}"),
+            // What `toml_edit` would reorder is no matter where the entry only joins.
+            ("a.x = 1\nb = 2\na.y = 3\n", "{BEFORE}\n{TOKEN}"),
+            (
+                "# mine\nmcp_servers = { other = { command = \"foo\" } } # all\n",
+                "# mine\nmcp_servers = { other = { command = \"foo\" }, lattice-dev = { {AT}, http_headers = { Authorization = \"Bearer NEW\" } } } # all\n",
+            ),
+            ("mcp_servers = {}\n", "mcp_servers = { lattice-dev = { {AT}, http_headers = { Authorization = \"Bearer NEW\" } } }\n"),
+            // Inline headers, with comments wherever one can be.
+            (
+                "# head\n\n[mcp_servers.lattice-dev] # ours\n{AT} # at\n# Lattice token\nhttp_headers = { Authorization = \"Bearer old\" } # token\n# wait\nstartup_timeout_sec = 9\ntool_timeout_sec = 9.0 # s\n\n[other] # x\n",
+                "# head\n\n[mcp_servers.lattice-dev] # ours\n{AT} # at\n# Lattice token\nhttp_headers = { Authorization = \"Bearer NEW\" } # token\n# wait\nstartup_timeout_sec = 9\ntool_timeout_sec = 9.0 # s\n\n[other] # x\n",
+            ),
+            // A table of headers.
+            (
+                "[mcp_servers.lattice-dev]\n{AT}\nstartup_timeout_sec = 9\n\n# sent\n[mcp_servers.lattice-dev.http_headers] # h\nX-Mine = '1' # x\n# token\nAuthorization   =   'Bearer old' # t\n",
+                "[mcp_servers.lattice-dev]\n{AT}\nstartup_timeout_sec = 9\n\n# sent\n[mcp_servers.lattice-dev.http_headers] # h\nX-Mine = '1' # x\n# token\nAuthorization   =   \"Bearer NEW\" # t\n",
+            ),
+            // Dotted and quoted keys.
+            (
+                "# c\nmcp_servers.lattice-dev.{AT}\n# t\nmcp_servers.lattice-dev.http_headers.Authorization = \"Bearer old\" # x\nmodel = \"m\"\n",
+                "# c\nmcp_servers.lattice-dev.{AT}\n# t\nmcp_servers.lattice-dev.http_headers.Authorization = \"Bearer NEW\" # x\nmodel = \"m\"\n",
+            ),
+            (
+                "['mcp_servers' . \"lattice-dev\"]\n\"url\" = 'http://127.0.0.1:8789/mcp'\n  \"http_headers\" . 'Authorization' = \"Bearer old\"\n",
+                "['mcp_servers' . \"lattice-dev\"]\n\"url\" = 'http://127.0.0.1:8789/mcp'\n  \"http_headers\" . 'Authorization' = \"Bearer NEW\"\n",
+            ),
+            // Inline all the way, with a comment above.
+            (
+                "# servers\nmcp_servers = { lattice-dev = { {AT}, http_headers = {X-Mine=\"1\",Authorization=\"Bearer old\"}, startup_timeout_sec = 9 }, other = { command = \"foo\" } } # all\n",
+                "# servers\nmcp_servers = { lattice-dev = { {AT}, http_headers = {X-Mine=\"1\",Authorization=\"Bearer NEW\"}, startup_timeout_sec = 9 }, other = { command = \"foo\" } } # all\n",
+            ),
+            (
+                "[mcp_servers]\n# Lattice\nlattice-dev = { {AT}, http_headers = { Authorization = \"Bearer old\" } }\nother = { command = \"foo\" }\n",
+                "[mcp_servers]\n# Lattice\nlattice-dev = { {AT}, http_headers = { Authorization = \"Bearer NEW\" } }\nother = { command = \"foo\" }\n",
+            ),
+            (
+                "[mcp_servers.lattice-dev]
+{AT}
+http_headers = {
+  # t
+  Authorization = \"Bearer old\", # u
+  X-Mine = \"1\" # x
+}
+",
+                "[mcp_servers.lattice-dev]
+{AT}
+http_headers = {
+  # t
+  Authorization = \"Bearer NEW\", # u
+  X-Mine = \"1\" # x
+}
+",
+            ),
+            // No token yet.
+            ("[mcp_servers.lattice-dev]\n{AT}\n\n[z]\n", "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { Authorization = \"Bearer NEW\" }\n\n[z]\n"),
+            (
+                "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { X-Mine = \"1\" } # x\n",
+                "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { X-Mine = \"1\", Authorization = \"Bearer NEW\" } # x\n",
+            ),
+            ("mcp_servers = { lattice-dev = { {AT} } }\n", "mcp_servers = { lattice-dev = { {AT}, http_headers = { Authorization = \"Bearer NEW\" } } }\n"),
+            // What Codex would send in its place goes.
+            (
+                "[mcp_servers.lattice-dev]\n{AT}\nbearer_token_env_var = \"TOKEN\"\nhttp_headers = { Authorization = \"Bearer old\", X-Mine = \"1\", authorization = \"Bearer older\" }\n# from outside\nenv_http_headers = { AUTHORIZATION = \"TOKEN\", X-Mine-Too = \"VAR\" } # vars\n",
+                "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { Authorization = \"Bearer NEW\", X-Mine = \"1\" }\n# from outside\nenv_http_headers = { X-Mine-Too = \"VAR\" } # vars\n",
+            ),
+            (
+                "mcp_servers = { lattice-dev = { {AT}, bearer_token_env_var = \"TOKEN\" } }\n",
+                "mcp_servers = { lattice-dev = { {AT}, http_headers = { Authorization = \"Bearer NEW\" } } }\n",
+            ),
+            // The end of the file, the marks on its lines and the one before them.
+            (
+                "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { Authorization = \"Bearer old\" }",
+                "[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = { Authorization = \"Bearer NEW\" }",
+            ),
+            ("\u{feff}model = 1\r\n", "\u{feff}model = 1\r\n\r\n{CRLF}"),
+            (
+                "\u{feff}notes = \"\"\"a\r\nb\"\"\"\r\n# c\r\n[mcp_servers.lattice-dev]\r\n{AT}\r\n# t\r\nhttp_headers = { Authorization = \"Bearer old\" } # x\r\n",
+                "\u{feff}notes = \"\"\"a\r\nb\"\"\"\r\n# c\r\n[mcp_servers.lattice-dev]\r\n{AT}\r\n# t\r\nhttp_headers = { Authorization = \"Bearer NEW\" } # x\r\n",
+            ),
+        ] {
+            let before = before.replace("{AT}", AT);
+            let after = after.replace("{TOKEN}", token).replace("{CRLF}", &token.replace('\n', "\r\n")).replace("{BEFORE}", &before).replace("{AT}", AT);
+            assert_eq!(codex_file(&before, false).await.unwrap(), after);
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_loses_the_entry_and_nothing_else() {
+        let ours = format!("[mcp_servers.lattice-dev] # ours\n{AT}\n# t\nhttp_headers = {{ Authorization = \"Bearer old\" }} # t\n");
+        for (before, after) in [
+            ("a = 1 # a\n\n{OURS}", "a = 1 # a\n"),
+            ("a = 1\n\n{OURS}\n[z] # z\n", "a = 1\n\n[z] # z\n"),
+            ("a = 1\n{OURS}[z]\n", "a = 1\n[z]\n"),
+            ("{OURS}\n[z]\n", "[z]\n"),
+            ("# my Codex\n\n# Lattice\n{OURS}\n# z\n[z]\n", "# my Codex\n\n# Lattice\n\n# z\n[z]\n"),
+            ("[z]\n# Lattice\n{OURS}# the end\n", "[z]\n# Lattice\n# the end\n"),
+            (
+                "{OURS}# mine\nstartup_timeout_sec = 9\n\n[mcp_servers.lattice-dev.env_http_headers]\nX = \"V\"\n\n[mcp_servers.z]\nurl = \"u\"\n",
+                "[mcp_servers.z]\nurl = \"u\"\n",
+            ),
+            ("{OURS}", ""),
+            (
+                "# head\nmcp_servers.lattice-dev.{AT}\n# in between\nmcp_servers.lattice-dev.http_headers.Authorization = \"Bearer old\"\n# m\nmodel = \"m\"\n",
+                "# head\n# m\nmodel = \"m\"\n",
+            ),
+            (
+                "[mcp_servers]\n\n# Lattice\nlattice-dev = { {AT} } # x\nother = { command = \"foo\" } # o\n",
+                "[mcp_servers]\n\n# Lattice\nother = { command = \"foo\" } # o\n",
+            ),
+            (
+                "# all\nmcp_servers = { other = { command = \"foo\" }, lattice-dev = { {AT} } } # s\n",
+                "# all\nmcp_servers = { other = { command = \"foo\" } } # s\n",
+            ),
+            (
+                "# all\nmcp_servers = { lattice-dev = { {AT} }, other = { command = \"foo\" } } # s\n",
+                "# all\nmcp_servers = { other = { command = \"foo\" } } # s\n",
+            ),
+            ("\u{feff}# head\r\n[mcp_servers.lattice-dev]\r\n{AT}\r\n\r\n[z]\r\nn = 9\r\n", "\u{feff}# head\r\n\r\n[z]\r\nn = 9\r\n"),
+            ("[z]\n\n{OURS}", "[z]\n"),
+        ] {
+            let before = before.replace("{OURS}", &ours).replace("{AT}", AT);
+            assert_eq!(codex_file(&before, true).await.unwrap(), after);
+        }
+        for before in ["", "a = 1\n", "# c\n[mcp_servers.other]\nurl = \"u\"\n\n# the end\n", "a = 1\r\n"] {
+            let added = codex_file(before, false).await.unwrap();
+            assert_eq!(codex_file(&added, true).await.unwrap(), before, "there and back");
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_settings_that_cannot_be_changed_safely_are_left_alone() {
+        let secret = "0123456789abcdef".repeat(4);
+        for (before, reason) in [
+            // Not TOML: the line is named, and what is on it is not.
+            (format!("model = 1\nkey = \"sk-{secret}\" \"Basic c2VjcmV0\"\n"), "line 2: "),
+            (format!("[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = {{ Authorization = \"Bearer {secret}\n"), "line 3: "),
+            ("mcp_servers = \"none\"\n".into(), CANNOT_KEEP),
+            ("[[mcp_servers]]\nurl = \"u\"\n".into(), CANNOT_KEEP),
+            (format!("[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = \"{secret}\"\n"), CANNOT_KEEP),
+            // `toml_edit` would reorder the one and even out the line ends of the other.
+            (format!("a.x = 1\nb = 2\na.y = 3\n[mcp_servers.lattice-dev]\n{AT}\n"), CANNOT_KEEP),
+            (format!("a = 1\r\n[mcp_servers.lattice-dev]\n{AT}\n"), CANNOT_KEEP),
+        ] {
+            let e = codex_file(&before, false).await.unwrap_err();
+            assert!(e.contains("mcp.agentFailed") && e.contains("config.toml") && e.contains(reason), "{before}: {e}");
+            assert!(!e.contains("0123") && !e.contains("c2Vj"), "{e}");
+        }
+        let other = "[mcp_servers.lattice-dev]\ncommand = \"mine\"\n";
+        assert!(codex_file(other, false).await.unwrap_err().contains("mcp.agentOther"));
+
+        let s = Sandbox::new("codex-kept");
+        let r = s.register(Target::Codex);
+        s.delete(&r);
+        for before in [other, "mcp_servers = \"none\"\n", "a.x = 1\nb = 2\na.y = 3\n"] {
+            s.set("config.toml", before);
+            assert_eq!(s.agents.disconnect(&s.store, Target::Codex).await, Ok(false));
+            assert_eq!(s.file("config.toml"), before);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_read_only_codex_file_is_left_alone_and_a_linked_one_is_changed_where_it_is() {
+        let s = Sandbox::new("codex-files");
+        let path = s.dir.join("config.toml");
+        s.set("config.toml", "a = 1\n");
+        let r = s.register(Target::Codex);
+        let read_only = |yes: bool| {
+            let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+            permissions.set_readonly(yes);
+            std::fs::set_permissions(&path, permissions).unwrap();
+        };
+        read_only(true);
+        let e = s.agents.connect(&s.store, &r.id).await;
+        read_only(false);
+        assert!(e.unwrap_err().contains("mcp.agentFailed"));
+        assert_eq!(s.file("config.toml"), "a = 1\n");
+
+        let linked = s.dir.join("dotfiles");
+        std::fs::create_dir(&linked).unwrap();
+        std::fs::rename(&path, linked.join("codex.toml")).unwrap();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(linked.join("codex.toml"), &path);
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(linked.join("codex.toml"), &path);
+        if let Err(e) = made {
+            eprintln!("skipped: no symbolic link ({e})");
             return;
         }
-        let bearer = |token: &str| format!("Authorization = \"Bearer {token}\"");
-        let written = s.file("config.toml");
-        assert!(written.starts_with(before) && written.contains(&bearer(&r.token)) && written.contains(URL), "{written}");
+        assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
+        assert!(path.is_symlink());
+        let written = std::fs::read_to_string(linked.join("codex.toml")).unwrap();
+        assert!(written.starts_with("a = 1\n") && written.contains(&r.token), "{written}");
+        assert_eq!(std::fs::read_dir(&linked).unwrap().count(), 1, "nothing is left beside it");
 
-        s.set(
-            "config.toml",
-            &format!(
-                "{before}\n[mcp_servers.{CLIENT_NAME}] # mine\nurl = \"{URL}\"\nstartup_timeout_sec = 7\nbearer_token_env_var = \"NO_SUCH\"\n\
-                 http_headers = {{ X-Mine = \"1\", {} }}\nenv_http_headers = {{ X-Env = \"VAR\", authorization = \"NO_SUCH\" }}\n",
-                bearer(&r.token)
-            ),
-        );
-        let renewed = s.regenerate(&r);
-        for _ in 0..2 {
-            assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
-            let written = s.file("config.toml");
-            assert!(written.starts_with(before), "other servers and comments stay: {written}");
-            for kept in ["# mine", "startup_timeout_sec = 7", "X-Mine", "X-Env", &bearer(&renewed.token)] {
-                assert!(written.contains(kept), "{kept}: {written}");
-            }
-            for gone in [r.token.as_str(), "NO_SUCH", "bearer_token_env_var"] {
-                assert!(!written.contains(gone), "{gone}: {written}");
-            }
-        }
-        s.delete(&r);
-        for taken_out in [true, false] {
-            assert_eq!(s.agents.disconnect(&s.store, Target::Codex).await, Ok(taken_out));
-            assert_eq!(s.file("config.toml").trim_end(), before.trim_end());
-        }
+        std::fs::remove_file(linked.join("codex.toml")).unwrap();
+        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentFailed"), "a link that leads nowhere stays");
+        assert!(path.is_symlink());
+    }
 
-        let mine = format!("[mcp_servers.{CLIENT_NAME}]\ncommand = \"mine\"\n");
-        s.set("config.toml", &mine);
+    #[test]
+    fn a_file_changed_since_it_was_read_is_not_overwritten() {
+        let s = Sandbox::new("codex-meanwhile");
+        let path = s.dir.join("config.toml");
+        for (there, read) in [("theirs", Some(&b"ours"[..])), ("theirs", None)] {
+            s.set("config.toml", there);
+            assert!(overwrite(&path, read, "new").is_err());
+            assert_eq!(s.file("config.toml"), there);
+        }
+        std::fs::remove_file(&path).unwrap();
+        assert!(overwrite(&path, Some(b"ours"), "new").is_err());
+        assert_eq!(std::fs::read_dir(&s.dir).unwrap().count(), 0, "neither the file nor the part of it");
+        overwrite(&path, None, "new").unwrap();
+        overwrite(&path, Some(b"new"), "newer").unwrap();
+        assert_eq!(s.file("config.toml"), "newer");
+    }
+
+    #[tokio::test]
+    async fn the_installed_codex_reads_what_is_written() {
+        let s = Sandbox::new("codex");
+        s.set("config.toml", "# my notes\nmodel = \"x\" # keep\n\n[mcp_servers.other]\ncommand = \"foo\" # other\n");
         let r = s.register(Target::Codex);
-        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentOther"));
-        let broken = "model = ";
-        s.set("config.toml", broken);
-        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentFailed"));
-        assert_eq!(s.file("config.toml"), broken, "settings Codex cannot read are left alone");
-        s.set("config.toml", &mine);
-        s.delete(&r);
-        assert_eq!(s.agents.disconnect(&s.store, Target::Codex).await, Ok(false));
-        assert_eq!(s.file("config.toml"), mine);
+        assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
+        let listed =
+            Command::new("codex").args(["mcp", "list", "--json"]).current_dir(&s.dir).env("CODEX_HOME", &s.dir).env("CLAUDE_CONFIG_DIR", &s.dir).output().await;
+        let listed = match listed {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return eprintln!("skipped: {e}"),
+            listed => listed.unwrap(),
+        };
+        let servers: Value = serde_json::from_slice(&listed.stdout).unwrap_or_else(|e| panic!("{e}: {listed:?}"));
+        let ours = servers.as_array().unwrap().iter().find(|server| server["name"] == CLIENT_NAME).unwrap();
+        assert_eq!(ours["transport"]["url"], URL, "{ours}");
+        assert_eq!(ours["transport"]["http_headers"], json!({ "Authorization": format!("Bearer {}", r.token) }), "{ours}");
+        assert!(servers.as_array().unwrap().iter().any(|server| server["name"] == "other"));
     }
 }
