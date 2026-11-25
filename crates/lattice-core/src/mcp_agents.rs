@@ -184,7 +184,7 @@ impl Agents {
             Target::Codex => self.write_codex(want),
             Target::ClaudeCodeProject | Target::Other => Ok(false),
         };
-        let written = written.map_err(|f| f.message(agent))?;
+        let written = written.map_err(|f| f.message(agent)).inspect_err(|e| log::warn!("{agent}: {e}"))?;
         if written {
             log::info!(
                 "{agent}: the MCP server {CLIENT_NAME} was {}",
