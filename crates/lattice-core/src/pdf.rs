@@ -2132,7 +2132,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                 Kind::Paragraph => {
                     let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
                     let past = drafts.last().is_some_and(|d| d.kind == Kind::Table);
-                    let whole = past && prev.text.ends_with(['.', '!', '?', ':', '。', '！', '？']);
+                    let sentence = prev.text.trim_end_matches(['"', '\'', ')', ']', '”', '’', '）', '」', '』']);
+                    let whole = past && sentence.ends_with(['.', '!', '?', ':', '。', '！', '？']);
                     across && !whole && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && l.x0 <= l.left + 0.8 * l.size
                 }
             });
@@ -6088,6 +6089,17 @@ pub(crate) mod tests {
         let texts = blocks_of(&draw(&pages_of(&pages), rgb(30, 10, [200, 0, 0]), &[(0, 322., 300., 200., 100.)]));
         let at = texts.iter().position(|t| t == PROS_TEXT).unwrap();
         assert_eq!(texts[at - 1], "image", "{texts:?}");
+    }
+
+    #[test]
+    fn a_paragraph_that_ends_in_a_bracket_over_a_table_does_not_run_on_past_it() {
+        for end in ["as they say \\(and on.\\)", "as they say \"and on.\""] {
+            let last = format!("and it runs along the whole of the width of the page to the margin, {end}");
+            let first = shown(72., 600., "A paragraph of prose opens the page and it runs on along the line until it is") + &shown(72., 612., &last);
+            let first = first + &two_by_two(WIDE, [640., 676., 712.], PROS);
+            let texts = blocks_of(&pages_of(&[first, across(100., "Another paragraph of prose is read") + &shown(72., 112., "It ends here.")]));
+            assert_eq!((texts.iter().position(|t| t == PROS_TEXT), texts.len()), (Some(1), 3), "{texts:?}");
+        }
     }
 
     #[test]
