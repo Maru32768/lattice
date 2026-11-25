@@ -386,8 +386,8 @@ fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Opt
     })
 }
 
-/// The document's lines in reading order, without running headers and each table as one line, the size of its body
-/// text, and the front matter taken off the first page.
+/// The document's lines in reading order, without running headers, the size of its body text, and the front matter
+/// taken off the first page.
 fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
     let mut lines = Vec::new();
     for (i, page) in doc.pages.iter().enumerate() {
@@ -1833,7 +1833,7 @@ fn in_two_columns<'a>(lines: impl Iterator<Item = &'a Line>, width: f64) -> bool
     left * 5 >= total && right * 5 >= total
 }
 
-/// Reading order of one page, with each table as the first line of it that is read. In two columns, lines across the
+/// Reading order of one page, with each table's lines where the first of them is read. In two columns, lines across the
 /// middle (title, wide figures) split the page into bands, read left column then right. Otherwise the content order
 /// stands, except that a table goes before what is drawn right before it and lies under it: captions drawn first.
 fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
@@ -1859,16 +1859,19 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
             (l.left, l.right) = (lo, hi);
         }
     }
-    let mut seen = HashSet::new();
-    lines.retain(|l| l.table.is_none_or(|t| seen.insert(t)));
+    let mut tables = vec![Vec::new(); page.tables.len()];
     let mut out: Vec<Line> = Vec::with_capacity(lines.len());
     let (mut left, mut right) = (Vec::new(), Vec::new());
     for mut l in lines {
         let table = l.table.map(|t| page.tables[t].at);
-        if let Some([x0, _, x1, _]) = table {
+        if let (Some(t), Some([x0, _, x1, _])) = (l.table, table) {
             (l.x0, l.x1) = (x0, x1);
             if two {
                 l.side = Side::of(x0, x1, page.width);
+            }
+            tables[t].push(l.clone());
+            if tables[t].len() > 1 {
+                continue;
             }
         }
         match l.side {
@@ -1884,7 +1887,8 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
     }
     out.append(&mut left);
     out.append(&mut right);
-    out
+    let whole = |l: Line| l.table.map(|t| std::mem::take(&mut tables[t])).unwrap_or_else(|| vec![l]);
+    out.into_iter().flat_map(whole).collect()
 }
 
 /// The size most of the text is set in.
@@ -1904,24 +1908,31 @@ struct Front {
 
 /// The title is the largest text in the top half of the first page, when it stands out. The
 /// lines between it and the first section heading on that page (authors, affiliations,
-/// addresses) are dropped from the body; the first of them is taken as the author line. Tables stay in the body.
+/// addresses) are dropped from the body; the first of them is taken as the author line. With a table among them they
+/// are text, and nothing is dropped, nor is a title in a table, as a form's is.
 fn take_front_matter(lines: &mut Vec<Line>, body: f64, half: f64) -> Front {
-    let top = |l: &Line| l.page == 0 && l.y < half && l.table.is_none();
+    let top = |l: &Line| l.page == 0 && l.y < half;
     let Some(max) = lines.iter().filter(|l| top(l)).map(|l| l.size).reduce(f64::max).filter(|&m| m >= body * 1.3) else {
         return Front::default();
     };
     let Some(start) = lines.iter().position(|l| top(l) && l.size >= max - 0.5) else {
         return Front::default();
     };
-    let end = start + lines[start..].iter().take_while(|l| l.page == 0 && l.size >= max - 0.5 && l.table.is_none()).count();
+    let table = lines[start].table;
+    let end = start + lines[start..].iter().take_while(|l| l.page == 0 && l.size >= max - 0.5 && l.table == table).count();
     let mut title = String::new();
     for l in &lines[start..end] {
         join(&mut title, &l.text, &HashSet::new());
     }
-    let heading = lines[end..].iter().take_while(|l| l.page == 0).position(|l| l.table.is_none() && section_level(l, body).is_some()).unwrap_or(0);
-    let byline = lines[end..end + heading].iter().find(|l| l.table.is_none());
-    let author = byline.map(|l| l.text.trim_end_matches(['∗', '*', '†', '‡']).to_string()).filter(|a| a.len() <= 150 && !a.contains('@'));
-    lines.extract_if(start..end + heading, |l| l.table.is_none()).for_each(drop);
+    if table.is_some() {
+        return Front { title: Some(title), author: None };
+    }
+    let heading = lines[end..].iter().take_while(|l| l.page == 0).position(|l| section_level(l, body).is_some()).unwrap_or(0);
+    let front = &lines[end..end + heading];
+    let author = front.first().filter(|l| l.table.is_none()).map(|l| l.text.trim_end_matches(['∗', '*', '†', '‡']).to_string());
+    let author = author.filter(|a| a.len() <= 150 && !a.contains('@'));
+    let dropped = Some(heading).filter(|_| front.iter().all(|l| l.table.is_none())).unwrap_or(0);
+    lines.drain(start..end + dropped);
     Front { title: Some(title), author }
 }
 
@@ -2067,7 +2078,10 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     let mut refs: Option<RefStyle> = None;
     for (i, l) in lines.iter().enumerate() {
         if l.table.is_some() {
-            drafts.push(Draft { kind: Kind::Table, lines: vec![l] });
+            match drafts.last_mut() {
+                Some(d) if d.lines[0].table == l.table && d.lines[0].page == l.page => d.lines.push(l),
+                _ => drafts.push(Draft { kind: Kind::Table, lines: vec![l] }),
+            }
             continue;
         }
         if let Some(level) = heading_level(l, body) {
@@ -5929,19 +5943,36 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_table_among_the_front_matter_gives_no_title_author_or_section() {
-        // Its cells are larger than the title, and the first is as a section's title is.
-        let cells =
-            sized(76., 125., 20., "1 Introduction") + &sized(336., 125., 20., "Lasting") + &sized(76., 165., 20., "Costly") + &sized(336., 165., 20., "Easy");
-        let front = sized(72., 80., 16., "Overview of the machine") + &ruled(&[72., 330., 540.], &[100., 140., 180.], "strokes") + &cells;
-        let ops = front
-            + &shown(72., 200., "Ann Author")
-            + &sized(72., 240., 12., "2 Interfaces")
-            + &across(270., "The first line is read")
-            + &across(282., "Then it ends");
+    fn a_title_in_a_table_is_the_title_and_nothing_goes_with_it() {
+        let head = ruled(&[72., 180., 420., 540.], &[60., 100., 120.], "strokes") + &sized(184., 85., 18., "Supplier Quality Manual");
+        let head = head + &shown(76., 74., "Widget Works") + &shown(424., 74., "No. 1234") + &shown(76., 114., "Rev. 2") + &shown(184., 114., "Draft");
+        let ops = head + &sized(72., 150., 14., "1. Purpose") + &across(170., "The purpose is read") + &sized(72., 200., 14., "2. Scope");
         let ir = to_ir(&pages_of(&[ops]), None).unwrap();
-        assert_eq!((ir.meta.title.as_deref(), ir.meta.author.as_deref()), (Some("Overview of the machine"), Some("Ann Author")));
-        assert_eq!(kinds(&ir)[..2], [("table", "1 Introduction\tLasting\nCostly\tEasy"), ("heading", "2 Interfaces")]);
+        assert_eq!((ir.meta.title.as_deref(), ir.meta.author.as_deref()), (Some("Supplier Quality Manual"), None));
+        let table = "Widget Works\tSupplier Quality Manual\tNo. 1234\nRev. 2\tDraft\t";
+        assert_eq!(kinds(&ir), [("table", table), ("heading", "1. Purpose"), ("paragraph", &full("The purpose is read")), ("heading", "2. Scope")]);
+    }
+
+    #[test]
+    fn text_by_a_table_before_the_first_section_is_no_front_matter() {
+        // The second table's rows are numbered as sections are.
+        for cells in [PROS, ["1.0 First", "May", "1.1 Next", "June"]] {
+            let front = sized(72., 80., 20., "Interface Specification") + &shown(72., 100., "Ann Author") + &two_by_two(WIDE, [115., 135., 155.], cells);
+            let ops = front + &across(180., "A notice is read") + &sized(72., 210., 14., "1 Scope") + &across(230., "The scope is read");
+            let ir = to_ir(&pages_of(&[ops]), None).unwrap();
+            assert_eq!((ir.meta.title.as_deref(), ir.meta.author.as_deref()), (Some("Interface Specification"), Some("Ann Author")));
+            let [a, b, c, d] = cells;
+            let table = format!("{a}\t{b}\n{c}\t{d}");
+            assert!(kinds(&ir).windows(2).any(|k| k == [("table", &*table), ("paragraph", &*full("A notice is read"))]), "{:?}", kinds(&ir));
+            assert_eq!(kinds(&ir).last(), Some(&("paragraph", &*full("The scope is read"))));
+        }
+    }
+
+    #[test]
+    fn a_word_hyphenated_in_a_cell_keeps_its_hyphen_across_a_line_break() {
+        let prose = shown(72., 100., "Here we look at what a model that was pre-") + &shown(72., 112., "trained does when it is given more words to read.");
+        let texts = texts_of(&(prose + &two_by_two(WIDE, [200., 220., 240.], ["Kind", "Score", "a pre-trained one", "1.0"])));
+        assert!(texts[0].contains("was pre-trained does"), "{texts:?}");
     }
 
     #[test]
