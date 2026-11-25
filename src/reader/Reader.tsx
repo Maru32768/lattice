@@ -250,6 +250,14 @@ export function LangSeg({
 /** What the bar over a selection takes below its end. */
 const BAR_HEIGHT = 44;
 
+/** The selection's ends as they are now: its own range moves along with it. */
+function selectedRange(): AbstractRange | null {
+  const sel = window.getSelection();
+  return sel?.rangeCount ? new StaticRange(sel.getRangeAt(0)) : null;
+}
+const sameRange = (a: AbstractRange, b: AbstractRange) =>
+  a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
+
 /** Re-translating more blocks than this asks first. */
 const RETRANSLATE_CONFIRM_BLOCKS = 50;
 
@@ -864,8 +872,8 @@ export function Reader({
   const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
-  /** Where the press that is held began, or the last one. */
-  const pressedText = useRef(false);
+  /** What was selected as the press that is held began, and none where it may select the same again: on the text. */
+  const pressed = useRef<AbstractRange | null>(null);
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
     passage?: { blockId: number; quote: string };
@@ -1136,15 +1144,23 @@ export function Reader({
           data-pane-target
           onScroll={cap && !cap.status ? () => setCap(null) : undefined}
           onPointerDown={(e) => {
-            pressedText.current = onText(e);
+            pressed.current = onText(e) ? null : selectedRange();
             if (onSticky(e)) {
               setCap(null);
             }
           }}
-          // Not on the blocks alone: a drag over a passage often ends in the margin.
-          onMouseUp={(e) => (pressedText.current || onText(e)) && offerBar()}
-          // Nor here: the text of a block that cannot take the focus leaves it to the scroller.
-          onKeyUp={(e) => e.shiftKey && !onSticky(e) && offerBar()}
+          // Not on the blocks alone: a drag over a passage often starts or ends in the margin. But a press on the scrollbar
+          // or a sticky leaves the selection, and no bar.
+          onMouseUp={() => {
+            const now = selectedRange();
+            if (!pressed.current || !now || !sameRange(pressed.current, now)) {
+              offerBar();
+            }
+            pressed.current = now;
+          }}
+          // Nor here: the text of a block that cannot take the focus leaves it to the scroller. Visual mode, which takes no
+          // Shift, goes on from a passage that has the bar.
+          onKeyUp={(e) => (e.shiftKey || passage) && !onSticky(e) && offerBar()}
         >
           <article className="reader">
             <div className="art-meta">

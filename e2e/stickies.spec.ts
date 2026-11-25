@@ -100,6 +100,7 @@ const selectFrom = (page: Page, from: string, to: string) =>
       const r = document.createRange();
       r.setStart(start, 0);
       r.setEnd(end, end.childNodes.length);
+      start.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       getSelection()!.removeAllRanges();
       getSelection()!.addRange(r);
       end.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
@@ -1108,6 +1109,36 @@ test("a drag past the text's edge over the column selects to the line's end, ove
   expect(await selected(shell)).toBe(para(9));
   await cards(shell).first().getByRole("button", { name: "付箋を削除" }).click();
   await expect(shell.getByRole("alertdialog")).toBeVisible();
+});
+
+test("a passage selected from the margins is asked about, and one that Shift extends there as it is then", async ({ app }) => {
+  await openSnapshot(app);
+  const text = await boxOf(app.locator("#b-102 p"));
+  await dragTo(app, [text.x - 30, text.y + 14], [text.x + text.width + 30, text.y + 14]);
+  expect(await selected(app)).not.toBe("");
+  await expect(bar(app)).toBeVisible();
+
+  await drag(app, "#b-102", "#b-102");
+  await expect(bar(app)).toBeVisible();
+  const to = await boxOf(app.locator("#b-103 p"));
+  await app.keyboard.down("Shift");
+  await app.mouse.click(to.x + to.width + 30, to.y + to.height - 10);
+  await app.keyboard.up("Shift");
+  await bar(app).getByRole("button", { name: "用語" }).click();
+  await expect.poll(async () => (await asked(app)).at(-1)?.quote.split(/\n+/).length).toBe(2);
+});
+
+test("a passage that visual mode extends is asked about as it is then", async ({ shell }) => {
+  await startLong(shell);
+  await drag(shell, paraBlock(2), paraBlock(2));
+  await expect(bar(shell)).toBeVisible();
+  for (const key of ["v", "j", "j"]) {
+    await shell.keyboard.press(key);
+  }
+  await expect.poll(() => selected(shell)).toContain(para(3));
+  const quote = await selected(shell);
+  await bar(shell).getByRole("button", { name: "用語" }).click();
+  await expect.poll(async () => (await asked(shell)).at(-1)?.quote.replace(/\s+/g, " ")).toBe(quote);
 });
 
 test("in a narrow pane a drag over a card selects the text on both sides of it alone", async ({ shell }) => {
