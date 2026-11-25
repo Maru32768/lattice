@@ -646,6 +646,25 @@ test("a scroll of a few pixels is kept as a card changes", async ({ shell }) => 
   }
 });
 
+test("a scroll of a few pixels up from the article's end is kept as a card changes", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(78), "center");
+  await askAbout(shell, "質問", paraBlock(78));
+  await expect(field(shell)).toBeFocused();
+  for (const px of [3, 15, 40]) {
+    await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await frames(shell);
+    await shell.keyboard.type("x");
+    await frames(shell);
+    await doc(shell).evaluate((el, px) => (el.scrollTop -= px), px);
+    await frames(shell);
+    const top = await scrollTop(shell);
+    await shell.keyboard.type("x");
+    await frames(shell);
+    expect(await scrollTop(shell), `${px}`).toBe(top);
+  }
+});
+
 test("a paragraph at the top of the view that grows below there moves no text", async ({ shell }) => {
   await startNarrow(shell, 40);
   await askElsewhere(shell, LONG_ID, paraId(40));
