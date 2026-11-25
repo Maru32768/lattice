@@ -131,6 +131,8 @@ enum Failure {
     Missing(String),
     SomeoneElses,
     Failed(String),
+    /// The same, and Lattice's earlier entry is gone.
+    Lost(String),
 }
 
 impl Failure {
@@ -143,6 +145,7 @@ impl Failure {
             Self::Missing(program) => msg!("mcp.agentMissing", agent = agent, program = program),
             Self::SomeoneElses => msg!("mcp.agentOther", agent = agent, name = CLIENT_NAME),
             Self::Failed(error) => msg!("mcp.agentFailed", agent = agent, error = scrubbed(&error)),
+            Self::Lost(error) => msg!("mcp.agentLost", agent = agent, error = scrubbed(&error)),
         }
     }
 }
@@ -199,24 +202,39 @@ impl Agents {
 
     async fn write_claude_code(&self, want: Want<'_>) -> Result<bool, Failure> {
         let found = self.claude_code_entry()?;
-        let remove = ["mcp", "remove", CLIENT_NAME, "-s", "user"];
         match step(&entry(&found, "headers"), want)? {
             Step::Leave => return Ok(false),
-            Step::Remove => self.claude(&remove).await?,
+            Step::Remove => self.remove_from_claude_code().await?,
             Step::Add(token) => self.add_to_claude_code(&claude_code_with(&found, token)).await?,
             Step::Replace(token) => {
                 let new = claude_code_with(&found, token);
                 if new != found {
-                    // `add-json` refuses a name it already has.
-                    self.claude(&remove).await?;
-                    if let Err(failure) = self.add_to_claude_code(&new).await {
-                        let _ = self.add_to_claude_code(&found).await;
-                        return Err(failure);
-                    }
+                    self.replace_in_claude_code(&found, &new).await?;
                 }
             }
         }
         Ok(true)
+    }
+
+    async fn replace_in_claude_code(&self, old: &Value, new: &Value) -> Result<(), Failure> {
+        // `add-json` refuses a name it already has.
+        let replaced = async {
+            self.remove_from_claude_code().await?;
+            self.add_to_claude_code(new).await
+        };
+        let Err(failure) = replaced.await else {
+            return Ok(());
+        };
+        // Refused where the old one is still there, and where Claude Code takes neither.
+        let _ = self.add_to_claude_code(old).await;
+        Err(match (failure, self.claude_code_entry()) {
+            (Failure::Failed(error), Ok(Value::Null)) => Failure::Lost(error),
+            (failure, _) => failure,
+        })
+    }
+
+    async fn remove_from_claude_code(&self) -> Result<(), Failure> {
+        self.claude(&["mcp", "remove", CLIENT_NAME, "-s", "user"]).await
     }
 
     /// Read from the file: `claude mcp get` connects to the server and prints text for people, with the token hidden.
@@ -781,6 +799,28 @@ mod tests {
             assert_eq!(calls[0], "mcp remove lattice-dev -s user");
             assert!(calls[1].contains(&r.token), "{calls:?}");
             assert_eq!(calls[2], format!("mcp add-json -s user lattice-dev \"{old}\""));
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn an_entry_claude_code_drops_and_does_not_take_back_is_told_of() {
+        let wipe = "echo {}>\"%~dp0.claude.json\"";
+        for (claude, runs, error) in [
+            (format!("if %2==remove {wipe}\r\n@if %2==remove exit /b 0\r\n@exit /b 3"), 3, "exit code: 3:"),
+            // It takes the entry out, and fails all the same.
+            (format!("if %2==remove {wipe}\r\n@exit /b 3"), 2, "exit code: 3:"),
+        ] {
+            let mut s = Sandbox::new("claude-lost");
+            s.agents.claude = s.fake_claude(&claude);
+            let r = s.register(Target::ClaudeCode);
+            let old = json!({ "headers": { "Authorization": "Bearer old" }, "type": "http", "url": URL });
+            s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: old } }).to_string());
+            let e = message(&s.agents.connect(&s.store, &r.id).await.unwrap_err());
+            assert_eq!((e["code"].as_str(), e["params"]["error"].as_str().map(str::trim)), (Some("mcp.agentLost"), Some(error)));
+            let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().replace("\"\"", "\"")).collect();
+            assert_eq!(calls.len(), runs, "{calls:?}");
+            assert_eq!(calls[runs - 1], format!("mcp add-json -s user lattice-dev \"{old}\""), "the last thing tried");
         }
     }
 

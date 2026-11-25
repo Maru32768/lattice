@@ -1583,5 +1583,6 @@ export const ja = {
   "be.mcp.targetTaken": "{agent}の登録は、もう「{name}」があります",
   "be.mcp.agentMissing": "{agent}の設定を書き換えられませんでした。「{program}」が見つかりません。",
   "be.mcp.agentFailed": "{agent}の設定を書き換えられませんでした: {error}",
+  "be.mcp.agentLost": "{agent}の設定を書き換えられず、前の登録も{agent}から消えました: {error}",
   "be.mcp.agentOther": "{agent}の設定には、Latticeのものではない「{name}」という登録がもうあるので、変えませんでした。それを消すか名前を変えると登録できます。",
 } as const satisfies Record<string, string>;
