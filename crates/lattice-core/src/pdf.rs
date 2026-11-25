@@ -1779,7 +1779,7 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     };
     let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
     let mut numbered: HashMap<i64, HashSet<usize>> = HashMap::new();
-    for l in lines.iter().flatten().filter(|l| l.table.is_none()) {
+    for l in lines.iter().flatten() {
         if let Some(k) = key(l) {
             seen.entry(k).or_default().insert(l.page);
         }
@@ -1896,7 +1896,7 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
             Side::Full => {
                 out.append(&mut left);
                 out.append(&mut right);
-                let under = table.filter(|_| !two).map_or(0, |[x0, _, x1, y1]| out.iter().rev().take_while(|o| o.y >= y1 && o.x0 < x1 && o.x1 > x0).count());
+                let under = table.map_or(0, |[x0, _, x1, y1]| out.iter().rev().take_while(|o| o.y >= y1 && o.x0 < x1 && o.x1 > x0).count());
                 out.insert(out.len() - under, l);
             }
         }
@@ -2205,16 +2205,10 @@ fn flows(prev: &Line, l: &Line, pitch: f64) -> bool {
 
 /// Line spacing as a multiple of the font size, from consecutive lines of body text.
 fn pitch(lines: &[Line], body: f64) -> f64 {
+    let lines: Vec<&Line> = lines.iter().filter(|l| l.table.is_none()).collect();
     let mut r: Vec<f64> = lines
         .windows(2)
-        .filter(|w| {
-            w[0].page == w[1].page
-                && w[0].side == w[1].side
-                && w[0].table.is_none()
-                && w[1].table.is_none()
-                && (w[0].size - body).abs() < 0.5
-                && (w[1].size - body).abs() < 0.5
-        })
+        .filter(|w| w[0].page == w[1].page && w[0].side == w[1].side && (w[0].size - body).abs() < 0.5 && (w[1].size - body).abs() < 0.5)
         .map(|w| (w[1].y - w[0].y) / body)
         .filter(|r| (0.9..2.5).contains(r))
         .collect();
@@ -3626,11 +3620,13 @@ pub(crate) mod tests {
 
     #[test]
     fn a_one_page_pdf_keeps_a_table_in_its_top_margin() {
-        // Wholly in the top 8% of the page, as a running header is.
-        let cells = shown(78., 28., "Strong") + &shown(178., 28., "Lasting") + &shown(78., 53., "Costly") + &shown(178., 53., "Easy");
-        let ops = ruled(&[72., 172., 540.], &[10., 35., 60.], "strokes") + &cells + &shown(72., 200., "Then a paragraph of prose follows the table.");
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-        assert_eq!(kinds(&ir), [("table", "Strong\tLasting\nCostly\tEasy"), ("paragraph", "Then a paragraph of prose follows the table.")]);
+        // Wholly in the top 8% of the page, as a running header is. Numbers alone there are a page's.
+        for [a, b, c, d] in [PROS, ["1", "2", "3", "4"]] {
+            let ops = two_by_two([72., 172., 540.], [10., 35., 60.], [a, b, c, d]) + &shown(72., 200., "Then a paragraph of prose follows the table.");
+            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+            let table = format!("{a}\t{b}\n{c}\t{d}");
+            assert_eq!(kinds(&ir), [("table", &*table), ("paragraph", "Then a paragraph of prose follows the table.")]);
+        }
     }
 
     #[test]
@@ -6000,6 +5996,41 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_table_among_the_front_matter_gives_no_title_author_or_section() {
+        // Its cells are larger than the title, and the first is as a section's title is.
+        let cells =
+            sized(76., 125., 20., "1 Introduction") + &sized(336., 125., 20., "Lasting") + &sized(76., 165., 20., "Costly") + &sized(336., 165., 20., "Easy");
+        let front = sized(72., 80., 16., "Overview of the machine") + &ruled(&[72., 330., 540.], &[100., 140., 180.], "strokes") + &cells;
+        let ops = front
+            + &shown(72., 200., "Ann Author")
+            + &sized(72., 240., 12., "2 Interfaces")
+            + &across(270., "The first line is read")
+            + &across(282., "Then it ends");
+        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        assert_eq!((ir.meta.title.as_deref(), ir.meta.author.as_deref()), (Some("Overview of the machine"), Some("Ann Author")));
+        assert_eq!(
+            kinds(&ir)[..2],
+            [
+                (
+                    "table",
+                    "1 Introduction	Lasting
+Costly	Easy"
+                ),
+                ("heading", "2 Interfaces")
+            ]
+        );
+    }
+
+    #[test]
+    fn the_text_of_a_table_in_a_cell_of_another_is_read_once() {
+        let outer = two_by_two([72., 306., 540.], [100., 200., 400.], ["Fast", "Cheap", "Slow", "Dear"]);
+        let texts = texts_of(&(outer + &two_by_two([320., 420., 520.], [220., 250., 280.], PROS))).join(" ");
+        for word in PROS.into_iter().chain(CONS) {
+            assert_eq!(texts.matches(word).count(), 1, "{word}: {texts}");
+        }
+    }
+
+    #[test]
     fn headings_among_tables_alone_stay_headings() {
         let mut ops = String::new();
         for (i, heading) in ["Electrical data", "Mechanical data", "Ordering"].into_iter().enumerate() {
@@ -6038,6 +6069,51 @@ pub(crate) mod tests {
         ops += &two_by_two(RIGHT, [100., 130., 160.], PROS);
         ops += &(0..20).map(|i| shown(322., 203. + 20. * i as f64, &format!("Right column line {i} of the body runs on."))).collect::<String>();
         assert_eq!(texts_of(&ops)[..4], ["Left.", "a\tb\nc\td", "a\tb\nc\td", PROS_TEXT]);
+        let ops = shown(322., 200., "Right.") + &two_by_two(LEFT, [100., 130., 160.], PROS) + &across(400., "The last line is read");
+        assert_eq!(texts_of(&ops)[..2], ["Right.", PROS_TEXT]);
+    }
+
+    #[test]
+    fn text_right_by_a_cell_and_drawn_next_to_it_is_not_in_its_table() {
+        // Between the rows' baselines, and near enough to one to be on its line.
+        let prose = across(80., "The first line is read");
+        let table = two_by_two([72., 172., 380.], [110., 160., 200.], PROS);
+        for ops in [prose.clone() + &table + &shown(400., 188., "A note."), prose.clone() + &shown(400., 143., "A note.") + &table] {
+            let texts = texts_of(&ops);
+            assert!(texts.iter().any(|t| t == "A note.") && texts.iter().any(|t| t == PROS_TEXT), "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn text_set_across_right_by_a_cell_on_a_turned_page_is_not_in_its_table() {
+        let columns: String = (0..6).map(|i| set_down(540. - 16. * i as f64, 80., &TEN_DOWN.repeat(3))).collect();
+        // Courier's 10pt glyphs are 6pt wide, so the label ends 2pt left of the table, and the cell starts 2pt right of its border.
+        let cells = shown(202., 463., "Strong") + &shown(306., 463., "Lasting") + &shown(202., 503., "Costly") + &shown(306., 503., "Easy");
+        let ops = columns + &ruled(&[200., 300., 400.], &[440., 480., 520.], "strokes") + &shown(180., 463., "Row") + &cells;
+        let texts = blocks_of(&after_a_page_of_columns(&ops));
+        assert!(texts.iter().any(|t| t == "Row") && texts.iter().any(|t| t == PROS_TEXT), "{texts:?}");
+    }
+
+    #[test]
+    fn a_column_that_runs_on_over_the_page_does_so_whatever_table_is_under_the_columns_of_vertical_writing() {
+        let columns = |n: i32| (0..n).map(|i| set_down(540. - 16. * i as f64, 80., &TEN_DOWN.repeat(5))).collect::<String>();
+        let words = ["Strong for a good long time", "Lasting for a good long time", "Costly for a good long time", "Easy for a good long time"];
+        let first = columns(8) + &two_by_two([72., 300., 540.], [600., 640., 680.], words);
+        let bytes = with_contents(&japanese(&[vec![], vec![]], "Identity-V", &columns(3)), &[(0, &first)]);
+        let texts = blocks_of(&bytes);
+        assert_eq!(texts.iter().map(|t| t.chars().count()).collect::<Vec<_>>(), [11 * 50, words.join(" ").len()], "{texts:?}");
+    }
+
+    #[test]
+    fn the_line_spacing_is_not_measured_from_captions_to_their_tables() {
+        let mut ops = across(80., "The first line is read") + &across(92., "The second line is read") + &across(104., "It goes on").replace('.', "") + "\n";
+        for i in 0..4 {
+            let y = 150. + 100. * i as f64;
+            ops += &(shown(72., y, "Some sizes") + &two_by_two(WIDE, [y + 9., y + 27., y + 45.], PROS));
+        }
+        ops += &(shown(72., 600., "one line of its own") + &shown(72., 623., "another line of its own"));
+        let texts = texts_of(&ops);
+        assert!(texts.iter().any(|t| t == "one line of its own"), "{texts:?}");
     }
 
     #[test]
@@ -6136,11 +6212,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_translation_under_a_chart_has_no_room_over_it_where_a_table_goes_up_to_the_top() {
-        let first = two_by_two(WIDE, [60., 100., 140.], PROS) + &across(300., "The first paragraph is read");
-        let second = across(145., "The text under a chart is read") + &across(400., "The second paragraph is read");
-        let rooms: Vec<(usize, f64)> = regions(&pages_of(&[first, second])).unwrap().iter().map(|r| (r.page, r.room_up)).collect();
-        assert_eq!(rooms, [(0, 0.), (1, 0.), (1, 0.)]);
+    fn a_translation_by_a_chart_has_no_room_over_it_where_tables_go_up_and_down_to_the_edges() {
+        let tables = two_by_two(WIDE, [60., 100., 140.], PROS) + &two_by_two(WIDE, [600., 640., 680.], CONS);
+        let first = tables + &across(300., "The first paragraph is read");
+        let second = across(145., "The text under a chart is read") + &across(630., "The text over a chart is read");
+        let rooms: Vec<(usize, f64, f64)> = regions(&pages_of(&[first, second])).unwrap().iter().map(|r| (r.page, r.room_up, r.room_down)).collect();
+        assert_eq!(rooms, [(0, 0., 0.), (1, 0., 0.), (1, 0., 0.)]);
     }
 
     #[test]
