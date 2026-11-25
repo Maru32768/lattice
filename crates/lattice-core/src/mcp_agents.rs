@@ -899,6 +899,15 @@ mod tests {
 
     #[tokio::test]
     async fn the_installed_claude_code_takes_replaces_and_gives_up_the_registration() {
+        // Lest it changes the settings of whoever runs the tests.
+        #[cfg(windows)]
+        {
+            let mut probe = Sandbox::new("claude-folder");
+            probe.agents.claude = probe.fake_claude("echo %CLAUDE_CONFIG_DIR%>\"%~dp0folder.txt\"");
+            let r = probe.register(Target::ClaudeCode);
+            assert_eq!(probe.agents.connect(&probe.store, &r.id).await, Ok(true));
+            assert_eq!(probe.file("folder.txt").trim(), probe.dir.to_string_lossy());
+        }
         let s = Sandbox::new("claude");
         let other = json!({ "type": "http", "url": "http://127.0.0.1:1/mcp" });
         s.set(".claude.json", &json!({ "mcpServers": { "other": other } }).to_string());
