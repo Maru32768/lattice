@@ -88,21 +88,31 @@ const keep = (scroller: HTMLElement, line = lineAt(scroller)): Kept => ({
   offset: offsetOf(line, scroller),
 });
 
-/** The line from before, unless the reader has gone on. Read again, it would go on by what each scroll is rounded by. */
-function lineOf(k: Kept | null, scroller: HTMLElement): Line | undefined {
+/** How far the view has been scrolled since. At the end of text that got shorter it comes up with it, which is no scroll. */
+function scrolled(k: Kept, { scrollTop, clientHeight, scrollHeight }: HTMLElement) {
+  const by = scrollTop - k.top;
+  return Math.abs(by) < 1 || (by < 0 && scrollTop + clientHeight > scrollHeight - 1) ? 0 : by;
+}
+
+/**
+ * The line from before and where in the pane it is to be, unless the reader has gone on. Read again, it would go on by what
+ * each scroll is rounded by.
+ */
+function lineOf(k: Kept | null, scroller: HTMLElement): Pick<Kept, "line" | "offset"> | undefined {
   if (!k?.line.block.isConnected) {
     return undefined;
   }
-  const { scrollTop, clientHeight, scrollHeight } = scroller;
-  const resized = k.width !== widthOf(scroller);
-  if (!resized && Math.abs(offsetOf(k.line, scroller) - k.offset) < 1) {
-    return k.line;
+  const { line, offset } = k;
+  const by = scrolled(k, scroller);
+  if (k.width !== widthOf(scroller)) {
+    // The browser has held no text (stickies.css), so this is all the reader's: a scroll that goes on, as a key's or a
+    // wheel's does over some frames. More than a view of it is a jump to a place of this width.
+    return Math.abs(by) < scroller.clientHeight ? { line, offset: -by } : undefined;
   }
-  // The text has moved and the reader has not: the browser held none, as in a pane of another width (stickies.css) or where
-  // no text is in view. At the end of text that got shorter the view comes up with it.
-  const rested = Math.abs(scrollTop - k.top) < 1 || (scrollTop < k.top && scrollTop + clientHeight > scrollHeight - 1);
-  const whole = Math.abs(k.line.block.getBoundingClientRect().height - k.height) < 1;
-  return rested && (resized || whole) ? k.line : undefined;
+  const still = Math.abs(offsetOf(line, scroller) - offset) < 1;
+  // The text has moved and the reader has not: the browser held none, as where no text is in view.
+  const whole = Math.abs(line.block.getBoundingClientRect().height - k.height) < 1;
+  return still || (by === 0 && whole) ? { line, offset } : undefined;
 }
 
 /**
@@ -122,9 +132,8 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
 
   // The browser's scroll anchoring lets go of text whose own styles change, as they do here.
   const was = kept.current;
-  const before = lineOf(was, scroller);
-  const line = before ?? lineAt(scroller);
-  const offset = was && before && was.width === widthOf(scroller) ? was.offset : 0;
+  const { line, offset } = lineOf(was, scroller) ?? { line: lineAt(scroller), offset: 0 };
+  const scrolledOn = was?.width !== widthOf(scroller) && offset !== 0;
 
   if (room) {
     column.toggleAttribute("data-placed", cards.length > 0);
@@ -159,7 +168,7 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   if (Math.abs(moved) >= 0.5) {
     scroller.scrollTop += moved;
   }
-  kept.current = cards.length > 0 ? keep(scroller, line) : null;
+  kept.current = cards.length > 0 ? keep(scroller, scrolledOn ? lineAt(scroller) : line) : null;
 }
 
 /** The article's stickies: a column beside its text, inside its scroller, or each under its block in a narrow pane. */

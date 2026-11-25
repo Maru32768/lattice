@@ -771,6 +771,53 @@ test("the line being read stays at the top of the view as a pane changes by part
   expect(Math.abs((await passed()) - before)).toBeLessThan(1);
 });
 
+for (const article of ["with stickies", "without"] as const) {
+  test(`a scroll that goes on as the pane's width changes goes on from the line being read (an article ${article})`, async ({ shell }) => {
+    await startNarrow(shell, 40);
+    if (article === "with stickies") {
+      for (const block of [paraId(10), paraId(50)]) {
+        await askElsewhere(shell, LONG_ID, block);
+      }
+      await expect(cards(shell)).toHaveCount(2);
+    }
+    const listAt = (px: number) => shell.evaluate((px) => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`), px);
+    const { width } = await boxOf(list(shell));
+    // Within the narrow layout, into the wide one and back.
+    for (const to of [width - 40, width + 30, width - 220]) {
+      for (const by of [1, 20, 100, -100]) {
+        await listAt(width);
+        await scrollTo(shell, paraBlock(40), "start");
+        await doc(shell).evaluate((el) => (el.scrollTop += 300));
+        await frames(shell);
+        for (const [first, px] of [
+          ["scroll", to],
+          ["width", width],
+        ] as const) {
+          const over = async () => {
+            const [b, view] = [await boxOf(shell.locator(paraBlock(40))), await boxOf(doc(shell))];
+            return { above: view.y - b.y, height: b.height };
+          };
+          const was = await over();
+          await doc(shell).evaluate(
+            (el, [first, by, px]) => {
+              const steps = [() => (el.scrollTop += by), () => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`)];
+              for (const step of first === "scroll" ? steps : steps.reverse()) {
+                step();
+              }
+            },
+            [first, by, px] as const,
+          );
+          await frames(shell);
+          const is = await over();
+          // The browser keeps the paragraph's top, and this the share of it that is above the view.
+          const expected = article === "without" ? was.above : (was.above / was.height) * is.height;
+          expect(Math.abs(is.above - expected - by), `${first} first, by ${by}, to ${px}`).toBeLessThan(2);
+        }
+      }
+    }
+  });
+}
+
 test("the line being read stays at the top of the view of an article translated by the sentence, at any width", async ({ shell }) => {
   await shell.setViewportSize({ width: 1200, height: 800 });
   await startLong(shell, 12, "", true);
