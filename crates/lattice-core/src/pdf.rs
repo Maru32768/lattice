@@ -2780,6 +2780,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_sentence_after_a_figure_is_no_rest_of_the_aside_before_it() {
+        let body = |from: f64| (0..6).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+        let aside = (0..5).map(|i| (60., 200. + 11.5 * i as f64, 9.5, ASIDE));
+        let second = [(L, 100., 9., "Figure 1: The log.")].into_iter().chain(body(140.)).collect();
+        let ir = to_ir(&pdf(&[body(100.).chain(aside).collect(), second], None), None).unwrap();
+        assert!(!texts(&ir).iter().any(|t| t.contains(ASIDE) && t.contains(BODY)), "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn a_sentence_after_displayed_code_stays_under_its_heading() {
         let first = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
         let second = vec![
@@ -2916,9 +2925,19 @@ pub(crate) mod tests {
         let body = |from: f64| (0..5).map(move |i| (L, from + 12. * i as f64, 10., BODY));
         let ir = to_ir(&pdf(&[body(100.).chain([code(160.)]).collect(), body(100.).collect()], None), None).unwrap();
         assert_eq!(ir.blocks.len(), 1, "a last line of code type: {:?}", kinds(&ir));
-        let titled = body(100.).chain([(L, 190., 10.7, "Practice Problem 3 (page 36)"), (L, 202., 10., BODY)]).collect();
-        let ir = to_ir(&pdf(&[titled, [code(100.)].into_iter().chain(body(112.)).collect()], None), None).unwrap();
-        assert_eq!(ir.blocks.len(), 2, "a first line of code type after a title and a line: {:?}", kinds(&ir));
+        for lines in 1..=2 {
+            let problem = [(L, 190., 10.7, "Practice Problem 3 (page 36)")].into_iter().chain(body(202.).take(lines));
+            let ir = to_ir(&pdf(&[body(100.).chain(problem).collect(), [code(100.)].into_iter().chain(body(112.)).collect()], None), None).unwrap();
+            assert_eq!(ir.blocks.len(), 2, "a first line of code type after a title and {lines} of its lines: {:?}", kinds(&ir));
+        }
+        let shown = [(L, 100., 9., "node_self_current_idx = node_self_next_idx + 1;"), (L, 112., 9., "node_self_next_idx = node_self_last_idx;")];
+        let text = body(100.).take(2).chain([code(124.)]).chain(body(136.).take(2)).collect();
+        let ir = to_ir(&pdf(&[text, shown.into_iter().chain(body(150.)).collect()], None), None).unwrap();
+        assert!(!texts(&ir).iter().any(|t| t.contains(BODY) && t.contains("next_idx")), "code under a paragraph with a line of code type: {:?}", kinds(&ir));
+        let sentence = (L, 160., 9., "node_self_current_idx that it has given to each of the copies and sets there, so.");
+        let second = [(L, 100., 10., "2.73 Write a function that the leader has a use for")].into_iter().chain(body(112.)).collect();
+        let ir = to_ir(&pdf(&[body(100.).chain([sentence]).collect(), second], None), None).unwrap();
+        assert!(ir.blocks[0].text.ends_with("there, so."), "a paragraph after a last line of code type: {:?}", kinds(&ir));
         let last = "the write that it was given by the leader of the replicas and the others.";
         let second =
             [(L, 100., 9.5, "2.73 Write a function that the leader has a use for")].into_iter().chain((0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY)));
