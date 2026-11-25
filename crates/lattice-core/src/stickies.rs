@@ -351,6 +351,9 @@ mod tests {
             assert!(request.starts_with(opens) && request.trim_end().lines().count() == 1 && !request.contains("なぜ"), "{request}");
             assert_eq!(llm.system(), system);
         }
+        let chats: (i64, i64) =
+            s.conn().query_row("SELECT (SELECT count(*) FROM chat_threads), (SELECT count(*) FROM chat_messages)", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(chats, (1, 1), "no chat hears of it");
     }
 
     #[tokio::test]
