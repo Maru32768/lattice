@@ -140,8 +140,19 @@ async function askMany(page: Page, articleId: number, blockId: number, n: number
   await expect(cards(page)).toHaveCount(before + n);
 }
 
-/** What an observer does in the next frame is there too. */
-const frames = (page: Page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+/** What an observer, and a scroll, do in the next frame is there too. The harness's clock makes a timer of requestAnimationFrame. */
+const frames = (page: Page) =>
+  page.evaluate(async () => {
+    for (let i = 0; i < 2; i++) {
+      await new Promise<void>((done) => {
+        const drawn = new IntersectionObserver(() => {
+          drawn.disconnect();
+          requestAnimationFrame(() => done());
+        });
+        drawn.observe(document.body);
+      });
+    }
+  });
 
 const hold = (shell: Page, cmd: string) => shell.addInitScript((c) => void (window.__e2eHold = [c]), cmd);
 
