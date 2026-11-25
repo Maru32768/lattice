@@ -1029,6 +1029,9 @@ test("a press on a sticky takes the bar away, and the selection that stays does 
       await expect(bar(app)).toHaveCount(0);
       await dialog.getByRole("button", { name: "キャンセル" }).click();
       await expect(dialog).toBeHidden();
+      await app.keyboard.press("Tab");
+      await app.keyboard.press("Shift+Tab");
+      await expect(card(app, "詳しく").getByRole("button", { name: "付箋を削除" })).toBeFocused();
     },
     () => card(app, "詳しく").locator(".cite").click(),
   ]) {
