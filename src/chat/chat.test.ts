@@ -23,6 +23,15 @@ test("only validated citation numbers become chips", () => {
     { n: 2 },
     "。",
   ]);
+  assert.deepEqual(splitCitations("dp[i][1] に a['x'][2] を足す [2][1]", new Set([1, 2])), [
+    "dp[i]",
+    "[1]",
+    " に a['x']",
+    "[2]",
+    " を足す ",
+    { n: 2 },
+    { n: 1 },
+  ]);
   assert.deepEqual(splitCitations("MVCC[1]で読む", new Set([1])), ["MVCC", { n: 1 }, "で読む"]);
 });
 

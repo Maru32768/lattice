@@ -14,7 +14,9 @@ export function splitCitations(answer: string, cited: Set<number>): ({ n: number
   const free = new Set<number>();
   for (let i = 1; i < parts.length; i += 2) {
     const before = parts[i - 1]!;
-    inWord[i] = before === "" && i > 1 ? inWord[i - 2]! : /\w$/.test(before);
+    // Other brackets between (`dp[i][1]`) are the word's too.
+    const word = before.replace(/(\[[^[\]]*\])+$/, "");
+    inWord[i] = word === "" && i > 1 ? inWord[i - 2]! : /\w$/.test(word);
     if (!inWord[i]) {
       free.add(Number(parts[i]));
     }

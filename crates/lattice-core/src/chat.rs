@@ -763,6 +763,6 @@ mod tests {
         assert!(sent > 0 && sent < sources.len());
         assert!(text.chars().count() < max + 100 && text.contains("[…truncated]"));
         assert_eq!(markers("a [1] b [x] [12]c [").collect::<Vec<_>>(), [1, 12]);
-        assert_eq!(markers("argv[1] を m[2][3] に書く [4][5]。x_[6] 先に書く[7]").collect::<Vec<_>>(), [4, 5, 7]);
+        assert_eq!(markers("argv[1] を m[2][3] に書く [4][5]。x_[6] 先に書く[7] dp[i][8]").collect::<Vec<_>>(), [4, 5, 7]);
     }
 }
