@@ -6,7 +6,7 @@ import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
-import { GAP, ROOM, cardsOf, isFollowUp, roomOf, stack, type Ask, type Card, type FollowUp, type PassageAsk } from "./stickies";
+import { GAP, ROOM, cardsOf, isFollowUp, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
 import { deleteSticky, changeAsk, dropAsk, openAsk, sendAsk, useStickies } from "./useStickies";
 import "./stickies.css";
 
@@ -238,11 +238,11 @@ export function StickyColumn({
   const { saved, asks, answers, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
   const followUps = new Map(asks.filter(isFollowUp).map((f) => [f.sticky, f]));
-  /** Whether the ask, or the answer to it, is on the card. */
-  const has = (c: Card, ask: number | null) =>
-    ask != null && ("ask" in c ? c.ask.key === ask : answers.get(ask) === c.sticky.id || followUps.get(c.sticky.id)?.key === ask);
-  const pinnedCard = cards.find((c) => has(c, pinned))?.key;
-  const held = new Set(on.map((ask) => cards.find((c) => has(c, ask))?.root));
+  /** The card that the ask, or the answer to it, is on. */
+  const cardOf = (ask: number) =>
+    cards.find((c) => ("ask" in c ? c.ask.key === ask : answers.get(ask) === c.sticky.id || followUps.get(c.sticky.id)?.key === ask));
+  const pinnedCard = pinned == null ? undefined : cardOf(pinned)?.key;
+  const held = new Set(on.map((ask) => cardOf(ask)?.root));
   // On each render, as any may add a card or move a block.
   useLayoutEffect(() => {
     const column = root.current!;
@@ -305,14 +305,14 @@ export function StickyColumn({
     }
     moved.current = { from, to: kept.current?.line };
   }, [opened]);
-  /** The view goes back from the card opened last as that closes, unless the reader has scrolled on. */
-  const goBack = (close: () => void) => {
+  /** Drops an ask. The view goes back from the one opened last, unless the reader has scrolled on. */
+  const cancel = (ask: number) => {
     const scroller = root.current!.parentElement!;
     const { from, to } = moved.current ?? {};
     // The column keeps the same line through other widths, and another as the reader goes on.
     const goneOn = kept.current?.line !== to;
-    flushSync(close);
-    if (from?.line.block.isConnected && !goneOn) {
+    flushSync(() => dropAsk(article, ask));
+    if (ask === opened && from?.line.block.isConnected && !goneOn) {
       scroller.scrollTop += offsetOf(from.line, scroller) - from.offset;
     }
   };
@@ -343,11 +343,11 @@ export function StickyColumn({
             opened={opened}
             blocks={blocks}
             onOpen={onOpen}
-            onCancel={goBack}
+            onCancel={cancel}
             onSource={onSource}
           />
         ) : (
-          <AskCard key={c.key} spot={spot} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={goBack} />
+          <AskCard key={c.key} spot={spot} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={cancel} />
         );
       })}
     </aside>
@@ -430,7 +430,7 @@ function SavedCard({
   opened: number | null;
   blocks: Block[];
   onOpen: (ask: number) => void;
-  onCancel: (close: () => void) => void;
+  onCancel: (ask: number) => void;
   onSource: (block: number) => void;
 }) {
   const t = useT();
@@ -457,7 +457,7 @@ function SavedCard({
       ))}
       {followUp ? (
         <div className="sticky-ask" data-opened={followUp.key === opened || undefined}>
-          <AskBody article={article} ask={followUp} opened={followUp.key === opened} onCancel={onCancel} />
+          <AskBody article={article} ask={followUp} onCancel={onCancel} />
         </div>
       ) : (
         <div className="sticky-acts">
@@ -496,13 +496,12 @@ function SavedCard({
 interface AskProps<A extends Ask> {
   article: number;
   ask: A;
-  opened: boolean;
-  onCancel: (close: () => void) => void;
+  onCancel: (ask: number) => void;
 }
 
 /** A card without an answer. */
-function AskCard({ spot, ...props }: AskProps<PassageAsk> & { spot: Spot }) {
-  const { ask, opened } = props;
+function AskCard({ spot, opened, ...props }: AskProps<PassageAsk> & { spot: Spot; opened: boolean }) {
+  const { ask } = props;
   const label = useLabel(ask);
   return (
     <section className="sticky" aria-label={label} data-opened={opened || undefined} {...spot}>
@@ -516,7 +515,7 @@ function AskCard({ spot, ...props }: AskProps<PassageAsk> & { spot: Spot }) {
 }
 
 /** The question being written, the wait, or what went wrong. */
-function AskBody({ article, ask, opened, onCancel }: AskProps<Ask>) {
+function AskBody({ article, ask, onCancel }: AskProps<Ask>) {
   const t = useT();
   const sendKey = useSendKey();
   const failed = ask.step === "failed";
@@ -531,12 +530,7 @@ function AskBody({ article, ask, opened, onCancel }: AskProps<Ask>) {
   };
   const cancel = (from: HTMLElement) => {
     leave(from);
-    const close = () => dropAsk(article, ask.key);
-    if (opened) {
-      onCancel(close);
-    } else {
-      close();
-    }
+    onCancel(ask.key);
   };
   return (
     <>

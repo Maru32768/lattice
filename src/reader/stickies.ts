@@ -50,7 +50,7 @@ export function asksLeft(asks: Ask[], gone: Sticky[]): Ask[] {
   });
 }
 
-export type Card = {
+type Card = {
   key: string;
   /** Its root's. */
   blockId: number | null;
