@@ -6077,8 +6077,8 @@ Costly	Easy"
     fn text_right_by_a_cell_and_drawn_next_to_it_is_not_in_its_table() {
         // Between the rows' baselines, and near enough to one to be on its line.
         let prose = across(80., "The first line is read");
-        let table = two_by_two([72., 172., 380.], [110., 160., 200.], PROS);
-        for ops in [prose.clone() + &table + &shown(400., 188., "A note."), prose.clone() + &shown(400., 143., "A note.") + &table] {
+        let table = two_by_two([160., 220., 290.], [110., 160., 200.], PROS);
+        for ops in [prose.clone() + &table + &shown(295., 188., "A note."), prose.clone() + &shown(100., 143., "A note.") + &table] {
             let texts = texts_of(&ops);
             assert!(texts.iter().any(|t| t == "A note.") && texts.iter().any(|t| t == PROS_TEXT), "{texts:?}");
         }
