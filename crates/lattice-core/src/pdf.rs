@@ -2233,6 +2233,10 @@ fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     let float = |d: &Draft| d.kind == Kind::Caption || matches!(d.kind, Kind::Paragraph | Kind::Table) && d.lines.iter().all(|x| x.size < body * 0.95);
     let skipped: Vec<&Draft> = drafts.iter().rev().take_while(|d| float(d) || fragment(d) || d.kind == Kind::Table).collect();
     let i = drafts.len().checked_sub(skipped.len() + 1)?;
+    // Past a table, not from under a line of its own: next to a figure's caption then, it would be dropped as a label.
+    if skipped.iter().any(|d| d.kind == Kind::Table) && i > 0 && fragment(&drafts[i - 1]) {
+        return None;
+    }
     let last = drafts[i].lines.last()?;
     let unfinished = drafts[i].kind == Kind::Paragraph && (last.size - body).abs() < 0.5 && !last.text.ends_with(['.', '!', '?', ':']);
     (unfinished && skipped.iter().any(|d| float(d))).then_some(i)
@@ -6174,6 +6178,19 @@ pub(crate) mod tests {
             ops += &(shown(178., y + 27., "when it is there, by the one who sets it up and who then") + &shown(178., y + 39., "signs for it."));
         }
         assert_eq!(texts_of(&ops)[..3], fields);
+    }
+
+    #[test]
+    fn a_line_of_its_own_over_a_paragraph_a_figure_and_a_table_cut_is_kept() {
+        let mut ops: String = (0..4).map(|i| across(44. + 12. * i as f64, "The first paragraph is read")).collect();
+        let under = full("The paragraph under the heading is read");
+        ops += &(shown(72., 100., "Results of the test") + &shown(72., 124., under.trim_end_matches('.')) + &shown(72., 136., under.trim_end_matches('.')));
+        ops += &(shown(72., 300., "Figure 1: The machine at work.") + &shown(72., 330., "Table 1: Pros and cons of it."));
+        ops += &(ruled(&WIDE, &[340., 380., 420.], "strokes") + &shown(78., 356., "Strong") + &shown(178., 356., "You care a lot about it and you always"));
+        ops += &(shown(178., 368., "keep at it.") + &shown(78., 396., "Costly") + &shown(178., 396., "It takes a lot of the time you would have"));
+        ops += &(shown(178., 408., "for other duties.") + &shown(72., 450., "where it goes on to its end under the figure and the table."));
+        let texts = texts_of(&ops);
+        assert!(texts.iter().any(|t| t == "Results of the test"), "{texts:?}");
     }
 
     #[test]
