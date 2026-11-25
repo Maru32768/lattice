@@ -1058,6 +1058,83 @@ test("the line being read is there again as a pane comes back from under the zoo
   await expect.poll(async () => Math.abs((await at()) - before)).toBeLessThan(1);
 });
 
+/** Numbers from 0 to 1, the same for a seed. */
+const random = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+
+for (const seed of [1, 2]) {
+  test(`the line being read is at the top of the view again after widths, stickies and text that come and go (${seed})`, async ({ shell }) => {
+    test.setTimeout(120_000);
+    const r = random(seed * 7919);
+    const int = (n: number) => Math.floor(r() * n);
+    await shell.setViewportSize({ width: 1500, height: 800 });
+    // Between them, blocks that a narrow pane makes taller by much, by little and not at all.
+    await startLong(shell, 24, "['code', Array(30).fill('let x = 1;').join('\\n'), null]", true);
+    for (const block of seed % 2 ? [paraId(10), paraId(30), paraId(50), null] : [paraId(3), paraId(40), paraId(70)]) {
+      await askElsewhere(shell, LONG_ID, block);
+    }
+    await frames(shell);
+    const listAt = async (px: number) => {
+      await shell.evaluate((px) => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`), px);
+      await frames(shell);
+    };
+    /** The block at the view's top, and the px of it above there. */
+    const line = (id?: string) =>
+      doc(shell).evaluate((el, id) => {
+        const top = el.getBoundingClientRect().top;
+        const blocks = [...el.querySelectorAll(".blocks > *")];
+        const b = id ? el.querySelector(`#${id}`)! : blocks.find((x) => x.getBoundingClientRect().bottom > top)!;
+        return { id: b.id, above: top - b.getBoundingClientRect().top, height: b.getBoundingClientRect().height };
+      }, id);
+    for (let trial = 0; trial < 8; trial++) {
+      const width = 150 + int(480);
+      await listAt(width);
+      await doc(shell).evaluate((el, share) => (el.scrollTop = (el.scrollHeight - el.clientHeight) * share), r());
+      await frames(shell);
+      const before = await line();
+      const steps: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const kind = int(6);
+        if (kind < 2) {
+          const px = 150 + int(480);
+          steps.push(`width ${px}`);
+          await listAt(px);
+        } else if (kind === 2) {
+          const by = (int(2) ? 1 : -1) * (0.4 + r());
+          steps.push(`by ${by}`);
+          for (let n = 1, from = 150 + int(480); n <= 6; n++) {
+            await listAt(from + n * by);
+          }
+        } else if (kind === 3) {
+          const other = paraBlock(int(80));
+          if (other !== `#${before.id}`) {
+            const px = int(200);
+            steps.push(`${other} ${px}`);
+            await shell.locator(other).evaluate((el, px) => (el.style.paddingBottom = `${px}px`), px);
+            await frames(shell);
+          }
+        } else if (kind === 4) {
+          const n = int(80);
+          steps.push(`ask ${n}`);
+          await askElsewhere(shell, LONG_ID, paraId(n));
+          await frames(shell);
+        } else {
+          const ids = (await invoke(shell, "list_stickies", { articleId: LONG_ID })) as { id: number }[];
+          if (ids.length > 2) {
+            const { id } = ids[int(ids.length)];
+            steps.push(`delete ${id}`);
+            await invoke(shell, "delete_sticky", { id });
+            await frames(shell);
+          }
+        }
+      }
+      await listAt(width);
+      const after = await line(before.id);
+      expect(after.height, "as tall as it was").toBeCloseTo(before.height, 0);
+      expect(Math.abs(after.above - before.above), `trial ${trial} at ${width}, ${JSON.stringify(before)}: ${steps.join(", ")}`).toBeLessThan(1.5);
+    }
+  });
+}
+
 test("a question opened at the end of an article moves no text as the cards before it give way", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
