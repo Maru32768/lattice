@@ -515,6 +515,12 @@ test("an agent whose settings cannot be changed keeps its registration, says why
   await expect(alert.locator("p")).toContainText(["Claude Codeの設定を書き換えられませんでした: timed out after 30s", "Latticeの登録は保存しました。"]);
   await expect(status, "the earlier success no longer holds").toHaveText("");
 
+  await app.getByLabel("新しい登録").fill("claude code");
+  await expect(app.getByLabel("登録先", { exact: true })).toHaveValue("codex");
+  await app.getByRole("button", { name: "登録する" }).click();
+  await expect(alert).toHaveText("「claude code」という登録はもうあります");
+  await expect(app.getByRole("button", { name: "登録する" }), "a refusal ends the wait").toBeEnabled();
+
   await row("Claude Code").getByRole("button", { name: "削除", exact: true }).click();
   await app.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
   await expect(row("Claude Code"), "the registration goes anyway").toHaveCount(0);
@@ -548,8 +554,15 @@ test("the controls wait while an agent's settings are changed", async ({ shell }
   await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.length)).toBe(2);
   await expect(status, "a role reaches no agent's settings").toHaveText("");
   await expect(register).toBeEnabled();
-  await release();
+  const row = app.locator(".set").filter({ has: app.locator(".h").getByText("Claude Code", { exact: true }) });
+  await row.getByRole("button", { name: "Claude Codeに登録" }).click();
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.length)).toBe(3);
+  await app.evaluate(() => window.__e2e.release("mcp_edit", 1));
   await expect(app.getByLabel("「Claude Code」のロール")).toHaveValue("edit");
+  await expect(status, "the role's answer does not end the wait").toHaveText("Claude Codeの設定を書き換えています…");
+  await expect(row.getByRole("button", { name: "削除", exact: true })).toBeDisabled();
+  await release();
+  await expect(status).toHaveText("Claude Codeの設定に登録しました。開いているセッションでは、つなぎ直すと使えます。");
 });
 
 test("each registration shows its open sessions and latest calls, and the screen keeps up without reopening", async ({ app }) => {
