@@ -800,6 +800,35 @@ test("a view that starts in a card, or at the article's end, is there again afte
   expect(await scrollTop(shell)).toBe(top);
 });
 
+test("the line being read is there again as a pane comes back from under the zoom, with a sticky that came meanwhile", async ({ shell }) => {
+  await makeLong(shell);
+  await shell.setViewportSize({ width: 1900, height: 900 });
+  const root = { kind: "split", id: 90, dir: "row", children: [longPane(1), longPane(3)], sizes: [0.5, 0.5] };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify({ root, focused: 3 }));
+  await shell.goto("/");
+  const left = doc(shell).first();
+  await expect(left.locator(paraBlock(40))).toBeAttached({ timeout: 30_000 });
+  await askElsewhere(shell, LONG_ID, paraId(10));
+  await expect(cards(shell)).toHaveCount(2);
+  await left.locator(paraBlock(40)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await left.evaluate((el) => (el.scrollTop += 9));
+  await frames(shell);
+  const at = async () => (await boxOf(left.locator(paraBlock(40)))).y - (await boxOf(left)).y;
+  const before = await at();
+  const zoom = async () => {
+    await shell.keyboard.press("Control+a");
+    await shell.keyboard.press("z");
+  };
+  await zoom();
+  await expect(left).toBeHidden();
+  await askElsewhere(shell, LONG_ID, paraId(12));
+  await expect(cards(shell)).toHaveCount(4);
+  await frames(shell);
+  await zoom();
+  await expect(left).toBeVisible();
+  await expect.poll(async () => Math.abs((await at()) - before)).toBeLessThan(1);
+});
+
 test("a question opened at the end of an article moves no text as the cards before it give way", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
