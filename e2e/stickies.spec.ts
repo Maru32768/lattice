@@ -351,6 +351,17 @@ test("a sticky is deleted after a confirmation, and the column goes with the las
   await expect(app.locator(".stickies")).toBeHidden();
 });
 
+test("a sticky that cannot be deleted stays and says why", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  await expect(card(app, "詳しく").locator(".answer")).toBeVisible();
+  await app.evaluate(() => void (window.__e2eFail = ["delete_sticky"]));
+  await card(app, "詳しく").getByRole("button", { name: "付箋を削除" }).click();
+  await app.getByRole("alertdialog").getByRole("button", { name: "削除" }).click();
+  await expect(card(app, "詳しく").getByRole("alert")).toHaveText(/delete_sticky failed/);
+  await expect(card(app, "詳しく").locator(".answer")).toBeVisible();
+});
+
 test("a sticky asked or deleted in another window shows here", async ({ app }) => {
   await openSnapshot(app);
   const reads = async () => (await callsOf(app, "list_stickies")).length;
