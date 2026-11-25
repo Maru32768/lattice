@@ -882,6 +882,17 @@ mod tests {
 
     #[cfg(windows)]
     #[tokio::test]
+    async fn a_change_keeps_its_turn_until_it_is_made() {
+        let mut s = Sandbox::new("claude-turns");
+        s.agents.claude = s.fake_claude("echo begin>>\"%~dp0log\"\r\n@ping -n 2 127.0.0.1 >nul\r\n@echo end>>\"%~dp0log\"");
+        let r = s.register(Target::ClaudeCode);
+        let both = tokio::join!(s.agents.connect(&s.store, &r.id), s.agents.connect(&s.store, &r.id));
+        assert_eq!(both, (Ok(true), Ok(true)));
+        assert_eq!(s.file("log").split_whitespace().collect::<Vec<_>>(), ["begin", "end", "begin", "end"]);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
     async fn a_program_given_up_on_does_nothing_more() {
         let mut s = Sandbox::new("claude-late");
         s.agents.timeout = Duration::from_secs(1);
