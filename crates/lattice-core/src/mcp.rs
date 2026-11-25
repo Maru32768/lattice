@@ -87,33 +87,17 @@ pub struct Registration {
     pub token: String,
 }
 
-/// One change from the settings screen.
+/// One change from the settings screen. `Connect` writes the registration to its agent's settings again, as it is.
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export, rename = "McpEdit")]
 pub enum Edit {
-    Enable {
-        on: bool,
-    },
-    Create {
-        name: String,
-        role: Role,
-        target: Target,
-    },
-    /// Writes the registration to its agent's settings again, as it is.
-    Connect {
-        id: String,
-    },
-    Regenerate {
-        id: String,
-    },
-    SetRole {
-        id: String,
-        role: Role,
-    },
-    Delete {
-        id: String,
-    },
+    Enable { on: bool },
+    Create { name: String, role: Role, target: Target },
+    Connect { id: String },
+    Regenerate { id: String },
+    SetRole { id: String, role: Role },
+    Delete { id: String },
 }
 
 fn err(e: impl ToString) -> String {
@@ -142,8 +126,8 @@ pub fn url() -> String {
 /// agent needs.
 pub fn edit(store: &Store, edit: &Edit) -> Result<Option<Registration>, String> {
     let about = apply(store, edit)?;
-    if about.is_some() && matches!(edit, Edit::Create { .. } | Edit::Connect { .. }) && !enabled(store)? {
-        apply(store, &Edit::Enable { on: true })?;
+    if about.is_some() && matches!(edit, Edit::Create { .. } | Edit::Connect { .. }) {
+        store.set_setting(ENABLED, Some("1")).map_err(err)?;
     }
     Ok(about)
 }
@@ -176,22 +160,22 @@ fn apply(store: &Store, edit: &Edit) -> Result<Option<Registration>, String> {
             })
         }
         Edit::Connect { id } => Ok(registrations(store)?.into_iter().find(|r| r.id == *id)),
-        Edit::Regenerate { id } => change_one(store, id, |r| {
-            r.token = random_hex()?;
-            Ok(())
-        }),
-        Edit::SetRole { id, role } => change_one(store, id, |r| {
-            r.role = *role;
-            Ok(())
-        }),
+        Edit::Regenerate { id } => {
+            let token = random_hex()?;
+            change_one(store, id, |r| r.token = token)
+        }
+        Edit::SetRole { id, role } => change_one(store, id, |r| r.role = *role),
         Edit::Delete { id } => change(store, |list| Ok(list.extract_if(.., |r| r.id == *id).next())),
     }
 }
 
-fn change_one(store: &Store, id: &str, f: impl FnOnce(&mut Registration) -> Result<(), String>) -> Result<Option<Registration>, String> {
-    change(store, |list| match list.iter_mut().find(|r| r.id == id) {
-        Some(r) => f(r).map(|()| Some(r.clone())),
-        None => Ok(None),
+fn change_one(store: &Store, id: &str, f: impl FnOnce(&mut Registration)) -> Result<Option<Registration>, String> {
+    change(store, |list| {
+        let found = list.iter_mut().find(|r| r.id == id);
+        Ok(found.map(|r| {
+            f(r);
+            r.clone()
+        }))
     })
 }
 

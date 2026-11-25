@@ -3,6 +3,6 @@ import type { McpRole } from "./McpRole";
 import type { McpTarget } from "./McpTarget";
 
 /**
- * One change from the settings screen.
+ * One change from the settings screen. `Connect` writes the registration to its agent's settings again, as it is.
  */
 export type McpEdit = { "kind": "enable", on: boolean, } | { "kind": "create", name: string, role: McpRole, target: McpTarget, } | { "kind": "connect", id: string, } | { "kind": "regenerate", id: string, } | { "kind": "set_role", id: string, role: McpRole, } | { "kind": "delete", id: string, };
