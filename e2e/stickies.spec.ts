@@ -665,6 +665,29 @@ test("a scroll of a few pixels up from the article's end is kept as a card chang
   }
 });
 
+test("a slow scroll on a screen of 150% is kept as a card comes", async ({ playwright }) => {
+  // The screen's own scale, not an emulated one: there a scroll goes on by parts of a pixel.
+  const browser = await playwright.chromium.launch({ args: ["--force-device-scale-factor=1.5", "--window-size=1440,900"] });
+  const page = await browser.newPage({ viewport: null, deviceScaleFactor: undefined, isMobile: undefined, hasTouch: undefined });
+  await startLong(page, 8);
+  await askElsewhere(page, LONG_ID, paraId(2));
+  await expect(cards(page)).toHaveCount(1);
+  await scrollTo(page, paraBlock(40), "start");
+  await frames(page);
+  const from = await scrollTop(page);
+  for (let i = 0; i < 60; i++) {
+    await doc(page).evaluate((el) => (el.scrollTop += 1 / devicePixelRatio));
+    await frames(page);
+  }
+  const top = await scrollTop(page);
+  expect(top - from).toBeCloseTo(40, 0);
+  await askElsewhere(page, LONG_ID, paraId(45));
+  await expect(cards(page)).toHaveCount(2);
+  await frames(page);
+  expect(Math.abs((await scrollTop(page)) - top)).toBeLessThan(2);
+  await browser.close();
+});
+
 test("a paragraph at the top of the view that grows below there moves no text", async ({ shell }) => {
   await startNarrow(shell, 40);
   await askElsewhere(shell, LONG_ID, paraId(40));

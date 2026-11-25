@@ -94,6 +94,8 @@ function scrolled(k: Kept, { scrollTop, clientHeight, scrollHeight }: HTMLElemen
   return Math.abs(by) < 1 || (by < 0 && scrollTop + clientHeight > scrollHeight - 1) ? 0 : by;
 }
 
+const still = ({ line, offset }: Kept, scroller: HTMLElement) => Math.abs(offsetOf(line, scroller) - offset) < 1;
+
 /**
  * The line from before and where in the pane it is to be, unless the reader has gone on. Read again, it would go on by what
  * each scroll is rounded by.
@@ -109,10 +111,9 @@ function lineOf(k: Kept | null, scroller: HTMLElement): Pick<Kept, "line" | "off
     // wheel's does over some frames. More than a view of it is a jump to a place of this width.
     return Math.abs(by) < scroller.clientHeight ? { line, offset: -by } : undefined;
   }
-  const still = Math.abs(offsetOf(line, scroller) - offset) < 1;
   // The text has moved and the reader has not: the browser held none, as where no text is in view.
   const whole = Math.abs(line.block.getBoundingClientRect().height - k.height) < 1;
-  return still || (by === 0 && whole) ? { line, offset } : undefined;
+  return still(k, scroller) || (by === 0 && whole) ? { line, offset } : undefined;
 }
 
 /**
@@ -231,7 +232,12 @@ export function StickyColumn({
       const k = kept.current;
       // In a pane of another width `place` is yet to come, to tell by the scrollTop.
       if (k?.width === widthOf(scroller)) {
-        kept.current = lineOf(k, scroller) ? { ...k, top: scroller.scrollTop } : keep(scroller);
+        if (!lineOf(k, scroller)) {
+          kept.current = keep(scroller);
+        } else if (still(k, scroller)) {
+          // Not with a line that has moved: a slow scroll, by parts of a pixel, would never add up to one.
+          kept.current = { ...k, top: scroller.scrollTop };
+        }
       }
     };
     scroller.addEventListener("scroll", read, { passive: true });
