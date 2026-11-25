@@ -1898,6 +1898,16 @@ test("a passage extended by the keyboard is asked about as it is then", async ({
   expect((await asked(app))[0].quote).toBe(whole.slice(0, -4));
 });
 
+test("a passage extended by Shift and an arrow can be asked about after a scroll took its bar away", async ({ shell }) => {
+  await startLong(shell);
+  await drag(shell, paraBlock(2), paraBlock(2));
+  await expect(bar(shell)).toBeVisible();
+  await doc(shell).evaluate((el) => (el.scrollTop += 20));
+  await expect(bar(shell)).toHaveCount(0);
+  await shell.keyboard.press("Shift+ArrowLeft");
+  await expect(bar(shell)).toBeVisible();
+});
+
 test("the print of an article with a column of stickies has the text as without it", async ({ shell }) => {
   await startLong(shell);
   await shell.emulateMedia({ media: "print" });
