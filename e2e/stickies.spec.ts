@@ -414,6 +414,16 @@ test("stickies that cannot be read say so", async ({ shell }) => {
   await expect(shell.locator(".stickies").getByRole("alert")).toHaveCount(0);
 });
 
+test("stickies that cannot be read again stay", async ({ app }) => {
+  await openSnapshot(app);
+  await askElsewhere(app, SNAPSHOT_ID, 103);
+  await expect(card(app, "用語")).toBeVisible();
+  await app.evaluate(() => void (window.__e2eFail = ["list_stickies"]));
+  await askElsewhere(app, SNAPSHOT_ID, 103);
+  await expect(app.locator(".stickies").getByRole("alert")).toBeVisible();
+  await expect(card(app, "用語")).toBeVisible();
+});
+
 test("cards on one block do not cover each other, those without a block come first, and all follow the text as it grows", async ({ app }) => {
   await openSnapshot(app);
   await askElsewhere(app, SNAPSHOT_ID, 103, "second");
