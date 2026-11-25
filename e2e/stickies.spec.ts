@@ -2674,6 +2674,21 @@ test("a child, and a follow-up, move neither the cards above them nor the text a
   expect(Math.abs(await off(4, 32))).toBeLessThan(1);
 });
 
+test("a card asked on in a narrow pane is laid out as any in the column as the pane widens, and the pinned one stays at its block", async ({ shell }) => {
+  const off = await startCrowded(shell);
+  await shell.setViewportSize({ width: 1000, height: 1400 });
+  await frames(shell);
+  expect(await doc(shell).evaluate((el) => el.clientWidth)).toBeLessThan(720);
+  await followUp(cards(shell).first()).click();
+  await shell.keyboard.type("one\ntwo\nthree\nfour\nfive");
+  await shell.setViewportSize({ width: 1500, height: 1400 });
+  await frames(shell);
+  await frames(shell);
+  expect(Math.abs(await off(1, 31))).toBeLessThan(1);
+  const [held, pinned] = await Promise.all([0, 1].map((i) => boxOf(cards(shell).nth(i))));
+  expect(pinned.y - (held.y + held.height)).toBeGreaterThanOrEqual(9);
+});
+
 test("cards that the pinned one has given way to stay as others are asked on, and it stays too", async ({ shell }) => {
   const off = await startCrowded(shell);
   // With all in view.
