@@ -2309,7 +2309,7 @@ fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     let skipped: Vec<&Draft> = drafts.iter().rev().take_while(|d| float(d) || fragment(d) || d.kind == Kind::Table).collect();
     let i = drafts.len().checked_sub(skipped.len() + 1)?;
     // Past a table, not from under a line of its own: next to a figure's caption then, it would be dropped as a label.
-    if skipped.iter().any(|d| d.kind == Kind::Table) && i > 0 && fragment(&drafts[i - 1]) {
+    if skipped.iter().any(|d| d.kind == Kind::Table) && skipped.iter().any(|d| of_figure(d)) && i > 0 && fragment(&drafts[i - 1]) {
         return None;
     }
     let last = drafts[i].lines.last()?;
@@ -2323,10 +2323,15 @@ fn fragment(d: &Draft) -> bool {
     d.kind == Kind::Paragraph && d.lines.len() == 1 && (l.tabular() || l.x1 - l.x0 < 0.6 * (l.right - l.left) && !l.text.ends_with(['.', '!', '?', ':']))
 }
 
+/// A figure's caption.
+fn of_figure(d: &Draft) -> bool {
+    d.kind == Kind::Caption && d.lines[0].text.starts_with("Fig")
+}
+
 /// Drops the fragments next to a figure caption: labels drawn as page text, not inside the figure.
 fn drop_figure_labels(drafts: &mut Vec<Draft>) {
     let mut junk = vec![false; drafts.len()];
-    for (c, d) in drafts.iter().enumerate().filter(|(_, d)| d.kind == Kind::Caption && d.lines[0].text.starts_with("Fig")) {
+    for (c, d) in drafts.iter().enumerate().filter(|(_, d)| of_figure(d)) {
         let page = d.lines[0].page;
         let near = |j: &usize| fragment(&drafts[*j]) && drafts[*j].lines[0].page == page;
         for j in (0..c).rev().take_while(near).chain((c + 1..drafts.len()).take_while(near)) {
@@ -6602,6 +6607,18 @@ Manual	No. 1234";
             ops += &(shown(178., y + 27., "when it is there, by the one who sets it up and who then") + &shown(178., y + 39., "signs for it."));
         }
         assert_eq!(texts_of(&ops)[..3], fields);
+    }
+
+    #[test]
+    fn a_sentence_a_table_cuts_under_a_line_of_its_own_is_whole_again_after_it() {
+        let line = |x: f64, y: f64, word: &str| shown(x, y, &format!("{word} column line of the body runs on to it"));
+        let mut ops: String = (0..24).map(|i| line(72., 100. + 12. * i as f64, "Left")).collect();
+        ops += &(shown(72., 388., "Left column ends here.") + &shown(72., 412., "Data collection") + &line(72., 428., "Alpha") + &line(72., 440., "Omega"));
+        ops += &(shown(72., 464., "Table 1: What each of them found.") + &two_by_two([72., 180., 290.], [474., 494., 514.], PROS));
+        ops += &shown(316., 100., "and it goes on here at the top of the next");
+        ops += &(1..37).map(|i| line(316., 100. + 12. * i as f64, "Right")).collect::<String>();
+        let texts = texts_of(&ops);
+        assert!(texts.iter().any(|t| t == "Data collection") && texts.iter().any(|t| t.contains("runs on to it and it goes on here")), "{texts:?}");
     }
 
     #[test]
