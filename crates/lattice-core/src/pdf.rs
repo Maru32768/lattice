@@ -572,17 +572,18 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
     // `loose`: the first column with text, which names the rows, has a line with room after it. `clear`: some lines are
     // those of one text, not only as wide as their column.
     let (mut tellers, mut numbers, mut loose, mut clear) = (0, false, false, false);
+    // Of the lines of Japanese before others, which break anywhere: those as long as their column, and whether some are not.
+    let (mut full, mut uneven) = (0, false);
     let name = columns.iter().position(|lines| !lines.is_empty());
     for (column, (lines, &room)) in columns.iter().zip(widths).enumerate() {
         let mut tells = false;
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
-            // The word's letters, and how many it takes to tell.
-            let (word, telling) = if after.text.starts_with(joins_without_space) {
-                (after.text.chars().take(4).count(), 1)
+            let japanese = after.text.starts_with(joins_without_space);
+            let word = if japanese {
+                after.text.chars().take(4).count()
             } else {
-                let word = after.text.split(' ').next().unwrap_or_default().chars().count();
-                (word, word.max(4))
+                after.text.split(' ').next().unwrap_or_default().chars().count()
             };
             let figure = is_number(&before.text) && is_number(&after.text);
             // A hyphen breaks a word, so the line wrapped whatever room it left.
@@ -594,11 +595,15 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
                 clear |= Some(column) != name;
                 continue;
             }
-            // One text goes on without a capital, as a row under the head's may too, after a word it breaks, or at the end of
-            // a line many times as long as the word.
-            let goes_on = before.text.ends_with('-') || row > 0 && before.text.starts_with(char::is_uppercase) && after.text.starts_with(char::is_lowercase);
-            let word = (telling as f64 + 2.) * letter;
-            clear |= !figure && !fits && (goes_on || word <= room / 4. && before.x1 - before.x0 + word > room);
+            if !figure && !fits {
+                // One text goes on without a capital, as a row under the head's may too, after a word it breaks, or at the end
+                // of a line many times as long as the word.
+                let capital = row > 0 && before.text.starts_with(char::is_uppercase) && after.text.starts_with(char::is_lowercase);
+                clear |= capital || before.text.ends_with('-') || !japanese && (word.max(4) as f64 + 2.) * letter <= room / 4.;
+                let ends = room - (before.x1 - before.x0) < 3. * letter;
+                full += usize::from(japanese && ends && room >= 6. * letter);
+                uneven |= japanese && !ends;
+            }
             loose |= (figure || fits) && Some(column) == name;
             if *columns > 1 {
                 tells = true;
@@ -639,7 +644,7 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
         return told.then(|| Band::Rows(baselines.iter().skip(1).filter(starts).map(|b| b.0).collect()));
     }
     let one = wraps || padded && (figures == 0 || parted == 0 && wrapped > 0);
-    if one && clear {
+    if one && (clear || full > 2 && !uneven) {
         return Some(Band::Wrapped);
     }
     let one_name = tellers < 2 && name.is_some_and(|column| columns[column].len() == 1);
@@ -3937,6 +3942,26 @@ Saw	It cuts. It sings. It rests."]
         // The second line of the one cell gives up its last letter to the mark that cannot start a line.
         let wrapped = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)];
         assert_eq!(read(332., &[&head[..], &wrapped].concat()), Some(2));
+    }
+
+    #[test]
+    fn japanese_rows_in_columns_as_wide_as_their_text_are_not_put_in_one() {
+        // Each of two columns' letters, line by line.
+        let read = |lines: &[[usize; 2]]| {
+            let widest = |column: usize| 12. + 10. * lines.iter().map(|l| l[column]).max().unwrap() as f64;
+            let xs = [72., 72. + widest(0), 72. + widest(0) + widest(1)];
+            let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(9)[..4 * n]);
+            let text: String = lines.iter().enumerate().map(|(i, l)| [0, 1].map(|c| set(xs[c] + 6., 114. + 16. * i as f64, l[c])).concat()).collect();
+            let ops = ruled(&xs, &[100., 118., 118. + 16. * (lines.len() - 1) as f64], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+            let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+            ir.blocks[0].attrs.rows.as_ref().map(Vec::len)
+        };
+        // Names of four letters; lines of which one ends short of the rule by more than a mark; and one line full in each.
+        assert_eq!(read(&[[2, 2], [4, 4], [4, 4], [4, 4], [4, 4]]), None);
+        assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 10], [12, 10]]), None);
+        assert_eq!(read(&[[2, 2], [12, 10], [8, 6]]), None);
+        // A cell of each column that wraps, their last lines apart.
+        assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]]), Some(2));
     }
 
     #[test]
