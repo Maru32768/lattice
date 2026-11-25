@@ -1126,8 +1126,23 @@ test("cards that give way to the opened one leave no more below them than the vi
   await scrollTo(shell, paraBlock(79), "center");
   await askAbout(shell, "詳しく", paraBlock(79));
   await expect(cards(shell)).toHaveCount(7);
+  const [was, end] = await doc(shell).evaluate((el) => [el.scrollTop + el.clientHeight, el.scrollHeight]);
+  expect(end).toBeLessThanOrEqual(was + 2);
   await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
   await expect(shell.locator(paraBlock(79))).toBeInViewport();
+  await expect(cards(shell).last()).toBeInViewport();
+});
+
+test("a column that gets shorter as its cards go takes a view at its end up with it", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await askMany(shell, LONG_ID, paraId(79), 12);
+  await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await frames(shell);
+  for (let id = 12; id > 4; id--) {
+    await invoke(shell, "delete_sticky", { id });
+  }
+  await expect(cards(shell)).toHaveCount(4);
   await expect(cards(shell).last()).toBeInViewport();
 });
 
