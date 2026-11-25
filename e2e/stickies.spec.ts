@@ -779,6 +779,18 @@ test("a question opened at the end of an article moves no text as the cards befo
   expect(await at()).toEqual(before);
 });
 
+test("cards that give way to the opened one leave no more below them than the view had", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await askMany(shell, LONG_ID, paraId(79), 6);
+  await scrollTo(shell, paraBlock(79), "center");
+  await askAbout(shell, "詳しく", paraBlock(79));
+  await expect(cards(shell)).toHaveCount(7);
+  await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect(shell.locator(paraBlock(79))).toBeInViewport();
+  await expect(cards(shell).last()).toBeInViewport();
+});
+
 test("in a narrow pane the text being read stays still as an answer above it comes and goes", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await startNarrow(shell);

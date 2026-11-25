@@ -12,6 +12,8 @@ import "./stickies.css";
 
 /** A pane narrower than this has no room for a column beside the text. */
 const COLUMN_FROM = 720;
+/** Under the last card of a column that goes on below the article. */
+const END = 40;
 
 /**
  * The text at the view's top: how much of a block, or of a part of the header, is above it, and the px from its end down to
@@ -141,10 +143,12 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
     at: (beside ? (block?.getBoundingClientRect().top ?? top) : under(block)) - top,
     height: el.offsetHeight,
   }));
+  const endOf = (tops: number[]) => Math.max(0, ...tops.map((at, i) => at + spots[i]!.height)) + END;
   const tops = stack(spots, beside ? cards.findIndex(({ el }) => el.hasAttribute("data-opened")) : -1);
+  // Cards that give way to the opened one do not take a view at the column's end up with them.
+  const viewEnd = scroller.getBoundingClientRect().top + scroller.clientHeight - top;
+  column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(spots)), viewEnd))}px`);
   cards.forEach(({ el }, i) => (el.style.top = `${tops[i]}px`));
-  // Cards that give way to the opened one do not take the column's end up, and a view at it.
-  column.style.setProperty("--sticky-end", `${Math.max(0, ...stack(spots).map((at, i) => at + spots[i]!.height))}px`);
 
   const moved = offsetOf(line, scroller) - offset;
   // A write of the same value too can end a scroll that is under way.
