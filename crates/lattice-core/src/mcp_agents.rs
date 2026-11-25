@@ -831,6 +831,15 @@ mod tests {
         s.set(".claude.json", "{}");
         assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false), "already out");
         assert!(calls().is_empty());
+
+        holds(&ours);
+        s.fake_claude("exit /b 3");
+        let e = s.agents.disconnect(&s.store, Target::ClaudeCode).await.unwrap_err();
+        assert!(e.contains("mcp.agentFailed") && e.contains("exit code: 3"), "it is still there: {e}");
+        calls();
+        let r = s.register(Target::ClaudeCode);
+        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentFailed"));
+        assert_eq!(calls(), [remove, &add(&ours)], "nothing is added over one that could not be removed");
     }
 
     #[cfg(windows)]
