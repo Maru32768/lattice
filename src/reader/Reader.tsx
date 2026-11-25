@@ -11,8 +11,8 @@ import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
-import { StickyColumn } from "./StickyColumn";
-import { MAX_QUOTE, STICKY_KINDS } from "./stickies";
+import { StickyColumn, type Opened } from "./StickyColumn";
+import { MAX_QUOTE, STICKY_KINDS, type Passage } from "./stickies";
 import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
@@ -249,6 +249,11 @@ export function LangSeg({
 
 /** What the bar over a selection takes below its end. */
 const BAR_HEIGHT = 44;
+/** Where it goes in the view. */
+function barAt(range: Range, view: HTMLElement) {
+  const r = range.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: Math.min(r.bottom, view.getBoundingClientRect().bottom - BAR_HEIGHT) };
+}
 
 function selectedRange() {
   const sel = window.getSelection();
@@ -256,6 +261,13 @@ function selectedRange() {
 }
 const sameRange = (a: Range, b: Range) =>
   a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
+
+/** The range's text without that of controls: the numbers of an answer's citations, and what is below it to ask on. */
+function textIn(range: Range) {
+  const text = range.cloneContents();
+  text.querySelectorAll("button, textarea").forEach((c) => c.remove());
+  return text.textContent.trim();
+}
 
 /** Re-translating more blocks than this asks first. */
 const RETRANSLATE_CONFIRM_BLOCKS = 50;
@@ -871,19 +883,19 @@ export function Reader({
   const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
-  /** What was selected as the press that is held began, and none where it may select the same again: on the text. */
+  /** What was selected as the press that is held began, and none where it may select the same again: on the text, or the answer, it is of. */
   const pressed = useRef<Range | null>(null);
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
-    passage?: { blockId: number; quote: string };
+    passage?: Passage;
     capture?: VocabCapture;
     x: number;
     y: number;
     status?: string;
     error?: string;
   } | null>(null);
-  /** The ask opened here last. */
-  const [opened, setOpened] = useState<number | null>(null);
+  const [opened, setOpened] = useState<Opened>({ pinned: null, on: [] });
+  const onAsk = (ask: number) => setOpened((o) => ({ ...o, on: [...o.on, ask] }));
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
   const pieces = new Map(blocks.map((b) => [b.id, blockPieces(b)]));
@@ -980,8 +992,32 @@ export function Reader({
     if (!block || beyond.toString().trim()) {
       return null;
     }
-    const r = range.getBoundingClientRect();
-    return { passage: { blockId: block.id, quote }, x: r.left + r.width / 2, y: Math.min(r.bottom, view.getBoundingClientRect().bottom - BAR_HEIGHT) };
+    return { passage: { blockId: block.id, parent: null, quote }, ...barAt(range, view) };
+  }
+
+  /** The passage selected in one answer of a sticky, and where to put the bar. */
+  function answerPassage() {
+    const sel = window.getSelection();
+    const view = scrollEl.current;
+    if (!sel || sel.isCollapsed || !view) {
+      return null;
+    }
+    const range = sel.getRangeAt(0);
+    const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+    const answer = start?.closest<HTMLElement>(".sticky .answer");
+    if (!answer || !view.contains(answer)) {
+      return null;
+    }
+    const quote = textIn(range);
+    // A drag past the last line ends below the answer, where there may be no text.
+    const beyond = document.createRange();
+    beyond.setStartAfter(answer);
+    beyond.setEnd(range.endContainer, range.endOffset);
+    if (!quote || textIn(beyond)) {
+      return null;
+    }
+    const block = answer.closest<HTMLElement>(".sticky")!.dataset.block;
+    return { passage: { blockId: block ? Number(block) : null, parent: Number(answer.dataset.message), quote }, ...barAt(range, view) };
   }
 
   async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
@@ -999,7 +1035,7 @@ export function Reader({
   const offerBar = () => {
     clearTimeout(timers.current.cap);
     const word = selectionCapture();
-    const selected = selectionPassage();
+    const selected = selectionPassage() ?? answerPassage();
     // A word of a tooltip is no passage, but one to save.
     setCap(selected ? { ...selected, capture: word?.capture } : word);
   };
@@ -1009,10 +1045,16 @@ export function Reader({
     return !!at.closest(".stickies") || !e.currentTarget.contains(at);
   };
   const onText = (e: React.SyntheticEvent) => !!blocksEl.current?.contains(e.target as Element);
-  function ask(kind: StickyKind, passage: { blockId: number; quote: string }) {
+  const onAnswer = (e: React.SyntheticEvent) => !!(e.target as Element).closest(".sticky .answer") && !(e.target as Element).closest("button");
+  function ask(kind: StickyKind, passage: Passage) {
     setCap(null);
     window.getSelection()?.removeAllRanges();
-    setOpened(openAsk(a.id, { ...passage, kind }));
+    const key = openAsk(a.id, { ...passage, kind });
+    if (passage.parent == null) {
+      setOpened({ pinned: key, on: [] });
+    } else {
+      onAsk(key);
+    }
   }
   useEffect(() => {
     const collapsed = () => {
@@ -1143,7 +1185,7 @@ export function Reader({
           data-pane-target
           onScroll={cap && !cap.status ? () => setCap(null) : undefined}
           onPointerDown={(e) => {
-            pressed.current = onText(e) ? null : selectedRange();
+            pressed.current = onText(e) || (onAnswer(e) && answerPassage()) ? null : selectedRange();
             if (onSticky(e)) {
               setCap(null);
             }
@@ -1334,7 +1376,7 @@ export function Reader({
               </div>
             </OpenLink.Provider>
           </article>
-          <StickyColumn article={a.id} blocks={blocks} opened={opened} onSource={(b) => act.onFocusBlock(b, "sticky")} />
+          <StickyColumn article={a.id} blocks={blocks} opened={opened} onOpen={onAsk} onSource={(b) => act.onFocusBlock(b, "sticky")} />
         </div>
         {panel === "quiz" && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, "quiz")} onReviewChanged={act.onReviewChanged} onClose={closePanel} />}
         {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}

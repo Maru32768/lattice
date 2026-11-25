@@ -6,14 +6,17 @@ import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
-import { GAP, ROOM, cardsOf, roomOf, stack, type Ask } from "./stickies";
-import { deleteSticky, dropAsk, replaceAsk, sendAsk, useStickies } from "./useStickies";
+import { GAP, ROOM, cardsOf, isFollowUp, roomOf, stack, type Ask, type Card, type FollowUp, type PassageAsk } from "./stickies";
+import { deleteSticky, changeAsk, dropAsk, openAsk, sendAsk, useStickies } from "./useStickies";
 import "./stickies.css";
 
 /** A pane narrower than this has no room for a column beside the text. */
 const COLUMN_FROM = 720;
 /** Under the last card of a column that goes on below the article. */
 const END = 40;
+/** How far a child is set in from its parent, down to a depth. */
+const INDENT = 12;
+const DEEPEST = 3;
 
 /**
  * The text at the view's top: how much of a block, or of a part of the header, is above it, and the px from its end down to
@@ -117,6 +120,12 @@ function lineOf(k: Kept | null, scroller: HTMLElement): Pick<Kept, "line" | "off
 }
 
 /**
+ * How far below its block's height a root was placed last, beside the text, and a held one as it came to be held. Below 0: it
+ * gave way to the pinned one.
+ */
+const offs = new WeakMap<Element, number>();
+
+/**
  * Puts the cards beside their blocks, or under them in a narrow pane, where the text makes room. The text at the view's top
  * stays there. `room` is false to leave the text's layout as it is.
  */
@@ -154,15 +163,26 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   const top = column.getBoundingClientRect().top;
   const under = (block: HTMLElement | null) => (block ? block.getBoundingClientRect().bottom : article.getBoundingClientRect().top) + GAP;
   const spots = cards.map(({ el, block }) => ({
-    at: (beside ? (block?.getBoundingClientRect().top ?? top) : under(block)) - top,
+    // A child has no height of its own: right below the card before it.
+    at: el.hasAttribute("data-child") ? 0 : (beside ? (block?.getBoundingClientRect().top ?? top) : under(block)) - top,
     height: el.offsetHeight,
   }));
   const endOf = (tops: number[]) => Math.max(0, ...tops.map((at, i) => at + spots[i]!.height)) + END;
-  const tops = stack(spots, beside ? cards.findIndex(({ el }) => el.hasAttribute("data-opened")) : -1);
-  // Cards that give way to the opened one do not take a view at the column's end up with them, where it will be.
+  const tops = beside ? topsBeside(cards, spots) : stack(spots);
+  // Cards that give way to the pinned one do not take a view at the column's end up with them, where it will be.
   const viewEnd = scroller.getBoundingClientRect().top + scroller.clientHeight + offsetOf(line, scroller) - offset - top;
   column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(spots)), viewEnd))}px`);
-  cards.forEach(({ el }, i) => (el.style.top = `${tops[i]}px`));
+  cards.forEach(({ el }, i) => {
+    el.style.top = `${tops[i]}px`;
+    if (el.hasAttribute("data-held") && offs.has(el)) {
+      return;
+    }
+    if (beside && !el.hasAttribute("data-child")) {
+      offs.set(el, tops[i]! - spots[i]!.at);
+    } else {
+      offs.delete(el);
+    }
+  });
 
   const moved = offsetOf(line, scroller) - offset;
   // A write of the same value too can end a scroll that is under way.
@@ -172,27 +192,57 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   kept.current = cards.length > 0 ? keep(scroller, scrolledOn ? lineAt(scroller) : line) : null;
 }
 
+/**
+ * The pinned card is at its block's height. Those before it that the reader has asked on since stay where they were then: the
+ * pinned one gives way to them. To hold a card where it is moves no other.
+ */
+function topsBeside(cards: { el: HTMLElement }[], spots: { at: number; height: number }[]) {
+  const pinned = cards.findIndex(({ el }) => el.hasAttribute("data-pinned"));
+  const held = cards.flatMap(({ el }, i) => (i < pinned && el.hasAttribute("data-held") && offs.has(el) ? [i] : []));
+  return stack(
+    spots.map((s, i) => (held.includes(i) ? { ...s, at: s.at + offs.get(cards[i]!.el)! } : s)),
+    ...held,
+    pinned,
+  );
+}
+
+/** Asks opened in a Reader: the same article may be open in another pane. */
+export interface Opened {
+  /** The last on the article's text, to keep at its block's height, its answer too. */
+  pinned: number | null;
+  /** Those on stickies since, in order. The last of all comes into view. */
+  on: number[];
+}
+
 /** The article's stickies: a column beside its text, inside its scroller, or each under its block in a narrow pane. */
 export function StickyColumn({
   article,
   blocks,
-  opened,
+  opened: { pinned, on },
+  onOpen,
   onSource,
 }: {
   article: number;
   blocks: Block[];
-  /** The ask this Reader opened last, to bring into view and to keep at its block's height, its answer too: the same article may be open in another pane. */
-  opened: number | null;
+  opened: Opened;
+  onOpen: (ask: number) => void;
   /** Shows a block that an answer cites. */
   onSource: (block: number) => void;
 }) {
   const t = useT();
+  const opened = on.at(-1) ?? pinned;
   const root = useRef<HTMLElement>(null);
   const kept = useRef<Kept | null>(null);
   /** The line before the last card opened, and with it. */
   const moved = useRef<{ from: Kept | null; to: Line | undefined }>(null);
   const { saved, asks, answers, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
+  const followUps = new Map(asks.filter(isFollowUp).map((f) => [f.sticky, f]));
+  /** Whether the ask, or the answer to it, is on the card. */
+  const has = (c: Card, ask: number | null) =>
+    ask != null && ("ask" in c ? c.ask.key === ask : answers.get(ask) === c.sticky.id || followUps.get(c.sticky.id)?.key === ask);
+  const pinnedCard = cards.find((c) => has(c, pinned))?.key;
+  const held = new Set(on.map((ask) => cards.find((c) => has(c, ask))?.root));
   // On each render, as any may add a card or move a block.
   useLayoutEffect(() => {
     const column = root.current!;
@@ -274,19 +324,53 @@ export function StickyColumn({
           {t("stickies.loadFailed", { error: t.msg(error) })}
         </p>
       )}
-      {cards.map((c) =>
-        "sticky" in c ? (
-          <SavedCard key={c.key} sticky={c.sticky} opened={opened != null && answers.get(opened) === c.sticky.id} blocks={blocks} onSource={onSource} />
+      {cards.map((c) => {
+        const spot: Spot = {
+          "data-block": c.blockId ?? undefined,
+          "data-child": c.parent ? true : undefined,
+          "data-pinned": c.key === pinnedCard || undefined,
+          "data-held": held.has(c.key) || undefined,
+          style: { left: INDENT * Math.min(c.depth, DEEPEST) },
+        };
+        return "sticky" in c ? (
+          <SavedCard
+            key={c.key}
+            spot={spot}
+            article={article}
+            sticky={c.sticky}
+            hasChildren={cards.some((child) => child.parent === c.key)}
+            followUp={followUps.get(c.sticky.id)}
+            opened={opened}
+            blocks={blocks}
+            onOpen={onOpen}
+            onCancel={goBack}
+            onSource={onSource}
+          />
         ) : (
-          <AskCard key={c.key} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={goBack} />
-        ),
-      )}
+          <AskCard key={c.key} spot={spot} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={goBack} />
+        );
+      })}
     </aside>
   );
 }
 
+/** Where a card is to be, for `place`. */
+interface Spot {
+  "data-block": number | undefined;
+  "data-child": true | undefined;
+  "data-pinned": true | undefined;
+  "data-held": true | undefined;
+  style: { left: number };
+}
+
 /** The keyboard goes back to the article from a card that loses what had it, or goes. */
 const leave = (from: HTMLElement | null) => from?.closest<HTMLElement>(".doc-scroll")?.focus({ preventScroll: true });
+
+function useLabel({ kind, parent }: { kind: Sticky["kind"]; parent: number | null }) {
+  const t = useT();
+  const label = t(`stickies.${kind}`);
+  return parent == null ? label : t("stickies.ofAnswer", { kind: label });
+}
 
 function Quote({ text }: { text: string }) {
   return (
@@ -302,7 +386,7 @@ function Answer({ m, blocks, onSource }: { m: StickyMessage; blocks: Block[]; on
   // By its text too: the id of a block that is gone can be another block's by now.
   const byN = new Map(m.citations.filter((c) => blocks.some((b) => b.id === c.block_id && b.text === c.text)).map((c) => [c.n, c]));
   return (
-    <div className="answer">
+    <div className="answer" data-message={m.id}>
       <p>
         {splitCitations(m.answer, new Set(byN.keys())).map((p, i) => {
           if (typeof p === "string") {
@@ -326,16 +410,38 @@ function Answer({ m, blocks, onSource }: { m: StickyMessage; blocks: Block[]; on
   );
 }
 
-function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opened: boolean; blocks: Block[]; onSource: (block: number) => void }) {
+function SavedCard({
+  spot,
+  article,
+  sticky,
+  hasChildren,
+  followUp,
+  opened,
+  blocks,
+  onOpen,
+  onCancel,
+  onSource,
+}: {
+  spot: Spot;
+  article: number;
+  sticky: Sticky;
+  hasChildren: boolean;
+  followUp: FollowUp | undefined;
+  opened: number | null;
+  blocks: Block[];
+  onOpen: (ask: number) => void;
+  onCancel: (close: () => void) => void;
+  onSource: (block: number) => void;
+}) {
   const t = useT();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = useRef<HTMLButtonElement>(null);
-  const label = t(`stickies.${sticky.kind}`);
+  const label = useLabel(sticky);
   // At once: the dialog holds the focus while it is there, and leaves it nowhere.
   const close = () => flushSync(() => setDeleting(false));
   return (
-    <section className="sticky" aria-label={label} data-block={sticky.block_id ?? undefined} data-opened={opened || undefined}>
+    <section className="sticky" aria-label={label} {...spot}>
       <div className="sticky-h">
         <span className="sticky-kind">{label}</span>
         <button className="ib" ref={remove} onClick={() => setDeleting(true)} aria-label={t("stickies.delete")} title={t("stickies.delete")}>
@@ -349,6 +455,17 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
           <Answer m={m} blocks={blocks} onSource={onSource} />
         </div>
       ))}
+      {followUp ? (
+        <div className="sticky-ask" data-opened={followUp.key === opened || undefined}>
+          <AskBody article={article} ask={followUp} opened={followUp.key === opened} onCancel={onCancel} />
+        </div>
+      ) : (
+        <div className="sticky-acts">
+          <button className="btn sm" onClick={() => onOpen(openAsk(article, { sticky: sticky.id }))}>
+            {t("stickies.followUp")}
+          </button>
+        </div>
+      )}
       {error && (
         <p className="error-text" role="alert">
           {t.msg(error)}
@@ -369,20 +486,43 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
           }}
         >
           <p>{t("stickies.deleteDesc")}</p>
+          {hasChildren && <p>{t("stickies.deleteKeeps")}</p>}
         </ConfirmDialog>
       )}
     </section>
   );
 }
 
-/** A card without an answer: the question being written, the wait, or what went wrong. */
-function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask; opened: boolean; onCancel: (close: () => void) => void }) {
+interface AskProps<A extends Ask> {
+  article: number;
+  ask: A;
+  opened: boolean;
+  onCancel: (close: () => void) => void;
+}
+
+/** A card without an answer. */
+function AskCard({ spot, ...props }: AskProps<PassageAsk> & { spot: Spot }) {
+  const { ask, opened } = props;
+  const label = useLabel(ask);
+  return (
+    <section className="sticky" aria-label={label} data-opened={opened || undefined} {...spot}>
+      <div className="sticky-h">
+        <span className="sticky-kind">{label}</span>
+      </div>
+      <Quote text={ask.quote} />
+      <AskBody {...props} />
+    </section>
+  );
+}
+
+/** The question being written, the wait, or what went wrong. */
+function AskBody({ article, ask, opened, onCancel }: AskProps<Ask>) {
   const t = useT();
   const sendKey = useSendKey();
-  const label = t(`stickies.${ask.kind}`);
   const failed = ask.step === "failed";
-  const writing = ask.kind === "question" && ask.step !== "pending";
-  const blank = ask.kind === "question" && !ask.question.trim();
+  const typed = isFollowUp(ask) || ask.kind === "question";
+  const writing = typed && ask.step !== "pending";
+  const blank = typed && !ask.question.trim();
   const send = (from: HTMLElement) => {
     if (!blank) {
       leave(from);
@@ -399,18 +539,14 @@ function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask
     }
   };
   return (
-    <section className="sticky" aria-label={label} data-block={ask.blockId} data-opened={opened || undefined}>
-      <div className="sticky-h">
-        <span className="sticky-kind">{label}</span>
-      </div>
-      <Quote text={ask.quote} />
+    <>
       {writing ? (
         <textarea
           rows={3}
           value={ask.question}
-          aria-label={t("stickies.questionLabel")}
-          placeholder={t("stickies.placeholder")}
-          onChange={(e) => replaceAsk(article, { ...ask, question: e.target.value })}
+          aria-label={t(isFollowUp(ask) ? "stickies.followUpLabel" : "stickies.questionLabel")}
+          placeholder={t(isFollowUp(ask) ? "stickies.followUpPlaceholder" : "stickies.placeholder")}
+          onChange={(e) => changeAsk(article, ask.key, { question: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === "Escape" && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -447,6 +583,6 @@ function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask
           </div>
         </>
       )}
-    </section>
+    </>
   );
 }

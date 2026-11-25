@@ -310,8 +310,8 @@ function stickiesChanged(article: number) {
   sessionStorage.setItem("e2e.stickies", JSON.stringify(stickies));
   void emit("stickies-changed", article);
 }
-let nextSticky = Math.max(0, ...stickies.map((s) => s.id)) + 1;
-let nextStickyMessage = Math.max(0, ...stickies.flatMap((s) => s.messages.map((m) => m.id))) + 1;
+/** As SQLite gives it: the last one's again once that is gone. */
+const idAfter = (rows: { id: number }[]) => Math.max(0, ...rows.map((r) => r.id)) + 1;
 function stickyMessage(articleId: number, blockId: number | null, question: string): StickyMessage {
   if (question.includes("the model is down") && !(window as unknown as { __modelUp?: boolean }).__modelUp) {
     reject("stickies.malformed");
@@ -319,10 +319,10 @@ function stickyMessage(articleId: number, blockId: number | null, question: stri
   const block = blocksOf(article(articleId)).find((b) => b.id === blockId);
   const citation = (n: number, block_id: number, text: string) => ({ n, block_id, article_id: articleId, url: "", title: "", heading: null, text });
   return {
-    id: nextStickyMessage++,
+    id: idAfter(stickies.flatMap((s) => s.messages)),
     question,
     answer:
-      "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います。出典のない番号 [7] と消えた出典 [2]、書き換わった出典 [3] はそのままです。",
+      "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います(snapshot)。出典のない番号 [7] と消えた出典 [2]、書き換わった出典 [3] はそのままです。",
     citations: [...(block ? [citation(1, block.id, block.text), citation(3, block.id, "what it said then")] : []), citation(2, 999_999, "gone")],
   };
 }
@@ -682,7 +682,7 @@ export const handlers = {
     }
     const block = of ? of.block_id : (blocksOf(article(articleId)).find((b) => b.id === blockId)?.id ?? null);
     const sticky: Sticky = {
-      id: nextSticky++,
+      id: idAfter(stickies),
       article_id: articleId,
       block_id: block,
       parent,

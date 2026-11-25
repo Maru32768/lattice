@@ -63,7 +63,12 @@ const bar = (page: Page) => page.locator(".vw-cap");
 const cards = (page: Page) => page.locator(".stickies > .sticky");
 const card = (page: Page, kind: "質問" | "詳しく" | "用語") => page.locator(".stickies").getByRole("region", { name: kind, exact: true });
 const field = (page: Page) => page.getByRole("textbox", { name: "選んだ箇所への質問" });
-const asked = async (page: Page) => (await callsOf(page, "sticky_ask")) as { blockId: number | null; kind: string; quote: string; question: string }[];
+/** One on an answer. */
+const child = (page: Page, kind: "質問" | "詳しく" | "用語") => page.locator(".stickies").getByRole("region", { name: `${kind}(回答から)`, exact: true });
+const followUp = (page: Page | Locator) => page.getByRole("button", { name: "続けて質問", exact: true });
+const followUpField = (page: Page | Locator) => page.getByRole("textbox", { name: "付箋への続きの質問" });
+const asked = async (page: Page) =>
+  (await callsOf(page, "sticky_ask")) as { blockId: number | null; parent: number | null; kind: string; quote: string; question: string }[];
 
 const ANSWERED = /選んだ箇所の説明です/;
 
@@ -97,6 +102,23 @@ async function drag(page: Page, from: string, to: string, beyond = 0) {
     [from, to],
   );
   await dragTo(page, [start.x + 1, start.y], [end.x - 1, end.y], [end.x - 1 + beyond, end.y]);
+}
+
+/** Drags over the text of an answer, and lets go `beyond` pixels below its end. */
+async function dragAnswer(page: Page, answer: Locator, beyond = 0) {
+  const [start, end] = await answer.evaluate((el) => {
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const rects = [...r.getClientRects()];
+    return [rects[0], rects[rects.length - 1]].map((b, i) => ({ x: i ? b.right - 1 : b.left + 1, y: b.top + b.height / 2 }));
+  });
+  await dragTo(page, [start.x, start.y], [end.x, end.y], [end.x, end.y + beyond]);
+}
+
+/** Asks from the bar over an answer, the whole of it. */
+async function askOn(page: Page, kind: "質問" | "詳しく" | "用語", sticky: Locator, nth = 0) {
+  await dragAnswer(page, sticky.locator(".answer p").nth(nth));
+  await bar(page).getByRole("button", { name: kind, exact: true }).click();
 }
 
 /** Selects from the start of `from` to the end of `to` and lets the mouse go there, without moving it. */
@@ -1172,7 +1194,7 @@ for (const seed of [1, 2]) {
       const before = await line();
       const steps: string[] = [];
       for (let i = 0; i < 10; i++) {
-        const kind = int(6);
+        const kind = int(8);
         if (kind < 2) {
           const px = 150 + int(480);
           steps.push(`width ${px}`);
@@ -1197,13 +1219,20 @@ for (const seed of [1, 2]) {
           await askElsewhere(shell, LONG_ID, paraId(n));
           await frames(shell);
         } else {
-          const ids = (await invoke(shell, "list_stickies", { articleId: LONG_ID })) as { id: number }[];
-          if (ids.length > 2) {
-            const { id } = ids[int(ids.length)];
+          const all = (await invoke(shell, "list_stickies", { articleId: LONG_ID })) as { id: number; messages: { id: number }[] }[];
+          const { id, messages } = all[int(all.length)];
+          if (kind === 5 && all.length > 2) {
             steps.push(`delete ${id}`);
             await invoke(shell, "delete_sticky", { id });
-            await frames(shell);
+          } else if (kind === 6) {
+            steps.push(`ask on in ${id}`);
+            await invoke(shell, "sticky_follow_up", { id, question: "q" });
+          } else if (kind === 7) {
+            const parent = messages[int(messages.length)].id;
+            steps.push(`ask on ${parent}`);
+            await invoke(shell, "sticky_ask", { articleId: LONG_ID, blockId: null, parent, kind: "term", quote: "q", question: "" });
           }
+          await frames(shell);
         }
       }
       await listAt(width);
@@ -1619,9 +1648,9 @@ test("a selection that is not of the article's text offers nothing to ask", asyn
   await openSnapshot(app);
   await askAbout(app, "詳しく", "#b-102");
   await expect(card(app, "詳しく").locator(".answer")).toBeVisible();
-  // In the card, by the mouse.
+  // In the card, by the mouse, of what is no answer.
   await card(app, "詳しく")
-    .locator(".answer")
+    .locator(".sticky-quote")
     .dblclick({ position: { x: 20, y: 10 } });
   expect(await selected(app)).not.toBe("");
   await expect(bar(app)).toHaveCount(0);
@@ -1660,7 +1689,7 @@ test("a drag past the text's edge over the column selects to the line's end, ove
   const x = c.x + c.width / 2;
   for (const [name, i] of [
     ["the empty column above the card", 4],
-    ["the empty column below it", 12],
+    ["the empty column below it", 14],
     ["the card", 9],
   ] as const) {
     const from = await inLine(shell, paraBlock(i), 1);
@@ -1849,8 +1878,8 @@ for (const layout of ["wide", "narrow"] as const) {
     await expect(cards(shell)).toHaveCount(1);
     await expect(shell.locator(".stickies[data-beside]")).toHaveCount(layout === "wide" ? 1 : 0);
     await scrollTo(shell, paraBlock(8), "center");
-    const answer = await boxOf(cards(shell).first().locator(".answer"));
-    const from: [number, number] = [answer.x + 4, answer.y + 12];
+    const quote = await boxOf(cards(shell).first().locator(".sticky-quote"));
+    const from: [number, number] = [quote.x + 14, quote.y + 10];
     for (const i of [4, 14]) {
       await dragTo(shell, from, [from[0] + 60, from[1]], await inLine(shell, paraBlock(i), 90));
       expect(await selected(shell)).not.toBe("");
@@ -1869,7 +1898,8 @@ for (const layout of ["wide", "narrow"] as const) {
     }
     await expect(cards(shell)).toHaveCount(3);
     await expect(shell.locator(".stickies[data-beside]")).toHaveCount(layout === "wide" ? 1 : 0);
-    await scrollTo(shell, paraBlock(8), "center");
+    // With the next card in view: a drag to the view's edge scrolls.
+    await scrollTo(shell, paraBlock(8), "start");
     const [middle, next] = [await boxOf(cards(shell).nth(1)), await boxOf(cards(shell).nth(2))];
     const own = (await cards(shell).nth(1).innerText()).replace(/\s+/g, "");
     const answer = await boxOf(cards(shell).nth(1).locator(".answer"));
@@ -2179,4 +2209,598 @@ test("the print of an article leaves its stickies out, and the room that the tex
   await shell.emulateMedia({ media: "print" });
   await expect(shell.locator(".stickies")).toBeHidden();
   await expect(shell.locator(paraBlock(1))).toBeVisible();
+});
+
+test("続けて質問: the question is written in the card, goes with the send key, and its answer comes under the earlier ones", async ({ shell }) => {
+  await hold(shell, "sticky_follow_up");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toHaveText(ANSWERED);
+  for (const drop of [() => shell.keyboard.press("Escape"), () => sticky.getByRole("button", { name: "キャンセル" }).click()]) {
+    await followUp(sticky).click();
+    await expect(followUp(sticky), "one at a time").toHaveCount(0);
+    await expect(followUpField(sticky)).toBeFocused();
+    await expect(followUpField(sticky)).toHaveValue("");
+    await shell.keyboard.type("half");
+    await followUpField(sticky).dispatchEvent("keydown", { key: "Escape", isComposing: true });
+    await expect(followUpField(sticky)).toHaveValue("half");
+    await drop();
+    await expect(followUpField(sticky)).toHaveCount(0);
+    await expect(doc(shell)).toBeFocused();
+  }
+
+  await followUp(sticky).click();
+  await expect(sticky.getByRole("button", { name: "送信" })).toBeDisabled();
+  await shell.keyboard.press("Control+Enter");
+  await shell.keyboard.type("つまり？");
+  await shell.keyboard.press("Enter");
+  await shell.keyboard.press("Backspace");
+  expect(await callsOf(shell, "sticky_follow_up"), "Enter is a new line by default").toEqual([]);
+  await shell.keyboard.press("Control+Enter");
+  await expect(sticky.getByRole("status")).toHaveText("回答を生成しています…");
+  await expect(sticky.locator(".sticky-q")).toHaveText("つまり？");
+  await expect(followUp(sticky)).toHaveCount(0);
+  await expect(doc(shell)).toBeFocused();
+  expect(await callsOf(shell, "sticky_follow_up")).toEqual([{ id: 1, question: "つまり？" }]);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
+  await expect(sticky.locator(".answer")).toHaveText([ANSWERED, ANSWERED]);
+  await expect(sticky.getByRole("status")).toHaveCount(0);
+
+  await followUp(sticky).click();
+  await followUpField(sticky).fill("それで？");
+  await sticky.getByRole("button", { name: "送信" }).click();
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
+  await expect(sticky.locator(".answer")).toHaveCount(3);
+  // Text alone, and the citations of each.
+  await expect(sticky.locator(".sticky-quote, .sticky-q, .answer button")).toHaveText([/^Every transaction/, "1", "つまり？", "1", "それで？", "1"]);
+  await expect(cards(shell)).toHaveCount(1);
+});
+
+test("a follow-up that failed keeps its text through leaving the article, and can be sent again", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "用語", "#b-102");
+  const sticky = card(app, "用語");
+  await followUp(sticky).click();
+  await followUpField(app).fill("the model is down?");
+  await app.keyboard.press("Control+Enter");
+  await expect(sticky.getByRole("alert")).toHaveText("モデルが空の回答を返しました");
+  await expect(followUpField(sticky)).toHaveValue("the model is down?");
+  await expect(sticky.locator(".answer"), "with the answer that is there").toHaveCount(1);
+
+  await open(app, LONG_ID);
+  await expect(cards(app)).toHaveCount(0);
+  await open(app, SNAPSHOT_ID);
+  await expect(sticky.getByRole("alert")).toBeVisible();
+  await expect(followUpField(sticky)).toHaveValue("the model is down?");
+  await expect(followUpField(sticky), "coming back takes no keyboard").not.toBeFocused();
+  await app.evaluate(() => void ((window as unknown as { __modelUp: boolean }).__modelUp = true));
+  await sticky.getByRole("button", { name: "再試行" }).click();
+  await expect(sticky.locator(".answer")).toHaveCount(2);
+  await expect(app.getByRole("alert")).toHaveCount(0);
+});
+
+test("a follow-up not sent yet keeps its text through another window's sticky and leaving the article, and goes with its sticky", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "用語", "#b-102");
+  await followUp(card(app, "用語")).click();
+  await followUpField(app).fill("half a question");
+  await askElsewhere(app, SNAPSHOT_ID, 103);
+  await expect(cards(app)).toHaveCount(2);
+  await expect(followUpField(cards(app).first())).toHaveValue("half a question");
+  await expect(followUpField(app)).toHaveCount(1);
+  await open(app, LONG_ID);
+  await expect(cards(app)).toHaveCount(0);
+  await open(app, SNAPSHOT_ID);
+  await expect(followUpField(cards(app).first())).toHaveValue("half a question");
+  await invoke(app, "delete_sticky", { id: 1 });
+  await expect(cards(app)).toHaveCount(1);
+  await expect(followUpField(app)).toHaveCount(0);
+  await expect(followUp(app)).toHaveCount(1);
+});
+
+test("a follow-up that waits survives leaving the article, and its answer comes to its sticky alone", async ({ shell }) => {
+  await hold(shell, "sticky_follow_up");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askElsewhere(shell, SNAPSHOT_ID, 102);
+  await askElsewhere(shell, SNAPSHOT_ID, 102);
+  await expect(cards(shell)).toHaveCount(2);
+  for (const q of ["最初の", "次の"]) {
+    await followUp(shell).first().click();
+    await followUpField(shell).fill(q);
+    await shell.keyboard.press("Control+Enter");
+  }
+  await open(shell, LONG_ID);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up", 1));
+  await open(shell, SNAPSHOT_ID);
+  await expect(cards(shell).first().locator(".answer")).toHaveCount(2);
+  await expect(cards(shell).first().locator(".sticky-q")).toHaveText("最初の");
+  await expect(cards(shell).nth(1).getByRole("status"), "in their order as before").toBeVisible();
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
+  await expect(cards(shell).nth(1).locator(".answer")).toHaveCount(2);
+});
+
+test("a sticky whose follow-up is answered stays in its place among the others", async ({ app }) => {
+  await openSnapshot(app);
+  await askElsewhere(app, SNAPSHOT_ID, 102);
+  await askElsewhere(app, SNAPSHOT_ID, 102);
+  await expect(cards(app)).toHaveCount(2);
+  // Read again they would be in their order.
+  await app.evaluate(() => void (window.__e2eFail = ["list_stickies"]));
+  await followUp(app).first().click();
+  await followUpField(app).fill("なぜ？");
+  await app.keyboard.press("Control+Enter");
+  await expect(app.locator(".stickies").getByRole("alert")).toHaveText(/list_stickies failed/);
+  const answers = app.locator(".stickies").getByRole("region", { name: "用語", exact: true }).locator(".answer");
+  await expect(answers).toHaveCount(3);
+  await expect(card(app, "用語").first().locator(".answer")).toHaveCount(2);
+});
+
+test("a follow-up to a sticky that another window deleted meanwhile goes without a word", async ({ shell }) => {
+  await hold(shell, "sticky_follow_up");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askElsewhere(shell, SNAPSHOT_ID, 102);
+  await followUp(shell).click();
+  await followUpField(shell).fill("なぜ？");
+  await shell.keyboard.press("Control+Enter");
+  await expect(cards(shell).getByRole("status")).toBeVisible();
+  await invoke(shell, "delete_sticky", { id: 1 });
+  await expect(cards(shell)).toHaveCount(0);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
+  await askElsewhere(shell, SNAPSHOT_ID, 103);
+  await expect(cards(shell)).toHaveCount(1);
+  await expect(shell.getByRole("alert")).toHaveCount(0);
+});
+
+test("a selection in an answer offers 質問, 詳しく and 用語, and the child comes right below its parent, set in from it, there after a reload too", async ({
+  app,
+}) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  await askElsewhere(app, SNAPSHOT_ID, 102, "another on the block");
+  const parent = card(app, "詳しく");
+  await expect(cards(app)).toHaveCount(2);
+  const answer = parent.locator(".answer p");
+  // A word that the article's bar would offer to save.
+  const word = await answer.evaluate((p) => {
+    const text = [...p.childNodes].find((n) => n.textContent!.includes("snapshot"))!;
+    const r = document.createRange();
+    const at = text.textContent!.indexOf("snapshot");
+    r.setStart(text, at);
+    r.setEnd(text, at + "snapshot".length);
+    const box = r.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await app.mouse.dblclick(word.x, word.y);
+  expect(await selected(app)).toBe("snapshot");
+  await expect(bar(app).getByRole("button")).toHaveText(["質問", "詳しく", "用語"]);
+  await bar(app).getByRole("button", { name: "用語" }).click();
+  await expect(bar(app)).toHaveCount(0);
+  await expect(child(app, "用語").locator(".answer")).toHaveText(ANSWERED);
+  await expect(child(app, "用語").locator(".sticky-quote")).toHaveText("snapshot");
+  await askOn(app, "質問", parent);
+  await expect(field(app)).toBeFocused();
+  await app.keyboard.type("なぜ？");
+  await app.keyboard.press("Control+Enter");
+  await expect(child(app, "質問").locator(".answer")).toHaveText(ANSWERED);
+
+  const [, , term, question] = await asked(app);
+  expect(term).toMatchObject({ articleId: SNAPSHOT_ID, parent: 1, kind: "term", quote: "snapshot", question: "" });
+  expect(question).toMatchObject({ parent: 1, kind: "question", question: "なぜ？" });
+  const said = (await answer.textContent())!;
+  expect(question.quote, "without the number of its citation").toBe(said.replace("説明です 1。", "説明です 。"));
+  expect(said).toContain("説明です 1。");
+
+  // Their headers, and so the order: the parent, its children, then the other on the block.
+  const order = ["詳しく", "用語(回答から)", "質問(回答から)", "用語"];
+  await expect(cards(app).locator(".sticky-kind")).toHaveText(order);
+  const below = async () => {
+    const [p, first, second, other] = await Promise.all([0, 1, 2, 3].map((i) => boxOf(cards(app).nth(i))));
+    expect(first.y - (p.y + p.height)).toBeCloseTo(10, 0);
+    expect(second.y - (first.y + first.height)).toBeCloseTo(10, 0);
+    expect(other.y - (second.y + second.height)).toBeGreaterThan(9);
+    expect([first.x, second.x, other.x].map((x) => x - p.x)).toEqual([12, 12, 0]);
+    expect(first.x + first.width, "to the same edge").toBeCloseTo(p.x + p.width, 0);
+  };
+  await below();
+  await app.reload();
+  await open(app, SNAPSHOT_ID);
+  await expect(cards(app).locator(".sticky-kind")).toHaveText(order);
+  await below();
+});
+
+test("a child of a child is set in further, down to the third", async ({ app }) => {
+  await openSnapshot(app);
+  await askElsewhere(app, SNAPSHOT_ID, 102);
+  for (const parent of [1, 2, 3, 4]) {
+    await invoke(app, "sticky_ask", { articleId: SNAPSHOT_ID, blockId: null, parent, kind: "term", quote: `on ${parent}`, question: "" });
+  }
+  await expect(cards(app)).toHaveCount(5);
+  const x = async (nth: number) => (await boxOf(cards(app).nth(nth))).x - (await boxOf(cards(app).first())).x;
+  expect(await Promise.all([1, 2, 3, 4].map(x))).toEqual([12, 24, 36, 36]);
+});
+
+test("a selection is of an answer only from within one: what comes after it, and the buttons below it, are none of it", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const sticky = card(app, "詳しく");
+  await followUp(sticky).click();
+  await followUpField(app).fill("つまり？");
+  await app.keyboard.press("Control+Enter");
+  await expect(sticky.locator(".answer")).toHaveCount(2);
+  const [first, second, question] = [sticky.locator(".answer p").first(), sticky.locator(".answer p").nth(1), sticky.locator(".sticky-q")];
+  const mid = async (l: Locator): Promise<[number, number]> => {
+    const b = await boxOf(l);
+    return [b.x + 30, b.y + 10];
+  };
+  for (const [from, to] of [
+    [first, second],
+    [first, question],
+    [question, second],
+    [second, first],
+  ]) {
+    await dragTo(app, await mid(from), await mid(to));
+    expect(await selected(app)).not.toBe("");
+    await expect(bar(app)).toHaveCount(0);
+  }
+  await first.click({ clickCount: 3 });
+  await expect(bar(app), "a triple click ends where the answer does").toBeVisible();
+  // Past the last line, over 続けて質問 to the card's edge.
+  await dragAnswer(app, second, 45);
+  await bar(app).getByRole("button", { name: "詳しく" }).click();
+  await expect(child(app, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  const { quote, parent } = (await asked(app)).at(-1)!;
+  expect(quote).toMatch(/^選んだ箇所の説明です 。.*そのままです。$/);
+  expect(parent, "the second answer's").toBe(2);
+});
+
+test("the bar of an answer goes as the card is pressed or the column scrolls, and comes as the same is selected or extended again", async ({ shell }) => {
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(4), "start");
+  await askAbout(shell, "詳しく", paraBlock(8));
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toBeVisible();
+  const answer = sticky.locator(".answer p");
+  await dragAnswer(shell, answer);
+  await expect(bar(shell)).toBeVisible();
+  const whole = await selected(shell);
+  // A scroll would take the bar away too.
+  for (const scrolls of [true, false]) {
+    const before = await scrollTop(shell);
+    await sticky.locator(".cite").click();
+    await expect.poll(async () => (await scrollTop(shell)) !== before).toBe(scrolls);
+    expect(await selected(shell)).toBe(whole);
+    await expect(bar(shell)).toHaveCount(0);
+  }
+  await dragAnswer(shell, answer);
+  await expect(bar(shell)).toBeVisible();
+  await doc(shell).evaluate((el) => (el.scrollTop += 20));
+  await expect(bar(shell)).toHaveCount(0);
+  const end = await shell.evaluate(() => {
+    const rects = getSelection()!.getRangeAt(0).getClientRects();
+    const r = rects[rects.length - 1];
+    return { x: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await shell.keyboard.down("Shift");
+  await shell.mouse.click(end.x, end.y);
+  expect(await selected(shell)).toBe(whole);
+  await expect(bar(shell)).toBeVisible();
+  await shell.keyboard.up("Shift");
+  await doc(shell).evaluate((el) => (el.scrollTop += 5));
+  await expect(bar(shell)).toHaveCount(0);
+  await shell.keyboard.press("Shift+ArrowLeft");
+  await expect(bar(shell)).toBeVisible();
+  await shell.keyboard.press("Shift+ArrowLeft");
+  await bar(shell).getByRole("button", { name: "詳しく" }).click();
+  await expect(child(shell, "詳しく")).toBeVisible();
+  expect((await asked(shell)).at(-1)!.quote).toMatch(/書き換わった出典 \[3\] はそのままで$/);
+});
+
+test("a question on an answer keeps its text as one on the article does, and Esc and キャンセル drop it", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const parent = card(app, "詳しく");
+  for (const drop of [() => app.keyboard.press("Escape"), () => child(app, "質問").getByRole("button", { name: "キャンセル" }).click()]) {
+    await askOn(app, "質問", parent);
+    await expect(field(app)).toBeFocused();
+    await drop();
+    await expect(cards(app)).toHaveCount(1);
+    await expect(doc(app)).toBeFocused();
+  }
+  await askOn(app, "質問", parent);
+  await field(app).fill("the model is down?");
+  await app.keyboard.press("Control+Enter");
+  await expect(child(app, "質問").getByRole("alert")).toBeVisible();
+  await open(app, LONG_ID);
+  await expect(cards(app)).toHaveCount(0);
+  await open(app, SNAPSHOT_ID);
+  await expect(child(app, "質問").getByRole("alert")).toBeVisible();
+  await expect(field(app)).toHaveValue("the model is down?");
+  await app.evaluate(() => void ((window as unknown as { __modelUp: boolean }).__modelUp = true));
+  await child(app, "質問").getByRole("button", { name: "再試行" }).click();
+  await expect(child(app, "質問").locator(".answer")).toHaveText(ANSWERED);
+  expect((await asked(app)).map((c) => c.parent)).toEqual([null, 1, 1]);
+});
+
+test("deleting a sticky says that those made from its answers stay, and they do, with what is being written", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  await askOn(app, "用語", card(app, "詳しく"));
+  await expect(child(app, "用語").locator(".answer")).toBeVisible();
+  await askOn(app, "質問", card(app, "詳しく"));
+  await field(app).fill("half a question");
+  const dialog = app.getByRole("alertdialog", { name: "付箋を削除しますか？" });
+  await child(app, "用語").getByRole("button", { name: "付箋を削除" }).click();
+  await expect(dialog).toContainText("元に戻せません。");
+  await expect(dialog).not.toContainText("回答から作った付箋は残ります。");
+  await dialog.getByRole("button", { name: "キャンセル" }).click();
+  const { x } = await boxOf(card(app, "詳しく"));
+  await card(app, "詳しく").getByRole("button", { name: "付箋を削除" }).click();
+  await expect(dialog).toContainText("回答から作った付箋は残ります。");
+  await dialog.getByRole("button", { name: "削除" }).click();
+  await expect(cards(app).locator(".sticky-kind")).toHaveText(["用語", "質問"]);
+  expect((await boxOf(card(app, "用語"))).x).toBe(x);
+  await expect(field(app)).toHaveValue("half a question");
+  await field(app).press("Control+Enter");
+  await expect(card(app, "質問").locator(".answer")).toHaveText(ANSWERED);
+  expect((await asked(app)).at(-1)).toMatchObject({ blockId: 102, parent: null, question: "half a question" });
+});
+
+test("a question on an answer whose sticky goes while it waits can be sent again, if it fails, as one on the article", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  const release = () => shell.evaluate(() => window.__e2e.release("sticky_ask"));
+  const failing = (cmds: string[]) => shell.evaluate((cmds) => void (window.__e2eFail = cmds), cmds);
+  await askAbout(shell, "詳しく", "#b-102");
+  await release();
+  await askOn(shell, "質問", card(shell, "詳しく"));
+  await field(shell).fill("なぜ？");
+  await shell.keyboard.press("Control+Enter");
+  await invoke(shell, "delete_sticky", { id: 1 });
+  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["質問"]);
+  await expect(cards(shell).getByRole("status")).toBeVisible();
+  const other = askElsewhere(shell, SNAPSHOT_ID, 102);
+  await shell.waitForFunction(() => window.__e2e.calls.filter((c) => c.cmd === "sticky_ask").length === 3);
+  await shell.evaluate(() => window.__e2e.release("sticky_ask", -1));
+  expect(await other, "the ids of the one that is gone").toMatchObject({ id: 1, messages: [{ id: 1 }] });
+  await expect(cards(shell)).toHaveCount(2);
+  await failing(["sticky_ask"]);
+  await release();
+  await expect(card(shell, "質問").getByRole("alert")).toHaveText(/sticky_ask failed/);
+  await failing([]);
+  await card(shell, "質問").getByRole("button", { name: "再試行" }).click();
+  await release();
+  await expect(card(shell, "質問").locator(".answer")).toHaveText(ANSWERED);
+  expect((await asked(shell)).map((c) => [c.blockId, c.parent])).toEqual([
+    [102, null],
+    [102, 1],
+    [102, null],
+    [102, null],
+  ]);
+});
+
+/** The article's cards in a wide pane: one on a block, and the one that was asked last, with no room for both at their blocks' heights. */
+async function startCrowded(shell: Page) {
+  await shell.addInitScript(() => void (window.__e2eHold = ["sticky_ask", "sticky_follow_up"]));
+  await shell.setViewportSize({ width: 1500, height: 1400 });
+  await startLong(shell);
+  for (const [i, block] of [30, 31].entries()) {
+    await scrollTo(shell, paraBlock(block), "center");
+    await askAbout(shell, "用語", paraBlock(block));
+    await shell.evaluate(() => window.__e2e.release("sticky_ask"));
+    await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
+  }
+  const off = async (nth: number, block: number) => (await boxOf(cards(shell).nth(nth))).y - (await boxOf(shell.locator(paraBlock(block)))).y;
+  expect(await off(0, 30), "gave way").toBeLessThan(-20);
+  expect(Math.abs(await off(1, 31))).toBeLessThan(1);
+  return off;
+}
+
+/** A thing whose place is to stay, as it opens, is written in, is answered or not: the cards up to it, the text and the view. */
+async function staysStill(shell: Page, nth: number, steps: (() => Promise<unknown>)[], block = 30) {
+  const state = async () => ({
+    cards: await Promise.all(Array.from({ length: nth + 1 }, async (_, i) => Math.round((await boxOf(cards(shell).nth(i))).y))),
+    text: Math.round((await boxOf(shell.locator(paraBlock(block)))).y),
+    top: await scrollTop(shell),
+  });
+  const before = await state();
+  for (const [i, step] of steps.entries()) {
+    await step();
+    await frames(shell);
+    expect(await state(), `after step ${i}`).toEqual(before);
+  }
+}
+
+const release = (shell: Page, cmd: string) => () => shell.evaluate((cmd) => window.__e2e.release(cmd), cmd);
+
+test("a child, and a follow-up, move neither the cards above them nor the text as they open, are answered or are closed: the one that is pinned below gives way", async ({
+  shell,
+}) => {
+  const off = await startCrowded(shell);
+  const parent = cards(shell).first();
+  await staysStill(shell, 0, [
+    () => askOn(shell, "質問", parent),
+    () => expect(field(shell)).toBeFocused(),
+    () => shell.keyboard.type("one\ntwo"),
+    () => shell.keyboard.press("Escape"),
+    () => expect(cards(shell)).toHaveCount(2),
+  ]);
+  expect(Math.abs(await off(1, 31)), "the pinned one is back").toBeLessThan(1);
+  await staysStill(shell, 0, [
+    () => followUp(parent).click(),
+    () => shell.keyboard.type("one"),
+    () => parent.getByRole("button", { name: "キャンセル" }).click(),
+    () => followUp(parent).click(),
+    () => shell.keyboard.type("one"),
+    () => shell.keyboard.press("Control+Enter"),
+    release(shell, "sticky_follow_up"),
+    () => expect(parent.locator(".answer")).toHaveCount(2),
+    // And then a child of it, in the room of what is there.
+    () => askOn(shell, "用語", parent, 1),
+    () => expect(child(shell, "用語").getByRole("status")).toBeVisible(),
+    release(shell, "sticky_ask"),
+    () => expect(child(shell, "用語").locator(".answer")).toBeVisible(),
+  ]);
+  expect(await off(2, 31), "as far as it has to").toBeGreaterThan(20);
+  const [p, c, last] = await Promise.all([0, 1, 2].map((i) => boxOf(cards(shell).nth(i))));
+  expect(c.y - (p.y + p.height)).toBeCloseTo(10, 0);
+  expect(last.y - (c.y + c.height)).toBeCloseTo(10, 0);
+  // A second child, below the first, and one on the first: neither moves what is above it.
+  await staysStill(shell, 1, [
+    () => askOn(shell, "詳しく", parent),
+    release(shell, "sticky_ask"),
+    () => expect(child(shell, "詳しく").locator(".answer")).toBeVisible(),
+  ]);
+  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["用語", "用語(回答から)", "詳しく(回答から)", "用語"]);
+
+  // Asked on the text again, it has its block's height, and those above give way to that.
+  await scrollTo(shell, paraBlock(32), "center");
+  await askAbout(shell, "質問", paraBlock(32));
+  expect(Math.abs(await off(4, 32))).toBeLessThan(1);
+});
+
+test("cards that the pinned one has given way to stay as others are asked on, and it stays too", async ({ shell }) => {
+  const off = await startCrowded(shell);
+  // With all in view.
+  await shell.setViewportSize({ width: 1500, height: 1800 });
+  for (const block of [29, 33]) {
+    await Promise.all([askElsewhere(shell, LONG_ID, paraId(block)), release(shell, "sticky_ask")()]);
+  }
+  await expect(cards(shell)).toHaveCount(4);
+  const [above, held, pinned, below] = [0, 1, 2, 3].map((i) => cards(shell).nth(i));
+  await above.evaluate((el) => el.scrollIntoView());
+  await followUp(held).click();
+  await shell.keyboard.type("one");
+  await shell.keyboard.press("Control+Enter");
+  await release(shell, "sticky_follow_up")();
+  await expect(held.locator(".answer")).toHaveCount(2);
+  const down = await off(2, 31);
+  expect(down, "gives way").toBeGreaterThan(20);
+  const write = [() => shell.keyboard.type("one\ntwo"), () => shell.keyboard.press("Escape")];
+  await staysStill(shell, 2, [() => followUp(pinned).click(), ...write]);
+  await staysStill(shell, 3, [() => askOn(shell, "質問", below), ...write]);
+  const at = (await boxOf(held)).y;
+  await staysStill(shell, 0, [() => followUp(above).click(), async () => expect((await boxOf(held)).y).toBeGreaterThan(at + 20), ...write]);
+  expect((await boxOf(held)).y).toBe(at);
+  expect(await off(2, 31)).toBe(down);
+});
+
+test("a sticky that gets the id of the pinned one, which is gone, is not pinned", async ({ shell }) => {
+  const off = await startCrowded(shell);
+  await invoke(shell, "delete_sticky", { id: 2 });
+  await expect(cards(shell)).toHaveCount(1);
+  await frames(shell);
+  expect(Math.abs(await off(0, 30))).toBeLessThan(1);
+  await staysStill(shell, 0, [
+    async () => {
+      const [other] = await Promise.all([askElsewhere(shell, LONG_ID, paraId(31)), release(shell, "sticky_ask")()]);
+      expect(other).toMatchObject({ id: 2 });
+    },
+    () => expect(cards(shell)).toHaveCount(2),
+  ]);
+});
+
+test("a question on an answer whose sticky goes is at its block's height, as far as the pinned one lets it", async ({ shell }) => {
+  const off = await startCrowded(shell);
+  await askOn(shell, "質問", cards(shell).first());
+  await invoke(shell, "delete_sticky", { id: 1 });
+  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["質問", "用語"]);
+  await frames(shell);
+  expect(Math.abs(await off(1, 31))).toBeLessThan(1);
+  const [draft, pinned] = [await boxOf(cards(shell).first()), await boxOf(cards(shell).nth(1))];
+  expect(pinned.y - (draft.y + draft.height)).toBeCloseTo(10, 0);
+});
+
+test("a child, and a follow-up, of the card that is pinned leave it and the ones above it where they are", async ({ shell }) => {
+  const off = await startCrowded(shell);
+  await staysStill(shell, 1, [
+    () => askOn(shell, "質問", cards(shell).nth(1)),
+    () => shell.keyboard.type("one\ntwo"),
+    () => shell.keyboard.press("Control+Enter"),
+    release(shell, "sticky_ask"),
+    () => expect(child(shell, "質問").locator(".answer")).toBeVisible(),
+    () => followUp(cards(shell).nth(1)).click(),
+    () => shell.keyboard.type("one"),
+    () => shell.keyboard.press("Escape"),
+  ]);
+  expect(Math.abs(await off(1, 31))).toBeLessThan(1);
+});
+
+test("in a narrow pane a child is right below its parent, and neither it nor a follow-up moves the text or the card above it", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eHold = ["sticky_ask", "sticky_follow_up"]));
+  await startNarrow(shell);
+  await shell.setViewportSize({ width: 1200, height: 1300 });
+  await scrollTo(shell, paraBlock(39), "start");
+  await askAbout(shell, "用語", paraBlock(40));
+  await release(shell, "sticky_ask")();
+  const parent = card(shell, "用語");
+  await expect(parent.locator(".answer")).toBeVisible();
+  const between = async (block: number, above: Locator) => {
+    const [b, c] = [await boxOf(shell.locator(paraBlock(block))), await boxOf(above)];
+    return b.y - (c.y + c.height);
+  };
+  const gap = await between(41, parent);
+  const below = async (kind: "質問" | "詳しく") => {
+    const [p, c] = [await boxOf(parent), await boxOf(child(shell, kind))];
+    expect(c.y - (p.y + p.height)).toBeCloseTo(10, 0);
+    expect(c.x - p.x).toBe(12);
+    expect(Math.abs((await between(41, child(shell, kind))) - gap), "the text below gives way").toBeLessThan(1);
+  };
+  await staysStill(
+    shell,
+    0,
+    [
+      () => askOn(shell, "質問", parent),
+      () => below("質問"),
+      () => shell.keyboard.type("one two"),
+      () => shell.keyboard.press("Escape"),
+      () => expect(cards(shell)).toHaveCount(1),
+      () => followUp(parent).click(),
+      () => shell.keyboard.type("one"),
+      () => parent.getByRole("button", { name: "キャンセル" }).click(),
+      () => followUp(parent).click(),
+      () => shell.keyboard.type("one"),
+      () => shell.keyboard.press("Control+Enter"),
+      release(shell, "sticky_follow_up"),
+      () => expect(parent.locator(".answer")).toHaveCount(2),
+      () => askOn(shell, "詳しく", parent),
+      () => below("詳しく"),
+      release(shell, "sticky_ask"),
+      () => expect(child(shell, "詳しく").locator(".answer")).toBeVisible(),
+      () => below("詳しく"),
+    ],
+    39,
+  );
+});
+
+test("a follow-up, or a child, that opens below the view moves it no further than shows it, and gives the view back as it is closed", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(40), "center");
+  await askAbout(shell, "用語", paraBlock(40));
+  const sticky = card(shell, "用語");
+  await expect(sticky.locator(".answer")).toBeVisible();
+  await sticky.evaluate((el) => el.scrollIntoView({ block: "end" }));
+  await frames(shell);
+  const top = await scrollTop(shell);
+  const end = async (l: Locator) => {
+    const [b, view] = [await boxOf(l), await boxOf(doc(shell))];
+    return b.y + b.height - (view.y + view.height);
+  };
+  for (const [openIt, on] of [
+    [() => followUp(sticky).click(), sticky],
+    [() => askOn(shell, "質問", sticky), child(shell, "質問")],
+  ] as const) {
+    await openIt();
+    await expect(on.getByRole("textbox")).toBeFocused();
+    await expect(on.getByRole("textbox")).toBeInViewport({ ratio: 1 });
+    expect(await scrollTop(shell)).toBeGreaterThan(top + 20);
+    expect(Math.abs(await end(on)), "to the card's edge").toBeLessThan(2);
+    await shell.keyboard.press("Escape");
+    await expect(on.getByRole("textbox")).toHaveCount(0);
+    expect(await scrollTop(shell)).toBe(top);
+  }
 });

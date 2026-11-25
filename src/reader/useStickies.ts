@@ -1,12 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Sticky } from "../api";
-import type { Ask } from "./stickies";
+import { api, type Sticky, type StickyKind } from "../api";
+import { asksLeft, goneOf, isFollowUp, type Ask, type Passage, type Step } from "./stickies";
 
 interface Stickies {
   saved: Sticky[];
   asks: Ask[];
-  /** The stickies that asks of this window became, by the ask's key. */
+  /** The stickies that have the answers to asks of this window, by the ask's key. */
   answers: ReadonlyMap<number, number>;
   /** Why the saved ones could not be read. */
   error: string | null;
@@ -24,7 +24,14 @@ const subscribe = (f: () => void) => {
 
 const of = (article: number) => articles.get(article) ?? NONE;
 function put(article: number, change: Partial<Stickies>) {
-  articles.set(article, { ...of(article), ...change });
+  const was = of(article);
+  const now = { ...was, ...change };
+  const gone = goneOf(was.saved, now.saved);
+  articles.set(article, {
+    ...now,
+    asks: asksLeft(now.asks, gone),
+    answers: new Map([...now.answers].filter(([, id]) => !gone.some((s) => s.id === id))),
+  });
   listeners.forEach((f) => f());
 }
 
@@ -56,35 +63,45 @@ export function useStickies(article: number): Stickies {
   return useSyncExternalStore(subscribe, () => of(article));
 }
 
-export const replaceAsk = (article: number, ask: Ask) => put(article, { asks: of(article).asks.map((a) => (a.key === ask.key ? ask : a)) });
+export const changeAsk = (article: number, key: number, change: { question: string } | Step) =>
+  put(article, { asks: of(article).asks.map((a) => (a.key === key ? { ...a, ...change } : a)) });
 
 export function dropAsk(article: number, key: number) {
   put(article, { asks: of(article).asks.filter((a) => a.key !== key) });
 }
 
+function answerTo(article: number, ask: Ask) {
+  const { question } = ask;
+  if (isFollowUp(ask)) {
+    return api.stickyFollowUp({ id: ask.sticky, question });
+  }
+  const { blockId, parent, kind, quote } = ask;
+  return api.stickyAsk({ articleId: article, blockId, parent, kind, quote, question });
+}
+
 /** Sends it; the answer takes its place. One that failed can be sent again. */
 export async function sendAsk(article: number, ask: Ask) {
-  const { key, blockId, kind, quote, question } = ask;
-  replaceAsk(article, { ...ask, step: "pending" });
+  const { key } = ask;
+  changeAsk(article, key, { step: "pending" });
   try {
-    const sticky = await api.stickyAsk({ articleId: article, blockId, parent: null, kind, quote, question });
+    const sticky = await answerTo(article, ask);
     const { saved, asks, answers } = of(article);
     put(article, {
-      saved: [...saved.filter((s) => s.id !== sticky.id), sticky],
+      saved: [...saved.filter((s) => s.id !== sticky.id), sticky].toSorted((a, b) => a.id - b.id),
       asks: asks.filter((a) => a.key !== key),
       answers: new Map(answers).set(key, sticky.id),
     });
   } catch (e) {
-    replaceAsk(article, { ...ask, step: "failed", error: String(e) });
+    changeAsk(article, key, { step: "failed", error: String(e) });
   }
 }
 
 let keys = 0;
-/** Asks about a passage at once, or opens a card to write the question on. Returns the ask's key. */
-export function openAsk(article: number, passage: Pick<Ask, "blockId" | "kind" | "quote">): number {
-  const ask: Ask = { ...passage, key: ++keys, question: "", step: "writing" };
+/** Asks about a passage at once, or opens a card, or in a sticky, to write the question. Returns the ask's key. */
+export function openAsk(article: number, about: (Passage & { kind: StickyKind }) | { sticky: number }): number {
+  const ask: Ask = { ...about, key: ++keys, question: "", step: "writing" };
   put(article, { asks: [...of(article).asks, ask] });
-  if (ask.kind !== "question") {
+  if (!isFollowUp(ask) && ask.kind !== "question") {
     void sendAsk(article, ask);
   }
   return ask.key;
