@@ -1001,6 +1001,31 @@ test("a drag goes on into an open tooltip and across it, and the passage is the 
   expect(first.quote + second.quote).not.toMatch(japanese);
 });
 
+test("a word in a sentence's tooltip can be saved, and not asked about", async ({ app }) => {
+  await openSnapshot(app);
+  await app.locator("#b-103 .sent").hover();
+  const pop = app.locator("#b-103 .pop");
+  await expect(pop).toBeVisible();
+  const word = await pop.evaluate((el) => {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const at = n.textContent!.indexOf("PostgreSQL");
+      if (at >= 0) {
+        const r = document.createRange();
+        r.setStart(n, at);
+        r.setEnd(n, at + "PostgreSQL".length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(r);
+        el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        return getSelection()!.toString();
+      }
+    }
+    return null;
+  });
+  expect(word).toBe("PostgreSQL");
+  await expect(bar(app).getByRole("button")).toHaveText([/単語を登録/]);
+});
+
 test("a passage over the limit cannot be asked about", async ({ app }) => {
   await openSnapshot(app);
   const grow = (n: number) => app.locator("#b-102 .sent").evaluate((el, text) => (el.textContent = text), "𠮷".repeat(n));

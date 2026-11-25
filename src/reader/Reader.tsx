@@ -989,8 +989,10 @@ export function Reader({
 
   const offerBar = () => {
     clearTimeout(timers.current.cap);
+    const word = selectionCapture();
     const selected = selectionPassage();
-    setCap(selected && { ...selected, capture: selectionCapture()?.capture });
+    // A word of a tooltip is no passage, but one to save.
+    setCap(selected ? { ...selected, capture: word?.capture } : word);
   };
   /** On a sticky or its dialog, whose events come to the scroller too. */
   const onSticky = (e: React.SyntheticEvent) => {
