@@ -2192,8 +2192,13 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                     let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
                     let past = drafts.last().is_some_and(|d| d.kind == Kind::Table);
                     let sentence = prev.text.trim_end_matches(['"', '\'', ')', ']', '”', '’', '）', '」', '』']);
-                    let whole = past && sentence.ends_with(['.', '!', '?', ':', '。', '！', '？']);
-                    across && !whole && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-')) && l.x0 <= l.left + 0.8 * l.size
+                    let whole = sentence.ends_with(['.', '!', '?', ':', '。', '！', '？']);
+                    // "Table 1 What each finds", with no stop for `caption_label` to tell it by.
+                    let caption = ["Table", "TABLE", "表"].iter().any(|t| first.text.starts_with(t));
+                    across
+                        && !(past && (whole || caption))
+                        && (prev.x1 >= prev.right - 2. * prev.size || prev.text.ends_with('-'))
+                        && l.x0 <= l.left + 0.8 * l.size
                 }
             });
         if continues {
@@ -5620,6 +5625,16 @@ pub(crate) mod tests {
     const RIGHT: [f64; 3] = [322., 422., 540.];
     const PROS: [&str; 4] = ["Strong", "Lasting", "Costly", "Easy"];
     const CONS: [&str; 4] = ["Fast", "Cheap", "Slow", "Dear"];
+
+    #[test]
+    fn a_caption_with_no_stop_over_a_table_does_not_run_on_past_it() {
+        let line = |x: f64, y: f64, words: &str| shown(x, y, &format!("{words} column line of the body runs on to it"));
+        let left: String = (0..30).map(|i| line(72., 100. + 12. * i as f64, "Left")).collect();
+        let table = sized(72., 480., 9., "Table 1 What each of the methods in the study found") + &two_by_two(LEFT, [490., 510., 530.], PROS);
+        let right: String = (0..36).map(|i| line(316., 112. + 12. * i as f64, "Right")).collect();
+        let texts = texts_of(&(left + &table + &shown(316., 100., "then goes on atop the right column until it") + &right));
+        assert!(texts.iter().any(|t| t == "Table 1 What each of the methods in the study found"), "{texts:?}");
+    }
 
     #[test]
     fn a_table_at_the_foot_of_the_left_column_is_read_before_one_atop_the_right_column() {
