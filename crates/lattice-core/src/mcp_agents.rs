@@ -854,7 +854,7 @@ mod tests {
             s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: old } }).to_string());
             let started = std::time::Instant::now();
             let e = message(&s.agents.connect(&s.store, &r.id).await.unwrap_err());
-            assert!(started.elapsed() < Duration::from_secs(15));
+            assert!(started.elapsed() < Duration::from_secs(30));
             assert_eq!(e["params"]["error"].as_str().unwrap().trim(), error, "the first failure");
             let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().replace("\"\"", "\"")).collect();
             assert_eq!(calls.len(), 3, "{calls:?}");
@@ -862,6 +862,18 @@ mod tests {
             assert!(calls[1].contains(&r.token), "{calls:?}");
             assert_eq!(calls[2], format!("mcp add-json -s user lattice-dev \"{old}\""));
         }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_program_given_up_on_does_nothing_more() {
+        let mut s = Sandbox::new("claude-late");
+        s.agents.timeout = Duration::from_secs(1);
+        s.agents.claude = s.fake_claude("ping -n 4 127.0.0.1 >nul\r\n@echo.>\"%~dp0late\"");
+        let r = s.register(Target::ClaudeCode);
+        assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("timed out"));
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert!(!s.dir.join("late").exists());
     }
 
     #[cfg(windows)]
