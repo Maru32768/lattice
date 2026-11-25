@@ -23,18 +23,25 @@ async function openSnapshot(page: Page) {
   await page.locator(".docbar").getByRole("button", { name: "原文", exact: true }).click();
 }
 
-/** The app with one article long enough to scroll, beside the sidebar and the list. `translated` by the sentence. */
-async function startLong(shell: Page, sentences = 1, tail = "", translated = false) {
+/** One article long enough to scroll. `translated` by the sentence. */
+async function makeLong(shell: Page, sentences = 1, tail = "", translated = false) {
   await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
     const res = await route.fetch();
     const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', Array(${sentences}).fill(\`Paragraph \${i} of the long article.\`).join(' '), ${translated ? "'訳文'" : "null"}]), ${tail}] : plain(a)))(genericBlocks);
       ${translated ? `blocksOf = ((plain) => (a) => plain(a).map((b) => (b.text.startsWith('Paragraph ') ? { ...b, units: Array(${sentences}).fill({ source: /^.*?\\./.exec(b.text)[0], translation: '長い記事の段落の一文。' }) } : b)))(blocksOf);` : ""}`;
     await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
   });
+}
+
+/** The app with it open beside the sidebar and the list. */
+async function startLong(shell: Page, ...long: [sentences?: number, tail?: string, translated?: boolean]) {
+  await makeLong(shell, ...long);
   await shell.goto("/");
   await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   await open(shell, LONG_ID);
 }
+
+const longPane = (id: number) => ({ kind: "pane", id, tabs: [{ kind: "reader", id: id + 1, articleId: LONG_ID }], active: id + 1 });
 
 /** The block of `para(i)`. */
 const paraId = (i: number) => LONG_ID * 100 + 5 + i;
@@ -1381,6 +1388,22 @@ test("the bar of a passage that ends below the view, or at its edge, is in the w
   await startLong(shell);
   await selectFrom(shell, paraBlock(0), paraBlock(75));
   await expect(bar(shell)).toBeInViewport({ ratio: 1 });
+});
+
+test("the bar of a passage at either end of a line is in a window hardly wider than it", async ({ shell }) => {
+  await makeLong(shell, 4);
+  await shell.setViewportSize({ width: 520, height: 800 });
+  await shell.addInitScript((l) => localStorage.setItem("lattice.window.doc-1", l), JSON.stringify({ root: longPane(1), focused: 1 }));
+  await shell.goto("/?window=doc-1");
+  await scrollTo(shell, paraBlock(40), "center");
+  const line = await boxOf(shell.locator(`${paraBlock(40)} p`));
+  for (const x of [line.x + 10, line.x + line.width - 30]) {
+    await shell.mouse.dblclick(x, line.y + 14);
+    expect(await selected(shell)).not.toBe("");
+    await expect(bar(shell)).toBeInViewport({ ratio: 1 });
+    await shell.mouse.click(line.x - 4, line.y + 14);
+    await expect(bar(shell)).toHaveCount(0);
+  }
 });
 
 /** The place kept for an article. */
