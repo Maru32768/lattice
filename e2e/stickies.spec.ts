@@ -43,6 +43,8 @@ async function startLong(shell: Page, ...long: [sentences?: number, tail?: strin
 
 const longPane = (id: number) => ({ kind: "pane", id, tabs: [{ kind: "reader", id: id + 1, articleId: LONG_ID }], active: id + 1 });
 
+const release = (shell: Page, cmd: string) => () => shell.evaluate((cmd) => window.__e2e.release(cmd), cmd);
+
 /** The block of `para(i)`. */
 const paraId = (i: number) => LONG_ID * 100 + 5 + i;
 const paraBlock = (i: number) => `#b-${paraId(i)}`;
@@ -2554,10 +2556,10 @@ test("a question on an answer whose sticky goes while it waits can be sent again
   await hold(shell, "sticky_ask");
   await shell.goto("/");
   await openSnapshot(shell);
-  const release = () => shell.evaluate(() => window.__e2e.release("sticky_ask"));
+  const answer = release(shell, "sticky_ask");
   const failing = (cmds: string[]) => shell.evaluate((cmds) => void (window.__e2eFail = cmds), cmds);
   await askAbout(shell, "詳しく", "#b-102");
-  await release();
+  await answer();
   await askOn(shell, "質問", card(shell, "詳しく"));
   await field(shell).fill("なぜ？");
   await shell.keyboard.press("Control+Enter");
@@ -2570,11 +2572,11 @@ test("a question on an answer whose sticky goes while it waits can be sent again
   expect(await other, "the ids of the one that is gone").toMatchObject({ id: 1, messages: [{ id: 1 }] });
   await expect(cards(shell)).toHaveCount(2);
   await failing(["sticky_ask"]);
-  await release();
+  await answer();
   await expect(card(shell, "質問").getByRole("alert")).toHaveText(/sticky_ask failed/);
   await failing([]);
   await card(shell, "質問").getByRole("button", { name: "再試行" }).click();
-  await release();
+  await answer();
   await expect(card(shell, "質問").locator(".answer")).toHaveText(ANSWERED);
   expect((await asked(shell)).map((c) => [c.blockId, c.parent])).toEqual([
     [102, null],
@@ -2615,8 +2617,6 @@ async function staysStill(shell: Page, nth: number, steps: (() => Promise<unknow
     expect(await state(), `after step ${i}`).toEqual(before);
   }
 }
-
-const release = (shell: Page, cmd: string) => () => shell.evaluate((cmd) => window.__e2e.release(cmd), cmd);
 
 test("a child, and a follow-up, move neither the cards above them nor the text as they open, are answered or are closed: the one that is pinned below gives way", async ({
   shell,
