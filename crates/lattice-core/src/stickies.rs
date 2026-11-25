@@ -763,6 +763,8 @@ mod tests {
         let cited = &m.messages[0].citations[0];
         let label = input.lines().find(|l| l.starts_with("[1] ")).unwrap();
         assert!(cited.n == 1 && label == format!("[1] {}", cited.text), "numbered from the window's first block");
+        ask_on(&s, &llm, &m, 0, StickyKind::Detail, "word", "").await.unwrap();
+        assert!((65..=75).all(sent) && !llm.input().contains("P0. "), "a child's window is around its parent's block");
 
         ask(&s, &llm, a, Some(block(&s, a, "P99.")), StickyKind::Detail, "word", "").await.unwrap();
         assert!((90..=99).all(sent), "near the end, the room goes to what comes before");
