@@ -2309,6 +2309,16 @@ test("a follow-up not sent yet keeps its text through another window's sticky an
   await expect(cards(app)).toHaveCount(1);
   await expect(followUpField(app)).toHaveCount(0);
   await expect(followUp(app)).toHaveCount(1);
+  // Not to the one that gets the id of the sticky that is gone, as SQLite gives it again.
+  await askElsewhere(app, SNAPSHOT_ID, 103);
+  await expect(cards(app)).toHaveCount(2);
+  await followUp(cards(app).last()).click();
+  await followUpField(app).fill("on the last");
+  await invoke(app, "delete_sticky", { id: 3 });
+  await expect(cards(app)).toHaveCount(1);
+  expect(await askElsewhere(app, SNAPSHOT_ID, 103, "another")).toMatchObject({ id: 3 });
+  await expect(cards(app)).toHaveCount(2);
+  await expect(followUpField(app)).toHaveCount(0);
 });
 
 test("a follow-up that waits survives leaving the article, and its answer comes to its sticky alone", async ({ shell }) => {
