@@ -1263,6 +1263,20 @@ test("the reading place among the cards under a block is the block's end, and th
   await expect.poll(() => placeText(shell)).toBe(para(79));
 });
 
+test("the reading place among the cards above the first block is none", async ({ shell }) => {
+  await startNarrow(shell);
+  for (const quote of ["one", "two", "three", "four"]) {
+    await askElsewhere(shell, LONG_ID, null, quote);
+  }
+  await expect(cards(shell)).toHaveCount(4);
+  await scrollTo(shell, paraBlock(40), "start");
+  await expect.poll(() => placeText(shell)).toBe(para(40));
+  await cards(shell)
+    .nth(2)
+    .evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await expect.poll(() => placeText(shell)).toBeUndefined();
+});
+
 test("the place that the Page view gets among the cards below an article that ends in a listing is the listing's end", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell, 1, "['code', 'the last listing', null]");
