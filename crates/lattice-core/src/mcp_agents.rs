@@ -742,6 +742,16 @@ mod tests {
         drop(turn);
         assert_eq!(waiting.await, Ok(false), "deleted while it waited");
         assert_eq!(s.file("config.toml"), "");
+
+        let turn = WRITING.lock().await;
+        let waiting = s.agents.disconnect(&s.store, Target::Codex);
+        tokio::pin!(waiting);
+        assert!(tokio::time::timeout(Duration::from_millis(50), &mut waiting).await.is_err(), "it waits its turn");
+        let r = s.register(Target::Codex);
+        s.set("config.toml", &copied(Target::Codex, &r.token));
+        drop(turn);
+        assert_eq!(waiting.await, Ok(false), "registered while it waited");
+        assert_eq!(s.file("config.toml"), copied(Target::Codex, &r.token));
     }
 
     #[tokio::test]
