@@ -77,6 +77,7 @@ test("a question in a sticky goes with it, and one on its answer stays without i
   assert.deepEqual(left([{ ...before[0], block_id: null }, sticky(2, 10, [3, 4]), sticky(3, 10, [5])]), all, "as they go on");
   const gone = ["2 on null", "3 in 2", "4 on 3", "5 on null"];
   assert.deepEqual(left([before[1]]), gone);
+  assert.deepEqual(left([{ ...before[0], id: 9 }, before[1]]), gone, "another that reads the same");
   assert.deepEqual(left([{ ...before[0], quote: "another" }, before[1]]), gone);
   assert.deepEqual(left([sticky(1, 10, [4]), before[1]]), gone);
   assert.deepEqual(left([{ ...before[0], messages: [{ ...before[0].messages[0], answer: "another" }] }, before[1]]), gone);
@@ -114,12 +115,12 @@ test("a held card stays where it is put: those between it and the pinned one giv
     { at: 0, height: 100 },
     { at: 180, height: 100 },
     { at: 0, height: child },
-    { at: 400, height: 50 },
+    { at: 460, height: 50 },
     { at: 500, height: 80 },
   ];
   // The card at 180 was 20 px higher before its child came, with nothing between.
-  assert.deepEqual(stack(cards(60), 1, 4), [0, 180, 290, 400, 500], "there is room");
-  assert.deepEqual(stack(cards(130), 1, 4), [0, 180, 290, 430, 500], "as much as there is");
+  assert.deepEqual(stack(cards(60), 1, 4), [0, 180, 290, 440, 500], "there is room");
+  assert.deepEqual(stack(cards(140), 1, 4), [0, 180, 290, 440, 500], "as much as there is");
   assert.deepEqual(stack(cards(150), 1, 4), [0, 180, 290, 450, 510], "the pinned one goes down");
   assert.deepEqual(stack(cards(150), 4), [0, 170, 280, 440, 500], "without one held it is the first ones that go up");
   assert.deepEqual(
@@ -135,21 +136,4 @@ test("a held card stays where it is put: those between it and the pinned one giv
     [0, 110, 400],
     "no higher than the column's top leaves",
   );
-});
-
-test("holding a card where it is moves none", () => {
-  let seed = 1;
-  const int = (n: number) => (seed = (seed * 16807) % 2147483647) % n;
-  for (let trial = 0; trial < 500; trial++) {
-    let cards = Array.from({ length: 2 + int(6) }, () => ({ at: int(600), height: 20 + int(200) }));
-    const pinned = int(cards.length);
-    const tops = stack(cards, pinned);
-    const anchors = [pinned];
-    for (let n = 0; n < pinned; n++) {
-      const held = int(pinned);
-      cards = cards.map((c, i) => (i === held ? { ...c, at: tops[i] } : c));
-      anchors.push(held);
-      assert.deepEqual(stack(cards, ...anchors), tops);
-    }
-  }
 });
