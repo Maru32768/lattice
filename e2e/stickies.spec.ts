@@ -670,12 +670,15 @@ test("a paragraph at the top of the view that grows below there moves no text", 
   await askElsewhere(shell, LONG_ID, paraId(40));
   await expect(cards(shell)).toHaveCount(1);
   await scrollTo(shell, paraBlock(40), "start");
-  await doc(shell).evaluate((el) => (el.scrollTop += 150));
+  await doc(shell).evaluate((el) => (el.scrollTop += 350));
   await frames(shell);
   const top = await scrollTop(shell);
-  await shell.locator(paraBlock(40)).evaluate((el) => (el.style.paddingBottom = "100px"));
-  await frames(shell);
-  expect(await scrollTop(shell)).toBe(top);
+  // By a part of a line, a line and some.
+  for (const px of [20, 51, 151]) {
+    await shell.locator(paraBlock(40)).evaluate((el, px) => (el.style.paddingBottom = `${px}px`), px);
+    await frames(shell);
+    expect(await scrollTop(shell), `${px}`).toBe(top);
+  }
 });
 
 test("closing a card that is not the one opened last moves no text", async ({ shell }) => {
