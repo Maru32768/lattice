@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { blockOf, isReadingPlace, keepOnRest, needle, placeIn, placeStore, scrollFor, type ReadingPlace } from "../lib/places";
 import { useLatest } from "../lib/useLatest";
 import { TRANSLATABLE } from "./mixed";
+import { roomOf } from "./stickies";
 
 /** Each article's place on this device, for the Reader and the Page view: an article opens where it was left, also after a restart. */
 export const readingPlaces = placeStore<ReadingPlace>("lattice.readingPlaces", 500, isReadingPlace);
@@ -53,10 +54,33 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     } else if (!wentToStored && mine) {
       view.scrollTop = mine.top;
     }
-    const placeAt = (prose: boolean) =>
-      placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
-        shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))),
-      );
+    /**
+     * The blocks and the view's top as they would be on screen without the stickies' room under blocks: a place must be
+     * good where there are none (the Page view, the phone, a wider pane). In such room the top is the end of the block
+     * above, where its cards start. Those beside the text can go on below it, and the view with them: the top is then
+     * the last block's end.
+     */
+    const measure = () => {
+      const els = [...view.querySelectorAll<HTMLElement>("[id^='b-']")];
+      const viewTop = view.getBoundingClientRect().top;
+      let top = viewTop;
+      let rooms = 0;
+      const boxes = new Map<HTMLElement, { top: number; bottom: number; height: number }>();
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        const room = roomOf(el);
+        // A pixel more than the room passed: the top is then still inside the block.
+        top -= Math.min(room, Math.max(0, viewTop - r.bottom + 1));
+        boxes.set(el, { top: r.top - rooms, bottom: r.bottom - rooms, height: r.height });
+        rooms += room;
+      }
+      const last = els.findLast((el) => shown.current.find((b) => el.id === `b-${b.id}`)?.text.trim());
+      return { els, top: last ? Math.min(top, boxes.get(last)!.bottom - 1) : top, boxOf: (el: HTMLElement) => boxes.get(el)! };
+    };
+    const placeAt = (prose: boolean) => {
+      const { els, top, boxOf } = measure();
+      return placeIn(els, top, (el) => shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))), boxOf);
+    };
     // A place this Reader could not show (the Page view's, from a part of the page it lacks; or an article without
     // text) is still the article's until the reader moves to another block: leaving at once must not put this Reader's
     // top over it. By the block, not the scrollTop, which moves by itself as blocks above grow (a translation arriving);
@@ -75,10 +99,10 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
       const place = placeAt(false);
       // No prose below (an article that ends in a listing): the last prose above, which the line has gone past.
       const proseAbove = () => {
-        const top = view.getBoundingClientRect().top;
+        const { els, top, boxOf } = measure();
         let last: { text: string; at: number } | null = null;
-        for (const el of view.querySelectorAll<HTMLElement>("[id^='b-']")) {
-          const r = el.getBoundingClientRect();
+        for (const el of els) {
+          const r = boxOf(el);
           if (r.bottom > top) {
             break;
           }

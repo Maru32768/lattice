@@ -64,6 +64,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00043_content_hash_of_what_a_summary_reads.sql"),
     include_str!("../db/migrations/00044_summary_items.sql"),
     include_str!("../db/migrations/00045_blocks_heading_index.sql"),
+    include_str!("../db/migrations/00046_stickies.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -614,7 +615,7 @@ fn json<T: Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("IR types always serialize")
 }
 
-fn from_json_col<T: serde::de::DeserializeOwned>(r: &rusqlite::Row, i: usize, wrap: impl Fn(&str) -> String) -> Result<T> {
+pub(crate) fn from_json_col<T: serde::de::DeserializeOwned>(r: &rusqlite::Row, i: usize, wrap: impl Fn(&str) -> String) -> Result<T> {
     let s: String = r.get(i)?;
     serde_json::from_str(&wrap(&s)).map_err(|e| rusqlite::Error::FromSqlConversionFailure(i, rusqlite::types::Type::Text, Box::new(e)))
 }
@@ -865,6 +866,7 @@ impl Store {
                      ON CONFLICT(article_id) DO UPDATE SET body = body || char(10, 10) || excluded.body",
                     [id, existing],
                 )?;
+                tx.execute("UPDATE stickies SET article_id = ?2 WHERE article_id = ?1", [id, existing])?;
                 tx.execute("UPDATE articles SET favorite = 1 WHERE id = ?2 AND (SELECT favorite FROM articles WHERE id = ?1)", [id, existing])?;
                 // A name the user gave the row, unless the article already has one of its own.
                 tx.execute(

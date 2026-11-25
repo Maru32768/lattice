@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-sticky"
+description = "Enables the delete_sticky command without any pre-configured scope."
+commands.allow = ["delete_sticky"]
+
+[[permission]]
+identifier = "deny-delete-sticky"
+description = "Denies the delete_sticky command without any pre-configured scope."
+commands.deny = ["delete_sticky"]

@@ -46,6 +46,7 @@ pub mod search;
 pub mod segments;
 mod sentences;
 pub mod srs;
+pub mod stickies;
 pub mod store;
 pub mod summarize;
 pub mod tailscale;

@@ -871,7 +871,8 @@ export default function App() {
   const docNav = useDocNav({
     root: () => {
       const pane = docPane();
-      return pane?.querySelector(".doc-scroll") ?? pane;
+      // The article alone: the stickies in the same scroller are not its text.
+      return pane?.querySelector(".doc-scroll > .reader") ?? pane;
     },
     scroller: () => {
       const pane = docPane();
@@ -1235,12 +1236,7 @@ export default function App() {
         onDelete: () => setDeleting({ article: a, page }),
         onReviewChanged: () => void loadReview(),
         onFocusBlock: (block, from) =>
-          openReader(
-            a.id,
-            { block, label: from === "summary" ? t("reader.summarySource") : t("reader.quizSource"), terms: [], tone: "cite", summary: from === "summary" },
-            "active",
-            pane.id,
-          ),
+          openReader(a.id, { block, label: t(`reader.${from}Source`), terms: [], tone: "cite", summary: from === "summary" }, "active", pane.id),
       };
     };
     if (tab.kind === "page") {

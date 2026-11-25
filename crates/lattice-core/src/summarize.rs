@@ -269,9 +269,10 @@ fn first_chars(s: &str, n: usize) -> &str {
     s.char_indices().nth(n).map_or(s, |(i, _)| &s[..i])
 }
 
-/// `text` with every `</article` (any case) broken up, so the page cannot close the tag its text sits in.
-fn unclosable(text: &str) -> Cow<'_, str> {
-    static CLOSE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new("(?i)<(/article)").expect("static regex"));
+/// `text` with the closing tags (any case) that page text sits in, here and in chat and stickies, broken up, so the page
+/// cannot close its own.
+pub(crate) fn unclosable(text: &str) -> Cow<'_, str> {
+    static CLOSE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new("(?i)<(/(?:article|sources|passage|question))").expect("static regex"));
     CLOSE_TAG.replace_all(text, r"<\$1")
 }
 
