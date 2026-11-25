@@ -446,7 +446,7 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
         }
         let breaks = std::iter::once(Vec::new()).chain(breaks.into_iter().map(Option::unwrap_or_default));
         let rows: Vec<Vec<Vec<Line>>> = cells.iter().zip(breaks).flat_map(|(band, breaks)| band_rows(band, &breaks, p.width)).collect();
-        let filled = rows.iter().flatten().filter(|lines| lines.iter().any(|l| !l.text.trim().is_empty())).count();
+        let filled = rows.iter().flatten().filter(|lines| !lines.is_empty()).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
             for g in p.glyphs.iter_mut().filter(|g| cell(g).is_some()) {
                 g.table = Some(p.tables.len());
