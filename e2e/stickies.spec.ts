@@ -840,6 +840,39 @@ test("the line being read stays at the top of the view of an article translated 
   expect(Math.abs((await scrollTop(shell)) - top)).toBeLessThan(1);
 });
 
+for (const translated of [false, true]) {
+  test(`the line being read stays at the top of the view as a panel comes beside the article and goes (${translated ? "translated by the sentence" : "original"})`, async ({
+    shell,
+  }) => {
+    await shell.setViewportSize({ width: 1600, height: 800 });
+    await startLong(shell, 12, "", translated);
+    for (const block of [paraId(10), paraId(50)]) {
+      await askElsewhere(shell, LONG_ID, block);
+    }
+    await expect(cards(shell)).toHaveCount(2);
+    await scrollTo(shell, paraBlock(40), "start");
+    await doc(shell).evaluate((el) => (el.scrollTop += 70));
+    await frames(shell);
+    const [top, width] = [await scrollTop(shell), (await boxOf(doc(shell))).width];
+    const share = async () => {
+      const [b, view] = [await boxOf(shell.locator(paraBlock(40))), await boxOf(doc(shell))];
+      return (view.y - b.y) / b.height;
+    };
+    const before = await share();
+    const note = shell.locator(".docbar").getByRole("button", { name: "メモ", exact: true });
+    for (let i = 0; i < 2; i++) {
+      await note.click();
+      await expect.poll(async () => (await boxOf(doc(shell))).width).toBeLessThan(width);
+      await frames(shell);
+      expect(Math.abs((await share()) - before)).toBeLessThan(0.01);
+      await note.click();
+      await expect.poll(async () => (await boxOf(doc(shell))).width).toBe(width);
+      await frames(shell);
+      expect(Math.abs((await scrollTop(shell)) - top)).toBeLessThan(1);
+    }
+  });
+}
+
 test("a view in the header stays there through a narrow pane and a wide one", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 800 });
   await startLong(shell);
