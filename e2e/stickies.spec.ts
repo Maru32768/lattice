@@ -1170,6 +1170,7 @@ test("a selection that is not of the article's text offers nothing to ask", asyn
   await expect(bar(app)).toHaveCount(0);
   // A tooltip of the paragraph above would cover it.
   await app.locator(".art-title").hover();
+  await expect(app.locator(".pop")).toBeHidden();
   // A triple click on the last paragraph ends its selection after the blocks, with no text there.
   await app.locator("#b-107 p").click({ clickCount: 3 });
   await expect(bar(app).getByRole("button", { name: "詳しく" })).toBeVisible();
