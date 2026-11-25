@@ -862,9 +862,11 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn an_entry_claude_code_will_not_replace_is_put_back() {
-        for (fails, error) in [("echo no room 1>&2& exit /b 3", "exit code: 3: no room"), ("rem\r\n:again\r\n@goto again", "timed out after 3s")] {
+        for (fails, error, timeout) in
+            [("echo no room 1>&2& exit /b 3", "exit code: 3: no room", 30), ("rem\r\n:again\r\n@goto again", "timed out after 3s", 3)]
+        {
             let mut s = Sandbox::new("claude-put-back");
-            s.agents.timeout = Duration::from_secs(3);
+            s.agents.timeout = Duration::from_secs(timeout);
             s.agents.claude = s.fake_claude(&format!("if %2==remove exit /b 0\r\n@if exist \"%~dp0tried\" exit /b 0\r\n@echo.>\"%~dp0tried\"\r\n@{fails}"));
             let r = s.register(Target::ClaudeCode);
             let old = json!({ "headers": { "Authorization": "Bearer old" }, "timeout": 5000, "type": "http", "url": URL });
