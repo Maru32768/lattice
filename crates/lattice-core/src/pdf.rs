@@ -7044,12 +7044,12 @@ Manual	No. 1234";
     fn a_caption_in_capitals_of_two_lines_over_a_table_does_not_run_on_past_it() {
         let line = |x: f64, y: f64, words: &str| shown(x, y, &format!("{words} column line of the body runs on to it"));
         let left: String = (0..28).map(|i| line(72., 100. + 12. * i as f64, "Left")).collect();
-        let caption = shown(72., 466., "TABLE 1 What each of the methods in the study") + &shown(72., 478., "did with what the others of them did not do");
+        let caption = shown(72., 466., "TABLE 1 What each of the methods in the study") + &line(72., 478., "Cap");
         let right: String = (0..36).map(|i| line(316., 112. + 12. * i as f64, "Right")).collect();
         let next = shown(316., 100., "then goes on atop the right column until it");
         let texts = texts_of(&(left + &caption + &two_by_two(LEFT, [490., 510., 530.], PROS) + &next + &right));
         let at = texts.iter().position(|t| t.starts_with("TABLE 1")).unwrap_or_else(|| panic!("{texts:?}"));
-        assert!(texts[at].ends_with("did not do") && texts[at + 1] == PROS_TEXT, "{texts:?}");
+        assert!(texts[at].ends_with("runs on to it") && texts[at + 1] == PROS_TEXT, "{texts:?}");
     }
 
     #[test]
