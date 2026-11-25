@@ -5914,7 +5914,11 @@ pub(crate) mod tests {
     /// The blocks' texts, a figure's as "image".
     fn blocks_of(bytes: &[u8]) -> Vec<String> {
         let blocks = to_ir(bytes, None).unwrap().blocks.into_iter();
-        blocks.map(|b| Some(b.text).filter(|_| b.kind != BlockKind::Image).unwrap_or("image".into())).collect()
+        let text = |b: Block| match b.kind {
+            BlockKind::Image => "image".into(),
+            _ => b.text,
+        };
+        blocks.map(text).collect()
     }
 
     #[test]
