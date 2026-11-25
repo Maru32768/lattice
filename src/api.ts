@@ -41,6 +41,7 @@ import type {
   R2Settings,
   McpApproval,
   McpEdit,
+  McpEdited,
   McpStatus,
   MobileSettings,
   MobileStatus,
@@ -357,7 +358,7 @@ export const r2 = {
 /** AI agents reaching the library over MCP (design-review §23). */
 export const mcp = {
   status: () => invoke<McpStatus>("mcp_status"),
-  edit: (edit: McpEdit) => invoke<McpStatus>("mcp_edit", { edit }),
+  edit: (edit: McpEdit) => invoke<McpEdited>("mcp_edit", { edit }),
   /** Deletions an agent asks for, waiting for the user's answer, oldest first. */
   approvals: () => invoke<McpApproval[]>("mcp_approvals"),
   answer: (id: number, allow: boolean) => invoke<void>("mcp_answer", { id, allow }),

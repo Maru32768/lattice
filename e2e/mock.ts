@@ -29,8 +29,10 @@ import type {
   Quiz,
   McpApproval,
   McpEdit,
+  McpEdited,
   McpRegistration,
   McpStatus,
+  McpTarget,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
@@ -193,6 +195,8 @@ const store = {
   mcp: { enabled: false, error: null, fell_back: false, registrations: [] } as McpStatus,
   /** Counts tokens made, so that each one differs. */
   mcpTokens: 0,
+  /** Why the agents' settings cannot be changed, as the backend's coded message; null while they can. */
+  mcpAgentError: null as string | null,
   mcpApprovals: [] as McpApproval[],
   tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
   r2: {
@@ -209,6 +213,16 @@ const store = {
     last_prune_error: null,
     running: false,
   } as R2Status,
+};
+
+const claudeCommand = (scope: string) => (token: string) =>
+  `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer ${token}"`;
+/** As lattice-core's mcp_agents has them. */
+const MCP_TARGETS: Record<McpTarget, { agent: string | null; copy: (token: string) => string; remove: string | null }> = {
+  claude_code: { agent: "Claude Code", copy: claudeCommand("user"), remove: "claude mcp remove lattice -s user" },
+  claude_code_project: { agent: null, copy: claudeCommand("local"), remove: "claude mcp remove lattice -s local" },
+  codex: { agent: "Codex", copy: (token) => `[mcp_servers.lattice]\nAuthorization = "Bearer ${token}"\n`, remove: "codex mcp remove lattice" },
+  other: { agent: null, copy: (token) => `{"mcpServers":{"lattice":{"headers":{"Authorization":"Bearer ${token}"}}}}`, remove: null },
 };
 
 /** Rejects like the backend: with its coded message (lattice-core msg.rs), which the UI translates. */
@@ -1062,48 +1076,60 @@ export const handlers = {
   mcp_answer: ({ id }: { id: number; allow: boolean }) => {
     store.mcpApprovals = store.mcpApprovals.filter((a) => a.id !== id);
   },
-  mcp_edit: ({ edit }: { edit: McpEdit }): McpStatus => {
-    const command = (scope: string) =>
-      `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
+  mcp_edit: ({ edit }: { edit: McpEdit }): McpEdited => {
     const regs = store.mcp.registrations;
+    /** The agent whose own settings the edit reaches into. */
+    let agent: string | null = null;
     switch (edit.kind) {
       case "enable":
         store.mcp = { ...store.mcp, enabled: edit.on };
         break;
       case "create": {
-        const name = edit.name.trim();
+        agent = MCP_TARGETS[edit.target].agent;
+        const name = edit.name.trim() || (agent ?? "");
         if (regs.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
           throw JSON.stringify({ code: "mcp.nameTaken", params: { name } });
         }
-        const all = regs.find((r) => r.scope === "user");
-        if (edit.scope === "user" && all) {
-          throw JSON.stringify({ code: "mcp.userTaken", params: { name: all.name } });
+        const other = agent && regs.find((r) => r.target === edit.target);
+        if (other) {
+          throw JSON.stringify({ code: "mcp.targetTaken", params: { agent, name: other.name } });
         }
-        const made = command(edit.scope);
-        const reg = {
-          id: `r${store.mcpTokens}`,
-          name,
-          role: edit.role,
-          scope: edit.scope,
-          command: made,
-          remove: `claude mcp remove lattice -s ${edit.scope}`,
-          sessions: [],
-          calls: [],
-        };
-        store.mcp = { ...store.mcp, registrations: [...regs, reg] };
+        const copy = MCP_TARGETS[edit.target].copy(`t${++store.mcpTokens}`);
+        const { remove } = MCP_TARGETS[edit.target];
+        const reg = { id: `r${store.mcpTokens}`, name, role: edit.role, target: edit.target, copy, remove, sessions: [], calls: [] };
+        store.mcp = { ...store.mcp, enabled: true, registrations: [...regs, reg] };
+        break;
+      }
+      case "connect": {
+        const reg = regs.find((r) => r.id === edit.id);
+        agent = reg ? MCP_TARGETS[reg.target].agent : null;
+        store.mcp = { ...store.mcp, enabled: store.mcp.enabled || !!reg };
         break;
       }
       case "regenerate":
-        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope) } : r)) };
+        store.mcp = {
+          ...store.mcp,
+          registrations: regs.map((r) => {
+            if (r.id !== edit.id) {
+              return r;
+            }
+            agent = MCP_TARGETS[r.target].agent;
+            return { ...r, copy: MCP_TARGETS[r.target].copy(`t${++store.mcpTokens}`) };
+          }),
+        };
         break;
       case "set_role":
         store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
         break;
       case "delete":
+        agent = MCP_TARGETS[regs.find((r) => r.id === edit.id)?.target ?? "other"].agent;
         store.mcp = { ...store.mcp, registrations: regs.filter((r) => r.id !== edit.id) };
         break;
     }
-    return store.mcp;
+    if (!agent) {
+      return { status: store.mcp, agent: null };
+    }
+    return { status: store.mcp, agent: store.mcpAgentError ? { kind: "failed", error: store.mcpAgentError } : { kind: "written" } };
   },
   pick_data_dir: () => null,
   open_data_dir: none,
@@ -1140,6 +1166,11 @@ export const pluginHandlers: Record<string, () => unknown> = {
 /** What an agent's requests leave on the MCP server for registration `id`, as the app would then report it. */
 export function mcpActivity(id: string, activity: Pick<McpRegistration, "sessions" | "calls">) {
   store.mcp = { ...store.mcp, registrations: store.mcp.registrations.map((r) => (r.id === id ? { ...r, ...activity } : r)) };
+}
+
+/** From now on, why the agents' settings cannot be changed (a coded message), or null: they can. */
+export function mcpAgentError(error: string | null) {
+  store.mcpAgentError = error;
 }
 
 /** The deletions agents wait on the user for, as the MCP server would then hold them. */
