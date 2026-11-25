@@ -176,14 +176,7 @@ pub async fn mcp_edit(
     if matches!(edit, Edit::Enable { .. }) || mcp::enabled(&app.store)? != was_on {
         apply(&handle).await?;
     }
-    let agents = Agents::default();
-    let written = match (&edit, &about) {
-        (Edit::Create { .. } | Edit::Connect { .. } | Edit::Regenerate { .. }, Some(r)) => agents.connect(&app.store, &r.id).await,
-        (Edit::Delete { .. }, Some(r)) => agents.disconnect(&app.store, r.target).await,
-        (Edit::Enable { .. } | Edit::SetRole { .. }, _) => Ok(false),
-        (Edit::Create { .. } | Edit::Connect { .. } | Edit::Regenerate { .. } | Edit::Delete { .. }, None) => Ok(false),
-    };
-    let agent = match written {
+    let agent = match Agents::default().follow(&app.store, &edit, about.as_ref()).await {
         Ok(true) => Some(McpAgentWrite::Written),
         Ok(false) => None,
         Err(error) => Some(McpAgentWrite::Failed { error }),

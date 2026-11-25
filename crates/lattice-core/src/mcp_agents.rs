@@ -18,7 +18,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use toml_edit::{Decor, DocumentMut, InlineTable, Item, Table, TableLike};
 
-use crate::mcp::{CLIENT_NAME, Target, registrations, url};
+use crate::mcp::{CLIENT_NAME, Edit, Registration, Target, registrations, url};
 use crate::msg;
 use crate::store::Store;
 
@@ -159,6 +159,17 @@ fn scrubbed(error: &str) -> String {
 }
 
 impl Agents {
+    /// Carries a change that `mcp::edit` made into the agent's settings, as `connect` and `disconnect` do. `about` is what
+    /// that gave.
+    pub async fn follow(&self, store: &Store, edit: &Edit, about: Option<&Registration>) -> Result<bool, String> {
+        match (edit, about) {
+            (Edit::Create { .. } | Edit::Connect { .. } | Edit::Regenerate { .. }, Some(r)) => self.connect(store, &r.id).await,
+            (Edit::Delete { .. }, Some(r)) => self.disconnect(store, r.target).await,
+            (Edit::Enable { .. } | Edit::SetRole { .. }, _) => Ok(false),
+            (Edit::Create { .. } | Edit::Connect { .. } | Edit::Regenerate { .. } | Edit::Delete { .. }, None) => Ok(false),
+        }
+    }
+
     /// Puts the registration in its agent's settings: true once they hold its token, false where the app does not write
     /// them or the registration is gone.
     pub async fn connect(&self, store: &Store, id: &str) -> Result<bool, String> {
@@ -559,7 +570,7 @@ fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::{Edit, Registration, Role, edit};
+    use crate::mcp::{Role, edit};
 
     const URL: &str = "http://127.0.0.1:8789/mcp";
 
@@ -731,6 +742,32 @@ mod tests {
         drop(turn);
         assert_eq!(waiting.await, Ok(false), "deleted while it waited");
         assert_eq!(s.file("config.toml"), "");
+    }
+
+    #[tokio::test]
+    async fn an_agents_settings_follow_what_is_registered_and_its_token_alone() {
+        let s = Sandbox::new("follow");
+        let follow = async |change: Edit| {
+            let about = edit(&s.store, &change).unwrap();
+            let written = s.agents.follow(&s.store, &change, about.as_ref()).await;
+            (written, about)
+        };
+        let (written, r) = follow(Edit::Create { name: String::new(), role: Role::Read, target: Target::Codex }).await;
+        let id = || r.as_ref().unwrap().id.clone();
+        let holds = || s.file("config.toml").contains(&registrations(&s.store).unwrap()[0].token);
+        assert!(written == Ok(true) && holds(), "created");
+        assert!(follow(Edit::Regenerate { id: id() }).await.0 == Ok(true) && holds(), "a new token");
+        s.set("config.toml", "");
+        for change in [Edit::SetRole { id: id(), role: Role::Delete }, Edit::Enable { on: false }, Edit::Enable { on: true }] {
+            assert_eq!(follow(change).await.0, Ok(false));
+            assert_eq!(s.file("config.toml"), "");
+        }
+        assert!(follow(Edit::Connect { id: id() }).await.0 == Ok(true) && holds(), "connected again");
+        assert_eq!(follow(Edit::Delete { id: id() }).await.0, Ok(true));
+        assert_eq!(s.file("config.toml"), "");
+        for change in [Edit::Connect { id: id() }, Edit::Regenerate { id: id() }, Edit::Delete { id: id() }] {
+            assert_eq!(follow(change).await.0, Ok(false), "gone");
+        }
     }
 
     #[test]
