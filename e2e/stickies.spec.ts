@@ -2707,6 +2707,45 @@ test("a child is right below its parent where that stays far above its block, as
   expect((await boxOf(child(shell, "用語"))).y - y - height).toBeCloseTo(10, 0);
 });
 
+/** Four cards, the last asked last, in a view tall enough for all: those before it give way. */
+async function startTall(shell: Page) {
+  await hold(shell, "sticky_ask", "sticky_follow_up");
+  await shell.setViewportSize({ width: 1500, height: 2400 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(31), "center");
+  for (const [i, block] of [28, 29, 30, 31].entries()) {
+    await askAbout(shell, "用語", paraBlock(block));
+    await release(shell, "sticky_ask")();
+    await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
+  }
+  await frames(shell);
+}
+
+test("cards asked on stay where they were as what is asked on them is closed, in any order, and as the pinned one goes", async ({ shell }) => {
+  await startTall(shell);
+  const at = (i: number) => cards(shell).nth(i);
+  const cancel = (card: Locator) => card.getByRole("button", { name: "キャンセル" }).click();
+  await followUp(at(1)).click();
+  await followUp(at(2)).click();
+  await staysStill(shell, 2, [() => cancel(at(1)), () => cancel(at(2))], 31);
+
+  await askOn(shell, "質問", at(1));
+  await followUp(at(3)).click();
+  await staysStill(shell, 1, [() => cancel(child(shell, "質問")), () => expect(cards(shell)).toHaveCount(4)], 31);
+  await cancel(at(2));
+
+  await askAbout(shell, "質問", paraBlock(32));
+  await followUp(at(1)).click();
+  await staysStill(shell, 1, [() => cancel(cards(shell).last())], 31);
+  await cancel(at(1));
+  await askAbout(shell, "用語", paraBlock(32));
+  await release(shell, "sticky_ask")();
+  await expect(cards(shell)).toHaveCount(5);
+  await frames(shell);
+  await followUp(at(1)).click();
+  await staysStill(shell, 1, [() => invoke(shell, "delete_sticky", { id: 5 }), () => expect(cards(shell)).toHaveCount(4)], 31);
+});
+
 for (const width of [1200, 1500]) {
   test(`at the article's end a question that is sent, and its answer, take up no view, ${width} wide`, async ({ shell }) => {
     await hold(shell, "sticky_ask", "sticky_follow_up");

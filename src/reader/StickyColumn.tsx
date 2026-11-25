@@ -124,6 +124,8 @@ function lineOf(k: Kept | null, scroller: HTMLElement): Pick<Kept, "line" | "off
  * gave way to the pinned one.
  */
 const offs = new WeakMap<Element, number>();
+/** The pin (the column's `data-pin`) that a card came to be held under: it stays held under it as what was asked on it closes. */
+const holds = new WeakMap<Element, string>();
 
 /**
  * Puts the cards beside their blocks, or under them in a narrow pane, where the text makes room. The text at the view's top
@@ -168,13 +170,16 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
     height: el.offsetHeight,
   }));
   const endOf = (tops: number[]) => Math.max(0, ...tops.map((at, i) => at + spots[i]!.height)) + END;
-  const tops = beside ? topsBeside(cards, spots) : stack(spots);
+  const pin = column.dataset.pin ?? "";
+  const held = (el: HTMLElement) => offs.has(el) && (el.hasAttribute("data-held") || holds.get(el) === pin);
+  const tops = beside ? topsBeside(cards, spots, held) : stack(spots);
   // Cards that give way to the pinned one do not take a view at the column's end up with them, where it will be.
   const viewEnd = scroller.getBoundingClientRect().top + scroller.clientHeight + offsetOf(line, scroller) - offset - top;
   column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(spots)), viewEnd))}px`);
   cards.forEach(({ el }, i) => {
     el.style.top = `${tops[i]}px`;
-    if (el.hasAttribute("data-held") && offs.has(el)) {
+    if (held(el)) {
+      holds.set(el, pin);
       return;
     }
     if (beside && !el.hasAttribute("data-child")) {
@@ -194,11 +199,11 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
 
 /**
  * The pinned card is at its block's height. Those before it that the reader has asked on since stay where they were then: the
- * pinned one gives way to them. To hold a card where it is moves no other.
+ * pinned one gives way to them. With the pinned one gone they all stay. To hold a card where it is moves no other.
  */
-function topsBeside(cards: { el: HTMLElement }[], spots: { at: number; height: number }[]) {
+function topsBeside(cards: { el: HTMLElement }[], spots: { at: number; height: number }[], isHeld: (el: HTMLElement) => boolean) {
   const pinned = cards.findIndex(({ el }) => el.hasAttribute("data-pinned"));
-  const held = cards.flatMap(({ el }, i) => (i < pinned && el.hasAttribute("data-held") && offs.has(el) ? [i] : []));
+  const held = cards.flatMap(({ el }, i) => ((pinned < 0 || i < pinned) && isHeld(el) ? [i] : []));
   return stack(
     spots.map((s, i) => (held.includes(i) ? { ...s, at: s.at + offs.get(cards[i]!.el)! } : s)),
     ...held,
@@ -318,7 +323,7 @@ export function StickyColumn({
   };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
-    <aside className="stickies" ref={root} hidden={cards.length === 0 && !error} aria-label={t("stickies.title")}>
+    <aside className="stickies" ref={root} hidden={cards.length === 0 && !error} aria-label={t("stickies.title")} data-pin={pinned ?? undefined}>
       {error && (
         <p className="sticky error-text" role="alert">
           {t("stickies.loadFailed", { error: t.msg(error) })}
