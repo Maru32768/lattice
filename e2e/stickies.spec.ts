@@ -1383,8 +1383,9 @@ test("a passage selected from the margins is asked about, and one that Shift ext
   const to = await boxOf(app.locator("#b-103 p"));
   await app.keyboard.down("Shift");
   await app.mouse.click(to.x + to.width + 30, to.y + to.height - 10);
-  await app.keyboard.up("Shift");
+  // With Shift held: letting go of it offers the bar too.
   await bar(app).getByRole("button", { name: "用語" }).click();
+  await app.keyboard.up("Shift");
   await expect.poll(async () => (await asked(app)).at(-1)?.quote.split(/\n+/).length).toBe(2);
 });
 
