@@ -363,6 +363,33 @@ test("a sticky asked or deleted in another window shows here", async ({ app }) =
   await expect(app.locator(".stickies")).toBeHidden();
 });
 
+test("an answer that the list has before it comes is one card", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eLate = ["sticky_ask"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "用語", "#b-102");
+  await expect(card(shell, "用語").locator(".answer")).toHaveCount(1);
+  await shell.evaluate(() => window.__e2e.release("sticky_ask"));
+  await expect(card(shell, "用語").getByRole("status")).toHaveCount(0);
+  await expect(cards(shell)).toHaveCount(1);
+});
+
+test("a list read before a sticky was asked does not take it away by coming last", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eLate = ["list_stickies"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  const reads = async () => (await callsOf(shell, "list_stickies")).length;
+  const before = await reads();
+  expect(before).toBeGreaterThan(0);
+  await askElsewhere(shell, SNAPSHOT_ID, 103);
+  await expect.poll(reads).toBe(before + 1);
+  await shell.evaluate(() => window.__e2e.release("list_stickies", -1));
+  await expect(cards(shell)).toHaveCount(1);
+  await shell.evaluate(() => window.__e2e.release("list_stickies"));
+  await frames(shell);
+  await expect(cards(shell)).toHaveCount(1);
+});
+
 test("stickies that cannot be read say so", async ({ shell }) => {
   await shell.addInitScript(() => void (window.__e2eFail = ["list_stickies"]));
   await shell.goto("/");
