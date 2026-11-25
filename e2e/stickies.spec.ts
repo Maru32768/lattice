@@ -2648,13 +2648,25 @@ test("a child, and a follow-up, move neither the cards above them nor the text a
   const [p, c, last] = await Promise.all([0, 1, 2].map((i) => boxOf(cards(shell).nth(i))));
   expect(c.y - (p.y + p.height)).toBeCloseTo(10, 0);
   expect(last.y - (c.y + c.height)).toBeCloseTo(10, 0);
-  // A second child, below the first, and one on the first: neither moves what is above it.
+  // A second child, below the first, does not move what is above it.
   await staysStill(shell, 1, [
     () => askOn(shell, "詳しく", parent),
     release(shell, "sticky_ask"),
     () => expect(child(shell, "詳しく").locator(".answer")).toBeVisible(),
   ]);
   await expect(cards(shell).locator(".sticky-kind")).toHaveText(["用語", "用語(回答から)", "詳しく(回答から)", "用語"]);
+  // A question on the first child, and one in it, move neither it nor its parent. Scrolled to leave the question's field in view.
+  await doc(shell).evaluate((el) => el.scrollBy(0, 300));
+  await frames(shell);
+  await staysStill(shell, 1, [
+    () => askOn(shell, "質問", child(shell, "用語")),
+    () => expect(field(shell)).toBeFocused(),
+    () => shell.keyboard.type("one\ntwo\nthree"),
+    () => shell.keyboard.press("Escape"),
+    () => followUp(child(shell, "用語")).click(),
+    () => shell.keyboard.type("one\ntwo\nthree"),
+    () => child(shell, "用語").getByRole("button", { name: "キャンセル" }).click(),
+  ]);
 
   // Asked on the text again, it has its block's height, and those above give way to that.
   await scrollTo(shell, paraBlock(32), "center");
