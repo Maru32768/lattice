@@ -1,7 +1,10 @@
 /* Stickies beside the Reader's text. Tokens from theme.css. */
 
 /* A scrollbar that comes with a long column must not narrow the text, which would move the cards again. */
-.doc-scroll:has(> .stickies > *) { position: relative; scrollbar-gutter: stable; }
+.doc-scroll:has(> .stickies > *) { position: relative; scrollbar-gutter: stable; container-type: inline-size; }
+/* In a pane of another width the browser holds no text: it does not where a style like this has changed. The text it would
+   hold is not the line at the view's top, and it would pass for a scroll of the reader's (StickyColumn). */
+.doc-scroll:has(> .stickies > *) > .reader { min-height: 1cqi; }
 /* The room the text makes for the cards in a narrow pane (StickyColumn): the one element's it is set on. */
 @property --sticky-room { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @media screen {

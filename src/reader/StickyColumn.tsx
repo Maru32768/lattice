@@ -14,8 +14,9 @@ import "./stickies.css";
 const COLUMN_FROM = 720;
 
 /**
- * The text at the view's top: how much of a block is above it, and the px from that block's end down to it, where the block
- * makes `room`. Among the cards above the first block it is `.blocks` itself, from its top.
+ * The text at the view's top: how much of a block, or of a part of the header, is above it, and the px from its end down to
+ * it, where a block makes `room`. Among the cards above the first block it is `.blocks` itself, from its top, and above the
+ * header `.reader`.
  */
 interface Line {
   block: HTMLElement;
@@ -24,15 +25,27 @@ interface Line {
   room: number;
 }
 
-function lineAt(scroller: HTMLElement): Line | undefined {
-  const top = scroller.getBoundingClientRect().top;
-  const article = scroller.querySelector<HTMLElement>(".blocks")!;
-  const block = [article, ...(article.children as HTMLCollectionOf<HTMLElement>)].findLast((b) => b.getBoundingClientRect().top <= top);
-  if (!block) {
-    return undefined;
+/** The last of `els`, one below the other, that starts above `y`. */
+function lastFrom(els: HTMLCollection, y: number) {
+  let [from, to] = [0, els.length];
+  while (from < to) {
+    const mid = (from + to) >> 1;
+    if (els[mid]!.getBoundingClientRect().top <= y) {
+      from = mid + 1;
+    } else {
+      to = mid;
+    }
   }
+  return els[from - 1] as HTMLElement | undefined;
+}
+
+function lineAt(scroller: HTMLElement): Line {
+  const top = scroller.getBoundingClientRect().top;
+  const reader = scroller.querySelector<HTMLElement>(".reader")!;
+  const article = reader.querySelector<HTMLElement>(".blocks")!;
+  const block = lastFrom(article.children, top) ?? lastFrom(reader.children, top) ?? reader;
   const r = block.getBoundingClientRect();
-  const share = block !== article && r.height ? Math.min(1, (top - r.top) / r.height) : 0;
+  const share = block !== article && block !== reader && r.height ? Math.min(1, (top - r.top) / r.height) : 0;
   return { block, share, past: top - r.top - share * r.height, room: roomOf(block) };
 }
 
@@ -45,11 +58,8 @@ function offsetOf({ block, share, past, room }: Line, scroller: HTMLElement) {
   return r.top + share * r.height + down - scroller.getBoundingClientRect().top;
 }
 
-/** Where the line's block starts and ends in the pane. */
-function edgesOf({ block }: Line, scroller: HTMLElement) {
-  const { top, bottom } = block.getBoundingClientRect();
-  return [top, bottom].map((y) => y - scroller.getBoundingClientRect().top);
-}
+/** `clientWidth` is in whole pixels, and half a pixel can take a line. */
+const widthOf = (scroller: HTMLElement) => scroller.getBoundingClientRect().width;
 
 /**
  * The line in the pane as `place` or the reader's last scroll left it: at the view's top but for a part of a pixel, or below
@@ -57,29 +67,36 @@ function edgesOf({ block }: Line, scroller: HTMLElement) {
  */
 interface Kept {
   width: number;
-  line: Line | undefined;
-  edges: number[];
+  top: number;
+  line: Line;
+  /** Of the line's block. */
+  height: number;
   offset: number;
 }
 
 const keep = (scroller: HTMLElement, line = lineAt(scroller)): Kept => ({
-  width: scroller.clientWidth,
+  width: widthOf(scroller),
+  top: scroller.scrollTop,
   line,
-  edges: line ? edgesOf(line, scroller) : [],
-  offset: line ? offsetOf(line, scroller) : 0,
+  height: line.block.getBoundingClientRect().height,
+  offset: offsetOf(line, scroller),
 });
 
-/** The line from before, if it is there still. Read again, it would go on by what each scroll is rounded by. */
+/** The line from before, unless the reader has gone on. Read again, it would go on by what each scroll is rounded by. */
 function lineOf(k: Kept | null, scroller: HTMLElement): Line | undefined {
-  if (!k?.line?.block.isConnected) {
+  if (!k?.line.block.isConnected) {
     return undefined;
   }
-  // In a pane of another width the browser has held the block by one of its ends, with another line at the top, unless a jump has left it.
-  const still =
-    k.width === scroller.clientWidth
-      ? Math.abs(offsetOf(k.line, scroller) - k.offset) < 1
-      : edgesOf(k.line, scroller).some((y, i) => Math.abs(y - k.edges[i]!) < 2);
-  return still ? k.line : undefined;
+  const { scrollTop, clientHeight, scrollHeight } = scroller;
+  const resized = k.width !== widthOf(scroller);
+  if (!resized && Math.abs(offsetOf(k.line, scroller) - k.offset) < 1) {
+    return k.line;
+  }
+  // The text has moved and the reader has not: the browser held none, as in a pane of another width (stickies.css) or where
+  // no text is in view. At the end of text that got shorter the view comes up with it.
+  const rested = Math.abs(scrollTop - k.top) < 1 || (scrollTop < k.top && scrollTop + clientHeight > scrollHeight - 1);
+  const whole = Math.abs(k.line.block.getBoundingClientRect().height - k.height) < 1;
+  return rested && (resized || whole) ? k.line : undefined;
 }
 
 /**
@@ -101,7 +118,7 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   const was = kept.current;
   const before = lineOf(was, scroller);
   const line = before ?? lineAt(scroller);
-  const offset = was && before && was.width === scroller.clientWidth ? was.offset : 0;
+  const offset = was && before && was.width === widthOf(scroller) ? was.offset : 0;
 
   if (room) {
     column.toggleAttribute("data-placed", cards.length > 0);
@@ -129,12 +146,10 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   // Cards that give way to the opened one do not take the column's end up, and a view at it.
   column.style.setProperty("--sticky-end", `${Math.max(0, ...stack(spots).map((at, i) => at + spots[i]!.height))}px`);
 
-  if (line) {
-    const moved = offsetOf(line, scroller) - offset;
-    // A write of the same value too can end a scroll that is under way.
-    if (Math.abs(moved) >= 0.5) {
-      scroller.scrollTop += moved;
-    }
+  const moved = offsetOf(line, scroller) - offset;
+  // A write of the same value too can end a scroll that is under way.
+  if (Math.abs(moved) >= 0.5) {
+    scroller.scrollTop += moved;
   }
   kept.current = cards.length > 0 ? keep(scroller, line) : null;
 }
@@ -197,9 +212,9 @@ export function StickyColumn({
     const scroller = root.current!.parentElement!;
     const read = () => {
       const k = kept.current;
-      // Not where `place` left it, nor where the browser did in a pane of another width.
-      if (k?.width === scroller.clientWidth && !lineOf(k, scroller)) {
-        kept.current = keep(scroller);
+      // In a pane of another width `place` is yet to come, to tell by the scrollTop.
+      if (k?.width === widthOf(scroller)) {
+        kept.current = lineOf(k, scroller) ? { ...k, top: scroller.scrollTop } : keep(scroller);
       }
     };
     scroller.addEventListener("scroll", read, { passive: true });

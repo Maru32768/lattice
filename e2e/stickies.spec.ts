@@ -23,11 +23,12 @@ async function openSnapshot(page: Page) {
   await page.locator(".docbar").getByRole("button", { name: "原文", exact: true }).click();
 }
 
-/** The app with one article long enough to scroll, beside the sidebar and the list. */
-async function startLong(shell: Page, sentences = 1, tail = "") {
+/** The app with one article long enough to scroll, beside the sidebar and the list. `translated` by the sentence. */
+async function startLong(shell: Page, sentences = 1, tail = "", translated = false) {
   await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
     const res = await route.fetch();
-    const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', Array(${sentences}).fill(\`Paragraph \${i} of the long article.\`).join(' '), null]), ${tail}] : plain(a)))(genericBlocks);`;
+    const more = `genericBlocks = ((plain) => (a) => (a.id === ${LONG_ID} ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', Array(${sentences}).fill(\`Paragraph \${i} of the long article.\`).join(' '), ${translated ? "'訳文'" : "null"}]), ${tail}] : plain(a)))(genericBlocks);
+      ${translated ? `blocksOf = ((plain) => (a) => plain(a).map((b) => (b.text.startsWith('Paragraph ') ? { ...b, units: Array(${sentences}).fill({ source: /^.*?\\./.exec(b.text)[0], translation: '長い記事の段落の一文。' }) } : b)))(blocksOf);` : ""}`;
     await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
   });
   await shell.goto("/");
@@ -43,9 +44,9 @@ const scrollTop = (page: Page) => doc(page).evaluate((el) => el.scrollTop);
 const scrollTo = (page: Page, block: string, where: ScrollLogicalPosition) => page.locator(block).evaluate((el, block) => el.scrollIntoView({ block }), where);
 
 /** At the size the app's window opens in, which leaves the article a pane too narrow for a column of stickies. */
-async function startNarrow(shell: Page) {
+async function startNarrow(shell: Page, sentences = 1) {
   await shell.setViewportSize({ width: 1200, height: 800 });
-  await startLong(shell);
+  await startLong(shell, sentences);
   await expect(shell.locator(".nav")).toBeVisible();
   await expect(list(shell)).toBeVisible();
   expect(await doc(shell).evaluate((el) => el.clientWidth)).toBeLessThan(720);
@@ -609,8 +610,8 @@ test("the line being read stays at the top of the view through a narrow pane and
   }
   // A jump as the pane changes is where the reader asked to go.
   await shell.locator(paraBlock(60)).evaluate((el) => {
-    el.scrollIntoView({ block: "start" });
     document.querySelector<HTMLElement>(".list")!.style.display = "none";
+    el.scrollIntoView({ block: "start" });
   });
   await expect(column).toHaveCount(1);
   await expect.poll(() => passed(paraBlock(60))).toBeCloseTo(0, 1);
@@ -641,8 +642,96 @@ test("the line being read stays at the top of the view as a border is dragged th
   expect(Math.abs((await passed()) - before)).toBeLessThan(1);
 });
 
+test("the line being read stays at the top of the view as a pane changes by parts of a pixel, as beside another", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1240, height: 800 });
+  // A line more every few pixels.
+  await startLong(shell, 1, "...Array.from({ length: 5 }, () => ['paragraph', Array.from({ length: 600 }, (_, j) => 'w' + j).join(' '), null])");
+  for (const block of [paraId(5), paraId(50)]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await expect(cards(shell)).toHaveCount(2);
+  await scrollTo(shell, paraBlock(81), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 900));
+  await frames(shell);
+  const passed = async () => (await boxOf(doc(shell))).y - (await boxOf(shell.locator(paraBlock(81)))).y;
+  const before = await passed();
+  const listAt = (px: number) => shell.evaluate((px) => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`), px);
+  const { width } = await boxOf(list(shell));
+  for (let i = 0; i <= 160; i++) {
+    await listAt(width + 0.3 * i);
+    await frames(shell);
+  }
+  for (let i = 4; i >= 0; i--) {
+    await listAt(width + 12 * i);
+    await frames(shell);
+  }
+  expect(Math.abs((await passed()) - before)).toBeLessThan(1);
+});
+
+test("the line being read stays at the top of the view of an article translated by the sentence, at any width", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1200, height: 800 });
+  await startLong(shell, 12, "", true);
+  await expect(shell.locator(`${paraBlock(40)} .sent`)).toHaveCount(12);
+  for (const block of [paraId(10), paraId(50)]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await expect(cards(shell)).toHaveCount(2);
+  await scrollTo(shell, paraBlock(40), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 70));
+  await frames(shell);
+  const top = await scrollTop(shell);
+  for (const width of [1260, 1330, 1900, 1400, 1200]) {
+    await shell.setViewportSize({ width, height: 800 });
+    await frames(shell);
+    const [b, view] = [await boxOf(shell.locator(paraBlock(40))), await boxOf(doc(shell))];
+    expect(b.y, `${width}`).toBeLessThan(view.y);
+    expect(b.y + b.height, `${width}`).toBeGreaterThan(view.y);
+  }
+  expect(Math.abs((await scrollTop(shell)) - top)).toBeLessThan(1);
+});
+
+test("a view in the header stays there through a narrow pane and a wide one", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 800 });
+  await startLong(shell);
+  await askElsewhere(shell, LONG_ID, paraId(3));
+  await expect(cards(shell)).toHaveCount(1);
+  for (const top of [0, 30, 60, 120]) {
+    await doc(shell).evaluate((el, top) => (el.scrollTop = top), top);
+    await frames(shell);
+    for (let i = 0; i < 2; i++) {
+      for (const width of [1200, 1500]) {
+        await shell.setViewportSize({ width, height: 800 });
+        await frames(shell);
+      }
+      expect(await scrollTop(shell)).toBe(top);
+    }
+  }
+});
+
+test("in a narrow pane a view of cards alone stays there as the text above it, and the pane's width, change", async ({ shell }) => {
+  await startNarrow(shell, 4);
+  await askMany(shell, LONG_ID, paraId(40), 8);
+  const y = async () => (await boxOf(cards(shell).nth(3))).y - (await boxOf(doc(shell))).y;
+  await cards(shell)
+    .nth(3)
+    .evaluate((el) => (el.closest(".doc-scroll")!.scrollTop += el.getBoundingClientRect().top - el.closest(".doc-scroll")!.getBoundingClientRect().top + 40));
+  await frames(shell);
+  for (const i of [40, 41]) {
+    await expect(shell.locator(paraBlock(i))).not.toBeInViewport();
+  }
+  expect(await y()).toBeCloseTo(-40, 0);
+  await shell.locator(paraBlock(10)).evaluate((el) => (el.style.paddingBottom = "333px"));
+  await frames(shell);
+  expect(await y()).toBeCloseTo(-40, 0);
+  for (const width of [1230, 1260, 1900, 1200]) {
+    await shell.setViewportSize({ width, height: 800 });
+    await frames(shell);
+  }
+  expect(await y()).toBeCloseTo(-40, 0);
+});
+
 test("a view that starts in a card, or at the article's end, is there again after a pane of another width", async ({ shell }) => {
-  await startNarrow(shell);
+  await startNarrow(shell, 8);
   for (const block of [paraId(40), paraId(50)]) {
     await askElsewhere(shell, LONG_ID, block);
   }
