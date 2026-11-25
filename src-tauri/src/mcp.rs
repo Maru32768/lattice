@@ -1,13 +1,14 @@
 //! Starts and stops the MCP server (`lattice_server::mcp_http`) as Settings › MCP turns it on and off, gives that
-//! screen the registrations with what each one copies and what each agent has been doing, and puts each deletion an
-//! agent asks for to the user in the main window.
+//! screen the registrations with what each one copies and what each agent has been doing, carries its changes into the
+//! agents' own settings, and puts each deletion an agent asks for to the user in the main window.
 
 use std::sync::{Arc, OnceLock, Weak};
 
-use lattice_core::mcp::{self, Edit, Role, Scope};
+use lattice_core::mcp::{self, ADDR, Edit, Role, Target};
+use lattice_core::mcp_agents::{self, Agents};
 use lattice_core::msg;
 use lattice_server::Server;
-use lattice_server::mcp_http::{self, ADDR, Activity, Approval, Approvals, CallInfo, SessionInfo};
+use lattice_server::mcp_http::{self, Activity, Approval, Approvals, CallInfo, SessionInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
@@ -51,14 +52,31 @@ pub struct McpRegistration {
     id: String,
     name: String,
     role: Role,
-    scope: Scope,
-    /// `claude mcp add ...` with the token.
-    command: String,
-    /// `claude mcp remove ...`, which the confirmations ask for before a new command or after a deletion.
-    remove: String,
+    target: Target,
+    /// What adds it to its agent by hand, token included: a command or a piece of settings.
+    copy: String,
+    /// The command that takes it out of its agent by hand, where there is one.
+    remove: Option<String>,
     sessions: Vec<SessionInfo>,
     /// Newest first.
     calls: Vec<CallInfo>,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct McpEdited {
+    status: McpStatus,
+    /// What became of the agent's own settings; null when there was nothing to change in them.
+    agent: Option<McpAgentWrite>,
+}
+
+/// The change to the registrations stands either way.
+#[derive(Serialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
+pub enum McpAgentWrite {
+    Written,
+    Failed { error: String },
 }
 
 /// Ends the running server, if any, and starts it again when it is on.
@@ -116,12 +134,12 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
 fn view(r: mcp::Registration, activity: Option<&Activity>) -> McpRegistration {
     let (sessions, calls) = activity.map(|a| a.of(&r)).unwrap_or_default();
     McpRegistration {
-        command: mcp_http::add_command(&r.token, r.scope),
-        remove: mcp_http::remove_command(r.scope),
+        copy: mcp_agents::copied(r.target, &r.token),
+        remove: mcp_agents::removal(r.target),
         id: r.id,
         name: r.name,
         role: r.role,
-        scope: r.scope,
+        target: r.target,
         sessions,
         calls,
     }
@@ -149,15 +167,28 @@ pub async fn mcp_edit(
     mcp_server: State<'_, McpServer>,
     app: State<'_, App>,
     loc: State<'_, Location>,
-) -> Result<McpStatus, String> {
+) -> Result<McpEdited, String> {
     if loc.warning.is_some() {
         return Err(msg!("mcp.fellBack"));
     }
-    mcp::edit(&app.store, &edit)?;
-    if let Edit::Enable { .. } = edit {
+    let was_on = mcp::enabled(&app.store)?;
+    let about = mcp::edit(&app.store, &edit)?;
+    if matches!(edit, Edit::Enable { .. }) || mcp::enabled(&app.store)? != was_on {
         apply(&handle).await?;
     }
-    status(&mcp_server, &app, &loc).await
+    let agents = Agents::default();
+    let written = match (&edit, &about) {
+        (Edit::Create { .. } | Edit::Connect { .. } | Edit::Regenerate { .. }, Some(r)) => agents.connect(&app.store, &r.id).await,
+        (Edit::Delete { .. }, Some(r)) => agents.disconnect(&app.store, r.target).await,
+        (Edit::Enable { .. } | Edit::SetRole { .. }, _) => Ok(false),
+        (Edit::Create { .. } | Edit::Connect { .. } | Edit::Regenerate { .. } | Edit::Delete { .. }, None) => Ok(false),
+    };
+    let agent = match written {
+        Ok(true) => Some(McpAgentWrite::Written),
+        Ok(false) => None,
+        Err(error) => Some(McpAgentWrite::Failed { error }),
+    };
+    Ok(McpEdited { status: status(&mcp_server, &app, &loc).await?, agent })
 }
 
 /// Puts the main window in front of the others for a deletion to approve, and flashes it, but leaves the keyboard
@@ -216,12 +247,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_registration_is_added_and_removed_in_its_own_scope() {
-        for scope in [Scope::User, Scope::Local] {
-            let shown = view(mcp::Registration { id: "r1".into(), name: "Claude Code".into(), role: Role::Read, scope, token: "t0k".into() }, None);
-            assert_eq!(shown.scope, scope);
-            assert_eq!(shown.command, mcp_http::add_command("t0k", scope));
-            assert_eq!(shown.remove, mcp_http::remove_command(scope), "following the dialog must not remove another registration");
+    fn a_registration_is_added_and_removed_at_its_own_target() {
+        for target in [Target::ClaudeCode, Target::ClaudeCodeProject, Target::Codex, Target::Other] {
+            let shown = view(mcp::Registration { id: "r1".into(), name: "Claude Code".into(), role: Role::Read, target, token: "t0k".into() }, None);
+            assert_eq!(shown.target, target);
+            assert_eq!(shown.copy, mcp_agents::copied(target, "t0k"));
+            assert_eq!(shown.remove, mcp_agents::removal(target), "following the dialog must not remove another registration");
         }
     }
 }
