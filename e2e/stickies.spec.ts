@@ -1208,6 +1208,25 @@ test("a passage selected from the margins is asked about, and one that Shift ext
   await expect.poll(async () => (await asked(app)).at(-1)?.quote.split(/\n+/).length).toBe(2);
 });
 
+test("a passage selected again, as after a scroll took its bar away, can be asked about", async ({ shell }) => {
+  await startLong(shell);
+  await drag(shell, paraBlock(2), paraBlock(2));
+  await expect(bar(shell)).toBeVisible();
+  const before = await selected(shell);
+  await doc(shell).evaluate((el) => (el.scrollTop += 20));
+  await expect(bar(shell)).toHaveCount(0);
+  const end = await shell.evaluate(() => {
+    const rects = getSelection()!.getRangeAt(0).getClientRects();
+    const r = rects[rects.length - 1];
+    return { x: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await shell.keyboard.down("Shift");
+  await shell.mouse.click(end.x, end.y);
+  expect(await selected(shell)).toBe(before);
+  await expect(bar(shell)).toBeVisible();
+  await shell.keyboard.up("Shift");
+});
+
 test("a passage that visual mode extends is asked about as it is then", async ({ shell }) => {
   await startLong(shell);
   await drag(shell, paraBlock(2), paraBlock(2));
