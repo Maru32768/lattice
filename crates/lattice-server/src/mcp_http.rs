@@ -603,8 +603,7 @@ mod tests {
 
     impl Fixture {
         fn register(&self, name: &str, role: Role) -> Registration {
-            mcp::edit(&self.store, &Edit::Create { name: name.into(), role, target: mcp::Target::Other }).unwrap();
-            self.reread(name)
+            mcp::edit(&self.store, &Edit::Create { name: name.into(), role, target: mcp::Target::Other }).unwrap().unwrap()
         }
 
         fn reread(&self, name: &str) -> Registration {
