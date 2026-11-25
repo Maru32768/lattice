@@ -432,9 +432,20 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
         if !turns && runs_on(p, grid, &grids, &cells, two) {
             continue;
         }
+        let inset = |column: usize| {
+            let set = cells.iter().flat_map(|band| &band[column]).filter(|g| !g.text.trim().is_empty());
+            // Text in the middle of a wide column is further in than the column's padding.
+            set.map(|g| (g.x - xs[column]).min(xs[column + 1] - g.end).min(g.size)).fold(f64::MAX, f64::min).max(0.)
+        };
+        let widths: Vec<f64> = (0..xs.len() - 1).map(|column| xs[column + 1] - xs[column] - 2. * inset(column)).collect();
         // The first band is the head, one row: a head's cells may each set a unit under their name, which breaks as rows do.
-        let head = cells[0].iter().map(|glyphs| cell_text(glyphs, p.width)).collect();
-        let rows: Vec<Vec<String>> = std::iter::once(head).chain(cells[1..].iter().flat_map(|band| band_rows(band, xs, p.width))).collect();
+        let breaks: Vec<Option<Vec<f64>>> = cells[1..].iter().map(|band| row_breaks(band, &widths, p.width)).collect();
+        // Where more than one band is under the head, its rules most likely part all its rows.
+        if let [None] = breaks[..] {
+            continue;
+        }
+        let breaks = std::iter::once(Vec::new()).chain(breaks.into_iter().map(Option::unwrap_or_default));
+        let rows: Vec<Vec<String>> = cells.iter().zip(breaks).flat_map(|(band, breaks)| band_rows(band, &breaks, p.width)).collect();
         let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
             for g in p.glyphs.iter_mut().filter(|g| cell(g).is_some()) {
@@ -464,39 +475,83 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
     p.glyphs.iter().any(|g| across(g) && beside(g) && on_a_baseline(g) && !grids.iter().any(|other| other.cell(g).is_some()))
 }
 
-/// The rows of the band between two rules across, each a text per column: one, unless the band holds rows no rule parts,
-/// as a table ruled only round its body does. Those rows are told from a cell's lines by where they break: every cell
-/// with text starts its first line on the band's first baseline, and starts a line on each later row's baseline after a
-/// line that ends with room for that line's first word, which a line that wraps does not.
-// shortcut: cells that each break their text at the same baselines read as rows, so a row of cells holding lists is cut
-// up; tell them apart if such tables turn up.
-fn band_rows(band: &[Vec<&Glyph>], xs: &[f64], width: f64) -> Vec<Vec<String>> {
-    let mut cells: Vec<(usize, Vec<Line>)> = band.iter().map(|glyphs| page_lines(0, glyphs, width)).enumerate().filter(|(_, l)| !l.is_empty()).collect();
-    for (_, lines) in &mut cells {
+/// The baselines that start a further row in the band between two rules across: none, unless it holds rows no rule parts,
+/// as a table ruled only round its columns does. Those are told from the lines of one row by how the cells' lines end: one
+/// that wraps leaves no room for the first word under it, in the `widths` the columns' text has. Fails where some cells
+/// seem to wrap and others to hold rows; a column of numbers settles it.
+// shortcut: cells that each break their text at the same baselines read as rows, so a row of cells holding addresses is
+// cut up; tell them apart if such tables turn up.
+fn row_breaks(band: &[Vec<&Glyph>], widths: &[f64], width: f64) -> Option<Vec<f64>> {
+    if band.iter().flatten().any(|g| g.vertical || g.turned) {
+        return Some(Vec::new());
+    }
+    let mut columns: Vec<Vec<Line>> = band.iter().map(|glyphs| page_lines(0, glyphs, width)).collect();
+    for lines in &mut columns {
         lines.sort_by(|a, b| a.y.total_cmp(&b.y));
+        lines.dedup_by(|next, kept| {
+            let piece = next.y - kept.y < 0.3 * kept.size;
+            if piece {
+                (kept.x0, kept.x1) = (kept.x0.min(next.x0), kept.x1.max(next.x1));
+            }
+            piece
+        });
     }
-    let on = |l: &Line, y: f64| (l.y - y).abs() < 0.3 * l.size;
-    let padding: Vec<f64> = cells.iter().map(|(column, lines)| lines.iter().map(|l| l.x0).fold(f64::MAX, f64::min) - xs[*column]).collect();
-    let has_room = |cell: usize, next: usize| {
-        let (column, lines) = &cells[cell];
-        let (before, after) = (&lines[next - 1], &lines[next]);
-        let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
-        let word = after.text.split_whitespace().next().unwrap_or_default().chars().count() as f64;
-        before.x1 + (word + 1.) * letter <= xs[column + 1] - padding[cell]
-    };
-    let starts_row = |y: f64| {
-        cells.iter().enumerate().all(|(cell, (_, lines))| {
-            let i = lines.partition_point(|l| l.y < y && !on(l, y));
-            lines.get(i).is_some_and(|l| on(l, y)) && i > 0 && has_room(cell, i)
-        })
-    };
-    let mut breaks = Vec::new();
-    if let [(_, first), _, ..] = &cells[..]
-        && cells.iter().all(|(_, lines)| on(&lines[0], first[0].y))
-        && !band.iter().flatten().any(|g| g.vertical || g.turned)
-    {
-        breaks.extend(first[1..].iter().map(|l| l.y).filter(|&y| starts_row(y)));
+    let mut lines: Vec<&Line> = columns.iter().flatten().collect();
+    lines.sort_by(|a, b| a.y.total_cmp(&b.y));
+    // Each baseline, how many columns have text on it, and whether a line there starts a row.
+    let mut baselines: Vec<(f64, usize, bool)> = Vec::new();
+    for l in lines {
+        match baselines.last_mut() {
+            Some((y, columns, _)) if l.y - *y < 0.3 * l.size => *columns += 1,
+            _ => baselines.push((l.y, 1, false)),
+        }
     }
+    let (mut parted, mut wrapped, mut words, mut tellers, mut numbers) = (0, 0, 0, 0, false);
+    for (lines, &room) in columns.iter().zip(widths) {
+        let mut tells = false;
+        for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
+            let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
+            let word = if after.text.starts_with(joins_without_space) {
+                after.text.chars().take(4).count()
+            } else {
+                after.text.split(' ').next().unwrap_or_default().chars().count()
+            };
+            let parts = is_number(&before.text) && is_number(&after.text) || before.x1 - before.x0 + (word as f64 + 2.) * letter <= room;
+            let at = baselines.partition_point(|b| b.0 <= after.y) - 1;
+            let (_, columns, starts) = &mut baselines[at];
+            *starts |= parts;
+            if *columns > 1 && !is_bullet(&after.text) && !after.text.starts_with('・') {
+                tells = true;
+                words += usize::from(!parts && is_word(&before.text));
+                *(if parts {
+                    &mut parted
+                } else {
+                    &mut wrapped
+                }) += 1;
+            }
+        }
+        tellers += usize::from(tells);
+        numbers |= tells && lines.iter().all(|l| is_number(&l.text));
+    }
+    if tellers < 2 || parted + words == 0 {
+        return Some(Vec::new());
+    }
+    let filled = columns.iter().filter(|lines| !lines.is_empty()).count();
+    let sure = baselines[0].1 == filled && tellers == filled && (wrapped == 0 || numbers);
+    sure.then(|| baselines.iter().skip(1).filter(|b| b.2 || b.1 == filled).map(|b| b.0).collect())
+}
+
+/// A number, or a mark among numbers, with nothing after it to go on with.
+fn is_number(t: &str) -> bool {
+    !t.contains(|c: char| c.is_alphabetic() || c.is_whitespace()) && !t.ends_with(['-', ','])
+}
+
+fn is_word(t: &str) -> bool {
+    !t.contains(|c: char| c.is_whitespace() || joins_without_space(c))
+}
+
+/// The rows of a band, each a text per column, cut where `breaks` starts one.
+fn band_rows(band: &[Vec<&Glyph>], breaks: &[f64], width: f64) -> Vec<Vec<String>> {
     let mut rows = vec![vec![Vec::new(); band.len()]; breaks.len() + 1];
     for (column, glyphs) in band.iter().enumerate() {
         for &g in glyphs {
@@ -3293,7 +3348,7 @@ pub(crate) mod tests {
         ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
         ops += &(shown(78., 166., "Nested Sets") + &shown(206., 166., "Hard"));
         ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
-        ops += &ruled(&[72., 160., 400.], &[300., 320., 360.], "strokes");
+        ops += &ruled(&[72., 160., 262.], &[300., 320., 360.], "strokes");
         ops += &(shown(78., 314., "Design") + &shown(166., 314., "Queries"));
         ops += &(shown(78., 336., "A tree kept as") + &shown(166., 336., "Easy to insert, but"));
         ops += &(shown(78., 348., "references") + &shown(166., 348., "hard to query"));
@@ -3302,6 +3357,91 @@ pub(crate) mod tests {
         let unruled = [["Design", "Insert"], ["Adjacency List", "Easy"], ["Nested Sets", "Hard"], ["Closure Table", "Easy"]];
         let wrapped = [["Design", "Queries"], ["A tree kept as references", "Easy to insert, but hard to query"]];
         assert_eq!(ir.blocks.iter().map(|b| b.attrs.rows.clone()).collect::<Vec<_>>(), [rows(&unruled), rows(&wrapped)]);
+    }
+
+    /// A head and one band under it, with no rule between the band's rows: each row's cells where `at` puts them.
+    fn banded(xs: &[f64], at: &dyn Fn(usize, &str) -> f64, rows: &[&[&str]]) -> String {
+        let y = |row: usize| 208. + 14. * row as f64;
+        let cells = rows.iter().enumerate().flat_map(|(row, cells)| cells.iter().enumerate().map(move |(column, text)| (row, column, *text)));
+        let text: String = cells.map(|(row, column, text)| shown(xs[column] + at(column, text), y(row), text)).collect();
+        ruled(xs, &[196., 212., y(rows.len() - 1) + 4.], "strokes") + &text
+    }
+
+    /// `rows` as a table's text.
+    fn as_table(rows: &[&[&str]]) -> String {
+        rows.iter().map(|cells| cells.join("\t")).collect::<Vec<_>>().join("\n")
+    }
+
+    const SCORES: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", "72.3"], &["Ours (large)", "78.1", "75.6"]];
+
+    #[test]
+    fn rows_no_rule_parts_are_read_by_their_numbers_in_columns_as_wide_as_their_text() {
+        // As LaTeX sets `|l|c|c|`: no line has room for a word after it.
+        let letters = |t: &str| 5.6 * t.len() as f64;
+        let xs = [72., 152., 206., 244.];
+        let in_the_middle = |column: usize, text: &str| {
+            if column == 0 {
+                6.
+            } else {
+                (xs[column + 1] - xs[column] - letters(text)) / 2.
+            }
+        };
+        assert_eq!(texts_of(&banded(&xs, &in_the_middle, SCORES)), [as_table(SCORES)]);
+        // A cell with nothing in it, and a name that wraps.
+        let blank: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", ""], &["Ours (large)", "78.1", "75.6"]];
+        assert_eq!(texts_of(&banded(&xs, &in_the_middle, blank)), [as_table(blank)]);
+        let wrapped: &[&[&str]] = &[SCORES[0], SCORES[1], &["Ours, much", "74.9", "72.3"], &["larger", "", ""], SCORES[3]];
+        let read: &[&[&str]] = &[SCORES[0], SCORES[1], &["Ours, much larger", "74.9", "72.3"], SCORES[3]];
+        assert_eq!(texts_of(&banded(&xs, &in_the_middle, wrapped)), [as_table(read)]);
+    }
+
+    #[test]
+    fn rows_no_rule_parts_are_read_by_their_lines_in_the_middle_or_at_the_right_of_wide_columns() {
+        let xs = [72., 222., 382., 540.];
+        let words: &[&[&str]] = &[&["Method", "Speed", "Kind"], &["Baseline", "slow", "old"], &["Ours", "fast", "new"], &["Ours (large)", "faster", "new"]];
+        let in_the_middle = |column: usize, text: &str| (xs[column + 1] - xs[column] - 5.6 * text.len() as f64) / 2.;
+        let at_the_right = |column: usize, text: &str| xs[column + 1] - xs[column] - 6. - 5.6 * text.len() as f64;
+        assert_eq!(texts_of(&banded(&xs, &in_the_middle, words)), [as_table(words)]);
+        assert_eq!(texts_of(&banded(&xs, &at_the_right, words)), [as_table(words)]);
+    }
+
+    #[test]
+    fn a_table_whose_rows_cannot_be_told_stays_text() {
+        let left = |_: usize, _: &str| 6.;
+        // Some lines end with room for the next word and some do not.
+        let mixed: &[&[&str]] = &[&["Name", "Means"], &["id", "the number of a row"], &["title", "what the page shows"], &["at", "when"]];
+        // One word to a line and no room in any: entries, or narrow cells that wrap.
+        let words: &[&[&str]] = &[&["Name", "Kind"], &["title", "string"], &["count", "number"]];
+        // A column with text in one of the rows only.
+        let notes: &[&[&str]] = &[&["Name", "Size", "Note"], &["Alpha", "1", ""], &["Beta", "3", ""], &["Gamma", "4", "est."]];
+        for (xs, rows) in [(&[72., 108., 216.][..], mixed), (&[72., 108., 150.], words), (&[72., 222., 382., 540.], notes)] {
+            let texts = texts_of(&banded(xs, &left, rows));
+            assert!(texts.iter().all(|t| !t.contains('\t')), "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn lists_in_the_cells_of_one_row_stay_in_their_cells() {
+        let rows: &[&[&str]] = &[&["Pros", "Cons"], &["\\267 Strong", "\\267 Costly"], &["\\267 Lasting", "\\267 Heavy"]];
+        let texts = texts_of(&banded(&WIDE, &|_, _| 6., rows));
+        assert_eq!(texts, ["Pros\tCons\n• Strong • Lasting\t• Costly • Heavy"]);
+    }
+
+    #[test]
+    fn japanese_rows_no_rule_parts_are_read_by_their_lines_and_japanese_cells_that_wrap_are_not_rows() {
+        let read = |right: f64, cells: &[(f64, f64, usize)]| {
+            let text: String =
+                cells.iter().map(|&(x, y, n)| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, "034B034D034F".repeat(9)[..4 * n].to_string())).collect();
+            let ops = ruled(&[72., 200., right], &[100., 120., 180.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+            let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+            ir.blocks[0].attrs.rows.as_ref().map(Vec::len)
+        };
+        let head = [(78., 114., 2), (206., 114., 2)];
+        let entries = [(78., 136., 4), (206., 136., 3), (78., 152., 3), (206., 152., 5), (78., 168., 5), (206., 168., 4)];
+        assert_eq!(read(340., &[&head[..], &entries].concat()), Some(4));
+        // The second line of the one cell gives up its last letter to the mark that cannot start a line.
+        let wrapped = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)];
+        assert_eq!(read(332., &[&head[..], &wrapped].concat()), Some(2));
     }
 
     #[test]
@@ -3519,14 +3659,12 @@ pub(crate) mod tests {
 
     #[test]
     fn a_cell_set_lower_than_the_one_beside_it_keeps_its_band_one_row() {
-        // Ruled round the box, under the header and between the columns. The body's first cell holds three short lines,
-        // the second two lines centred lower down: one row, each cell holding lines of its own.
-        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        // The second band's first cell holds three short lines, the other two lines centred lower down.
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200., 220.], "strokes");
         ops += &(shown(78., 124., "Design") + &shown(206., 124., "Notes"));
         ops += &(shown(78., 146., "Short") + &shown(78., 158., "Lines") + &shown(78., 170., "Here"));
-        ops += &(shown(206., 158., "Centered") + &shown(206., 170., "Text"));
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-        assert_eq!(kinds(&ir), [("table", "Design\tNotes\nShort Lines Here\tCentered Text")]);
+        ops += &(shown(206., 158., "Centered") + &shown(206., 170., "Text") + &shown(78., 214., "Other") + &shown(206., 214., "None"));
+        assert_eq!(texts_of(&ops), ["Design\tNotes\nShort Lines Here\tCentered Text\nOther\tNone"]);
     }
 
     #[test]
@@ -3563,11 +3701,10 @@ pub(crate) mod tests {
         let lines = page_lines(0, &measured[0].glyphs.iter().collect::<Vec<_>>(), measured[0].width);
         let letter = (lines[1].x1 - lines[1].x0) / lines[1].text.chars().count() as f64;
         let right = lines[0].x1 + 5. * letter + 3.;
-        let mut ops = ruled(&[72., 160., right], &[300., 320., 360.], "strokes");
+        let mut ops = ruled(&[72., 160., right], &[300., 320., 360., 380.], "strokes");
         ops += &(shown(78., 314., "Design") + &shown(166., 314., "Queries"));
-        ops += &(shown(78., 336., "Closure") + &shown(78., 348., "Table") + &wrapped);
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-        assert_eq!(kinds(&ir), [("table", "Design\tQueries\nClosure Table\tEasy to insert, but hard to query")]);
+        ops += &(shown(78., 336., "Closure") + &shown(78., 348., "Table") + &wrapped + &shown(78., 374., "Sets") + &shown(166., 374., "Hard"));
+        assert_eq!(texts_of(&ops), ["Design\tQueries\nClosure Table\tEasy to insert, but hard to query\nSets\tHard"]);
     }
 
     #[test]
