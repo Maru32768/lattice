@@ -4,6 +4,10 @@ import type { StickyMessage } from "./StickyMessage";
 
 export type Sticky = { id: number, article_id: number, 
 /**
- * The block the passage starts in; None once the article no longer has it.
+ * The block the passage starts in, a child's that of its parent; None once the article no longer has it.
  */
-block_id: number | null, kind: StickyKind, quote: string, messages: Array<StickyMessage>, };
+block_id: number | null, 
+/**
+ * The message whose answer the passage was selected in; None for a passage of the article, and once the message is gone.
+ */
+parent: number | null, kind: StickyKind, quote: string, messages: Array<StickyMessage>, };

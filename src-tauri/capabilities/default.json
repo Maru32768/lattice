@@ -153,6 +153,7 @@
     "allow-chat-messages",
     "allow-chat-delete-thread",
     "allow-sticky-ask",
+    "allow-sticky-follow-up",
     "allow-list-stickies",
     "allow-delete-sticky",
     "allow-get-chat-budget",

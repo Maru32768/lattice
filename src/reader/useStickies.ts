@@ -67,7 +67,7 @@ export async function sendAsk(article: number, ask: Ask) {
   const { key, blockId, kind, quote, question } = ask;
   replaceAsk(article, { ...ask, step: "pending" });
   try {
-    const sticky = await api.stickyAsk({ articleId: article, blockId, kind, quote, question });
+    const sticky = await api.stickyAsk({ articleId: article, blockId, parent: null, kind, quote, question });
     const { saved, asks, answers } = of(article);
     put(article, {
       saved: [...saved.filter((s) => s.id !== sticky.id), sticky],

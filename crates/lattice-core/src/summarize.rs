@@ -272,7 +272,8 @@ fn first_chars(s: &str, n: usize) -> &str {
 /// `text` with the closing tags (any case) that page text sits in, here and in chat and stickies, broken up, so the page
 /// cannot close its own.
 pub(crate) fn unclosable(text: &str) -> Cow<'_, str> {
-    static CLOSE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new("(?i)<(/(?:article|sources|passage|question))").expect("static regex"));
+    static CLOSE_TAG: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new("(?i)<(/(?:article|sources|passage|excerpt|conversation|question))").expect("static regex"));
     CLOSE_TAG.replace_all(text, r"<\$1")
 }
 

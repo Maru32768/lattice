@@ -127,6 +127,7 @@ const COMMANDS: &[&str] = &[
     "chat_messages",
     "chat_delete_thread",
     "sticky_ask",
+    "sticky_follow_up",
     "list_stickies",
     "delete_sticky",
     "get_chat_budget",

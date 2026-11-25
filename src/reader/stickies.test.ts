@@ -7,6 +7,7 @@ const sticky = (id: number, block_id: number | null): Sticky => ({
   id,
   article_id: 1,
   block_id,
+  parent: null,
   kind: "term",
   quote: "q",
   messages: [],

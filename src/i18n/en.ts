@@ -1146,6 +1146,7 @@ export const en = {
   "be.chat.badQuestion": "The question is empty or too long",
   "be.stickies.badQuote": "The selected passage is empty or over {max} characters",
   "be.stickies.malformed": "The model returned an empty answer",
+  "be.stickies.gone": "The sticky has been deleted",
   "be.stickies.articleGone": "The article was deleted, or merged into another, before the answer came",
   "be.chat.effortUnsupported": "The chosen provider does not support effort “{effort}”",
   "be.article.noContent": "The article has no extracted text",

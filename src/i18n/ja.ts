@@ -1131,6 +1131,7 @@ export const ja = {
   "be.chat.badQuestion": "質問が空か、長すぎます",
   "be.stickies.badQuote": "選んだ箇所が空か、{max}文字を超えています",
   "be.stickies.malformed": "モデルが空の回答を返しました",
+  "be.stickies.gone": "付箋が削除されています",
   "be.stickies.articleGone": "答えを待つ間に、記事が削除されたか、ほかの記事に統合されました",
   "be.chat.effortUnsupported": "選んだプロバイダはeffort「{effort}」に対応していません",
   "be.article.noContent": "記事の本文が抽出されていません",

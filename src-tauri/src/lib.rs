@@ -1071,20 +1071,32 @@ fn chat_delete_thread(app: State<'_, App>, thread_id: i64) -> Result<(), String>
     app.store.delete_chat_thread(thread_id).map_err(err)
 }
 
-/// Asks about a passage of an article; the answer is stored as a sticky.
+/// Asks about a passage of an article, or of a sticky's answer (`parent`); the answer is stored as a sticky.
 #[tauri::command]
+#[allow(clippy::too_many_arguments, reason = "Tauri's injected state, then the call's own arguments")]
 async fn sticky_ask(
     handle: tauri::AppHandle,
     app: State<'_, App>,
     article_id: i64,
     block_id: Option<i64>,
+    parent: Option<i64>,
     kind: StickyKind,
     quote: String,
     question: String,
 ) -> Result<Sticky, String> {
     let _permit = app.chat_llm.acquire().await.map_err(err)?;
-    let sticky = stickies::ask(&app.store, &app.providers.llm, article_id, block_id, kind, &quote, &question).await?;
-    let _ = handle.emit("stickies-changed", article_id);
+    let new = stickies::Ask { article_id, block_id, parent, kind, quote: &quote, question: &question };
+    let sticky = stickies::ask(&app.store, &app.providers.llm, new).await?;
+    let _ = handle.emit("stickies-changed", sticky.article_id);
+    Ok(sticky)
+}
+
+/// Asks on in a sticky; the answer is stored in it.
+#[tauri::command]
+async fn sticky_follow_up(handle: tauri::AppHandle, app: State<'_, App>, id: i64, question: String) -> Result<Sticky, String> {
+    let _permit = app.chat_llm.acquire().await.map_err(err)?;
+    let sticky = stickies::follow_up(&app.store, &app.providers.llm, id, &question).await?;
+    let _ = handle.emit("stickies-changed", sticky.article_id);
     Ok(sticky)
 }
 
@@ -1823,6 +1835,7 @@ pub fn run() {
             chat_messages,
             chat_delete_thread,
             sticky_ask,
+            sticky_follow_up,
             list_stickies,
             delete_sticky,
             get_chat_budget,

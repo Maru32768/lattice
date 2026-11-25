@@ -129,7 +129,7 @@ const invoke = (page: Page, cmd: string, args: object) =>
     [cmd, args] as const,
   );
 const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere") =>
-  invoke(page, "sticky_ask", { articleId, blockId, kind: "term", quote, question: "" });
+  invoke(page, "sticky_ask", { articleId, blockId, parent: null, kind: "term", quote, question: "" });
 
 /** `n` more stickies on a block, there as it returns. */
 async function askMany(page: Page, articleId: number, blockId: number, n: number) {
@@ -588,7 +588,7 @@ test("in a narrow pane a card that comes under the paragraph at the top of the v
         el.scrollTop = start + px;
         await new Promise((done) => requestAnimationFrame(done));
         const y = p.getBoundingClientRect().top;
-        const { id } = await invoke("sticky_ask", { articleId: article, blockId: block, kind: "term", quote: "q", question: "" });
+        const { id } = await invoke("sticky_ask", { articleId: article, blockId: block, parent: null, kind: "term", quote: "q", question: "" });
         await come(2);
         const by = p.getBoundingClientRect().top - y;
         if (Math.abs(by) >= 1) {

@@ -155,8 +155,11 @@ export const api = {
   chatThreads: () => invoke<ChatThread[]>("chat_threads"),
   chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
   chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),
-  /** Asks about a passage of an article and stores the answer as a sticky; `stickies-changed` with the article id follows. */
-  stickyAsk: (ask: { articleId: number; blockId: number | null; kind: StickyKind; quote: string; question: string }) => invoke<Sticky>("sticky_ask", ask),
+  /** Asks about a passage of an article, or of the answer of a sticky's message, and stores the answer as a sticky; `stickies-changed` with the article id follows. */
+  stickyAsk: (ask: { articleId: number; blockId: number | null; parent: number | null; kind: StickyKind; quote: string; question: string }) =>
+    invoke<Sticky>("sticky_ask", ask),
+  /** Asks on in a sticky and stores the answer there; `stickies-changed` follows. */
+  stickyFollowUp: (ask: { id: number; question: string }) => invoke<Sticky>("sticky_follow_up", ask),
   listStickies: (articleId: number) => invoke<Sticky[]>("list_stickies", { articleId }),
   deleteSticky: (id: number) => invoke<void>("delete_sticky", { id }),
   chatBudget: () => invoke<ChatBudget>("get_chat_budget"),

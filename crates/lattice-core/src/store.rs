@@ -65,6 +65,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00044_summary_items.sql"),
     include_str!("../db/migrations/00045_blocks_heading_index.sql"),
     include_str!("../db/migrations/00046_stickies.sql"),
+    include_str!("../db/migrations/00047_sticky_parent.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;

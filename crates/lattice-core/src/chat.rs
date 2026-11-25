@@ -166,7 +166,7 @@ pub(crate) fn to_json<T: Serialize + ?Sized>(v: &T) -> String {
     serde_json::to_string(v).expect("chat types always serialize")
 }
 
-fn cut(s: &str, max: usize) -> String {
+pub(crate) fn cut(s: &str, max: usize) -> String {
     match s.char_indices().nth(max) {
         Some((i, _)) => format!("{}…", &s[..i]),
         None => s.to_string(),
