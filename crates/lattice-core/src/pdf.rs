@@ -6358,7 +6358,7 @@ Manual	No. 1234";
 	",
             ),
         ] {
-            let table = |y: f64| two_by_two([220., 305., 390.], [y, y + 25., y + 50.], cells);
+            let table = |y: f64| two_by_two([90., 175., 260.], [y, y + 25., y + 50.], cells);
             let figure = shown(72., 220., "Figure 1: The machine.");
             for ops in [table(150.) + &figure, figure.clone() + &table(240.)] {
                 let texts = texts_of(&(across(80., "The first line is read") + &ops + &across(400., "The last line is read")));
