@@ -829,7 +829,7 @@ for (const article of ["with stickies", "without"] as const) {
     const { width } = await boxOf(list(shell));
     // Within the narrow layout, into the wide one and back.
     for (const to of [width - 40, width + 30, width - 220]) {
-      for (const by of [1, 20, 100, -100]) {
+      for (const by of [2, 14, 100, -100]) {
         await listAt(width);
         await scrollTo(shell, paraBlock(40), "start");
         await doc(shell).evaluate((el) => (el.scrollTop += 300));
@@ -856,12 +856,68 @@ for (const article of ["with stickies", "without"] as const) {
           const is = await over();
           // The browser keeps the paragraph's top, and this the share of it that is above the view.
           const expected = article === "without" ? was.above : (was.above / was.height) * is.height;
-          expect(Math.abs(is.above - expected - by), `${first} first, by ${by}, to ${px}`).toBeLessThan(2);
+          expect(Math.abs(is.above - expected - by), `${first} first, by ${by}, to ${px}`).toBeLessThan(1);
         }
       }
     }
   });
 }
+
+test("a scroll of up to a view as the pane's width changes goes on from the line being read, and a longer one is a jump to a place of the new width", async ({
+  shell,
+}) => {
+  test.setTimeout(90_000);
+  await startNarrow(shell, 40);
+  for (const block of [paraId(10), paraId(50)]) {
+    await askElsewhere(shell, LONG_ID, block);
+  }
+  await expect(cards(shell)).toHaveCount(2);
+  const view = await doc(shell).evaluate((el) => el.clientHeight);
+  const { width } = await boxOf(list(shell));
+  /** Scrolls in the frame of the change. The paragraph at the top of the view there, before and after the scroll, and where they are after the frame. */
+  const run = async (from: number, to: number, by: number) => {
+    await shell.evaluate((px) => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`), from);
+    await frames(shell);
+    await scrollTo(shell, paraBlock(40), "start");
+    await doc(shell).evaluate((el) => (el.scrollTop += 300));
+    await frames(shell);
+    const lines = await doc(shell).evaluate(
+      (el, [px, by]) => {
+        const line = () => {
+          const top = el.getBoundingClientRect().top;
+          const b = [...el.querySelectorAll(".blk")].find((b) => b.getBoundingClientRect().bottom > top)!;
+          const r = b.getBoundingClientRect();
+          return { block: `#${b.id}`, share: (top - r.top) / r.height };
+        };
+        const before = line();
+        document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`);
+        el.scrollTop += by;
+        return [before, line()];
+      },
+      [to, by] as const,
+    );
+    await frames(shell);
+    const [goneOn, jumped] = await Promise.all(
+      lines.map(async ({ block, share }) => {
+        const [b, v] = [await boxOf(shell.locator(block)), await boxOf(doc(shell))];
+        return v.y - b.y - share * b.height;
+      }),
+    );
+    return { goneOn, jumped };
+  };
+  for (const [from, to] of [
+    [width, width - 40],
+    [width, width - 220],
+    [width - 220, width],
+  ]) {
+    for (const by of [500, -500, view - 20, 20 - view]) {
+      expect(Math.abs((await run(from, to, by)).goneOn - by), `${by} px from ${from} to ${to}`).toBeLessThan(2);
+    }
+    for (const by of [view + 20, -view - 20, -3 * view]) {
+      expect(Math.abs((await run(from, to, by)).jumped), `${by} px from ${from} to ${to}`).toBeLessThan(2);
+    }
+  }
+});
 
 test("the line being read stays at the top of the view of an article translated by the sentence, at any width", async ({ shell }) => {
   await shell.setViewportSize({ width: 1200, height: 800 });
