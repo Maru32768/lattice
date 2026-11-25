@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { mcp, type McpEdit, type McpOutcome, type McpRegistration, type McpRole, type McpStatus, type McpTarget } from "../api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { SetRow, Switch } from "../ui/SetRow";
-import { locale, useT, type Key, type Lang, type PlainKey } from "../i18n";
+import { locale, parseCoded, useT, type Key, type Lang, type PlainKey } from "../i18n";
 
 const ROLES = { read: "mcpSettings.roleRead", edit: "mcpSettings.roleEdit", delete: "mcpSettings.roleDelete" } as const satisfies Record<McpRole, PlainKey>;
 const TARGETS = {
@@ -121,7 +121,7 @@ export function McpSettings() {
       const removing = change.kind === "delete";
       if (edited.agent.kind === "written") {
         setDone({ kind: removing ? "removed" : "added", agent });
-      } else if (edited.agent.error.startsWith('{"code":"mcp.agentOther"')) {
+      } else if (parseCoded(edited.agent.error)?.code === "mcp.agentOther") {
         // No help: the command that removes would take out the user's own server, and the message says what to do.
         setError({ text: edited.agent.error });
       } else {
