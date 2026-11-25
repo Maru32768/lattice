@@ -14,7 +14,6 @@ use std::time::Duration;
 
 use regex::Regex;
 use serde_json::{Map, Value, json};
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use toml_edit::{Decor, DocumentMut, InlineTable, Item, TableLike};
@@ -201,20 +200,17 @@ impl Agents {
     async fn write_claude_code(&self, want: Want<'_>) -> Result<bool, Failure> {
         let found = self.claude_code_entry()?;
         let remove = ["mcp", "remove", CLIENT_NAME, "-s", "user"];
-        // From stdin: other programs can read the arguments.
-        let add = ["mcp", "add-json", "-s", "user", CLIENT_NAME, "-"];
         match step(&entry(&found, "headers"), want)? {
             Step::Leave => return Ok(false),
-            Step::Remove => self.claude(&remove, "").await?,
-            Step::Add(token) => self.claude(&add, &claude_code_with(&found, token).to_string()).await?,
+            Step::Remove => self.claude(&remove).await?,
+            Step::Add(token) => self.add_to_claude_code(&claude_code_with(&found, token)).await?,
             Step::Replace(token) => {
                 let new = claude_code_with(&found, token);
                 if new != found {
                     // `add-json` refuses a name it already has.
-                    self.claude(&remove, "").await?;
-                    if let Err(failure) = self.claude(&add, &new.to_string()).await {
-                        // As an argument: run inside a session of its own, Claude Code refuses stdin (2.1.327).
-                        let _ = self.claude(&["mcp", "add-json", "-s", "user", CLIENT_NAME, &found.to_string()], "").await;
+                    self.claude(&remove).await?;
+                    if let Err(failure) = self.add_to_claude_code(&new).await {
+                        let _ = self.add_to_claude_code(&found).await;
                         return Err(failure);
                     }
                 }
@@ -234,20 +230,19 @@ impl Agents {
         }
     }
 
-    async fn claude(&self, args: &[&str], stdin: &str) -> Result<(), Failure> {
+    /// As an argument, which the user's other programs can read while it runs: from stdin, Claude Code (2.1.327) takes
+    /// nothing where Lattice was started inside one of its sessions.
+    async fn add_to_claude_code(&self, entry: &Value) -> Result<(), Failure> {
+        self.claude(&["mcp", "add-json", "-s", "user", CLIENT_NAME, &entry.to_string()]).await
+    }
+
+    async fn claude(&self, args: &[&str]) -> Result<(), Failure> {
         let mut cmd = command(&self.claude)?;
         if let Some(dir) = &self.claude_dir {
             cmd.env("CLAUDE_CONFIG_DIR", dir);
         }
-        let mut child = spawn(cmd.args(args).stdin(Stdio::piped()), &self.claude)?;
-        let run = async {
-            let mut input = child.stdin.take().expect("stdin piped");
-            // A program that ends without reading it says why itself.
-            let _ = input.write_all(stdin.as_bytes()).await;
-            drop(input);
-            child.wait_with_output().await
-        };
-        let out = tokio::time::timeout(self.timeout, run).await;
+        let child = spawn(cmd.args(args).stdin(Stdio::null()), &self.claude)?;
+        let out = tokio::time::timeout(self.timeout, child.wait_with_output()).await;
         let out = out.map_err(|_| Failure::Failed(format!("timed out after {:?}", self.timeout)))?.map_err(Failure::failed)?;
         if out.status.success() {
             return Ok(());
@@ -561,10 +556,10 @@ mod tests {
             edit(&self.store, &Edit::Delete { id: r.id.clone() }).unwrap();
         }
 
-        /// False, with a word on it, when the agent's CLI is not installed or takes no server from stdin where this runs.
+        /// False, with a word on it, when the agent's CLI is not installed.
         async fn installed(&self, r: &Registration) -> bool {
             let connected = self.agents.connect(&self.store, &r.id).await;
-            if connected.as_ref().is_err_and(|e| e.contains("mcp.agentMissing") || e.contains("inside a Claude Code session")) {
+            if connected.as_ref().is_err_and(|e| e.contains("mcp.agentMissing")) {
                 eprintln!("skipped: {connected:?}");
                 return false;
             }
@@ -584,11 +579,11 @@ mod tests {
             serde_json::from_str::<Value>(&self.file(".claude.json")).unwrap()["mcpServers"].clone()
         }
 
-        /// A program that records how it was called and what it was sent in `<name>.txt` and then does `then`, as a batch file.
+        /// A program that records how it was called in `<name>.txt` and then does `then`, as a batch file.
         #[cfg(windows)]
         fn fake(&self, name: &str, then: &str) -> String {
             let program = format!("{name}.cmd");
-            self.set(&program, &format!("@echo %*>>\"%~dp0{name}.txt\"\r\n@findstr \"^\">>\"%~dp0{name}.txt\"\r\n@{then}\r\n"));
+            self.set(&program, &format!("@echo %*>>\"%~dp0{name}.txt\"\r\n@{then}\r\n"));
             self.dir.join(program).to_string_lossy().into_owned()
         }
     }
@@ -755,22 +750,23 @@ mod tests {
         let mut s = Sandbox::new("claude-calls");
         s.agents.claude = s.fake("claude", "exit /b 0");
         let r = s.register(Target::ClaudeCode);
-        let (add, remove) = ("mcp add-json -s user lattice-dev -", "mcp remove lattice-dev -s user");
+        let add = |entry: &Value| format!("mcp add-json -s user lattice-dev \"{entry}\"");
+        let remove = "mcp remove lattice-dev -s user";
         let ours = json!({ "type": "http", "url": URL, "headers": { "Authorization": format!("Bearer {}", r.token) } });
         let calls = || {
-            let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().to_string()).collect();
+            let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().replace("\"\"", "\"")).collect();
             s.set("claude.txt", "");
             calls
         };
         let holds = |entry: &Value| s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: entry } }).to_string());
 
         assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
-        assert_eq!(calls(), [add, &ours.to_string()], "no settings file yet");
+        assert_eq!(calls(), [add(&ours)], "no settings file yet");
         holds(&json!({ "type": "http", "url": URL, "timeout": 5000 }));
         assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
         let mut kept = ours.clone();
         kept["timeout"] = json!(5000);
-        assert_eq!(calls(), [remove, add, &kept.to_string()], "`add-json` refuses a name it has");
+        assert_eq!(calls(), [remove, &add(&kept)], "`add-json` refuses a name it has");
         holds(&kept);
         assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
         assert!(calls().is_empty(), "it is there already");
@@ -797,31 +793,31 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn an_entry_claude_code_will_not_replace_is_put_back() {
-        for (fails, error) in [("echo no stdin 1>&2& exit /b 3", "exit code: 3: no stdin"), ("rem\r\n:again\r\n@goto again", "timed out after 3s")] {
+        for (fails, error) in [("echo no room 1>&2& exit /b 3", "exit code: 3: no room"), ("rem\r\n:again\r\n@goto again", "timed out after 3s")] {
             let mut s = Sandbox::new("claude-put-back");
             s.agents.timeout = Duration::from_secs(3);
-            s.agents.claude = s.fake("claude", &format!("if not \"%6\"==\"-\" exit /b 0\r\n@{fails}"));
+            s.agents.claude = s.fake("claude", &format!("if %2==remove exit /b 0\r\n@if exist \"%~dp0tried\" exit /b 0\r\n@echo.>\"%~dp0tried\"\r\n@{fails}"));
             let r = s.register(Target::ClaudeCode);
             let old = json!({ "headers": { "Authorization": "Bearer old" }, "timeout": 5000, "type": "http", "url": URL });
             s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: old } }).to_string());
             let e = message(&s.agents.connect(&s.store, &r.id).await.unwrap_err());
             assert_eq!(e["params"]["error"].as_str().unwrap().trim(), error, "the first failure");
             let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().replace("\"\"", "\"")).collect();
-            assert_eq!(calls.len(), 4, "{calls:?}");
-            assert_eq!(calls[..2], ["mcp remove lattice-dev -s user", "mcp add-json -s user lattice-dev -"]);
-            assert!(calls[2].contains(&r.token), "{calls:?}");
-            assert_eq!(calls[3], format!("mcp add-json -s user lattice-dev \"{old}\""));
+            assert_eq!(calls.len(), 3, "{calls:?}");
+            assert_eq!(calls[0], "mcp remove lattice-dev -s user");
+            assert!(calls[1].contains(&r.token), "{calls:?}");
+            assert_eq!(calls[2], format!("mcp add-json -s user lattice-dev \"{old}\""));
         }
     }
 
     #[cfg(windows)]
     #[tokio::test]
-    async fn a_command_that_repeats_its_input_does_not_show_the_token() {
+    async fn a_command_that_repeats_its_arguments_does_not_show_the_token() {
         let mut s = Sandbox::new("claude-fails");
         s.agents.claude = s.fake("claude", "type \"%~dp0claude.txt\" 1>&2& exit /b 3");
         let r = s.register(Target::ClaudeCode);
         let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
-        assert!(s.file("claude.txt").contains(&r.token), "it was sent it");
+        assert!(s.file("claude.txt").contains(&r.token), "it was called with it");
         assert!(!e.contains(&r.token) && e.contains("mcp.agentFailed") && e.contains("add-json") && e.contains("***"), "{e}");
     }
 
