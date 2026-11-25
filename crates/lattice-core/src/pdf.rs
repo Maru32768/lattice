@@ -628,7 +628,7 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
     } else {
         parted + figures == 0
     };
-    // Rows each have their cells' padding, and the lines of one row have it once, round them all.
+    // Rows each have their cells' padding, and the lines of one row have it once, round them all. But so may a group of rows.
     let lead = (last - first) / (baselines.len() - 1) as f64;
     let (padding, size) = (height - (last - first) - lead, columns.iter().flatten().map(|l| l.size).fold(0., f64::max));
     let padded = bands.len() > 2 && padding > 0.15 * size;
@@ -638,11 +638,12 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
         let told = (!padded || padding >= lead) && baselines.iter().skip(1).all(|b| starts(&b) || b.1 == 1);
         return told.then(|| Band::Rows(baselines.iter().skip(1).filter(starts).map(|b| b.0).collect()));
     }
-    if wraps && clear || padded && (figures == 0 || parted == 0 && wrapped > 0) {
+    let one = wraps || padded && (figures == 0 || parted == 0 && wrapped > 0);
+    if one && clear {
         return Some(Band::Wrapped);
     }
     let one_name = tellers < 2 && name.is_some_and(|column| columns[column].len() == 1);
-    wraps.then_some(if one_name {
+    one.then_some(if one_name {
         Band::Rows(Vec::new())
     } else {
         Band::Either
@@ -3744,6 +3745,24 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
+    fn rows_with_room_round_their_groups_are_not_put_in_one() {
+        // As struts in a group's first row and last give it in LaTeX.
+        let spaced = |rows: &[&[&str]], xs: &[f64]| {
+            let y = |line: usize, group: usize| 160. + 12. * line as f64 + 4.4 * group as f64;
+            let group_of = |line: usize| [0, 1, 1, 2, 2][line];
+            let lines: Vec<(f64, &[&str])> = rows.iter().enumerate().map(|(i, cells)| (y(i, group_of(i)) + 11.2, *cells)).collect();
+            grouped(xs, &[y(0, 0), y(1, 1), y(3, 2), y(5, 3)], &lines)
+        };
+        let names: &[&[&str]] =
+            &[&["Method", "Kind"], &["Model A", "flat tree"], &["Model B", "deep heap"], &["Model C", "open node"], &["Model D", "cold page"]];
+        let mixed: &[&[&str]] = &[&["Method", "Kind"], &["Forest", "flat"], &["Nearest one", "deep heap"], &["Tree", "open"], &["Boosted trees", "cold page"]];
+        let scores: &[&[&str]] = &[&["Method", "F1"], &["Model A", "71.2"], &["Model B", "74.9"], &["Model C", "78.1"], &["Model D", "79.0"]];
+        for rows in [names, mixed, scores] {
+            no_table(&spaced(rows, &fitted(rows)));
+        }
+    }
+
+    #[test]
     fn a_row_whose_lines_wrapped_tells_that_the_rules_part_the_rows() {
         let head: &[&[&str]] = &[&["Name", "Kind"]];
         let short: &[&[&str]] = &[&["Random", "Open"], &["Forest", "source"]];
@@ -4135,12 +4154,14 @@ Saw	It cuts. It sings. It rests."]
 
     #[test]
     fn a_cell_set_lower_than_the_one_beside_it_keeps_its_band_one_row() {
-        // The second band's first cell holds three short lines, the other two lines centred lower down.
-        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200., 220.], "strokes");
+        // The second band's first cell holds three short lines, the other two lines centred lower down. The third band's
+        // last cell wrapped.
+        let mut ops = ruled(&[72., 200., 258.], &[110., 130., 200., 240.], "strokes");
         ops += &(shown(78., 124., "Design") + &shown(206., 124., "Notes"));
         ops += &(shown(78., 146., "Short") + &shown(78., 158., "Lines") + &shown(78., 170., "Here"));
-        ops += &(shown(206., 158., "Centered") + &shown(206., 170., "Text") + &shown(78., 214., "Other") + &shown(206., 214., "None"));
-        assert_eq!(texts_of(&ops), ["Design\tNotes\nShort Lines Here\tCentered Text\nOther\tNone"]);
+        ops += &(shown(206., 158., "Centered") + &shown(206., 170., "Text") + &shown(78., 214., "Other"));
+        ops += &(shown(206., 214., "It is in") + &shown(206., 226., "the park"));
+        assert_eq!(texts_of(&ops), ["Design\tNotes\nShort Lines Here\tCentered Text\nOther\tIt is in the park"]);
     }
 
     #[test]
