@@ -670,8 +670,9 @@ export const handlers = {
         {
           id: nextSticky,
           question,
-          answer: "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います。出典のない番号 [7] と消えた出典 [2] はそのままです。",
-          citations: [...(block ? [citation(1, block.id, block.text)] : []), citation(2, 999_999, "gone")],
+          answer:
+            "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います。出典のない番号 [7] と消えた出典 [2]、書き換わった出典 [3] はそのままです。",
+          citations: [...(block ? [citation(1, block.id, block.text), citation(3, block.id, "what it said then")] : []), citation(2, 999_999, "gone")],
         },
       ],
     };

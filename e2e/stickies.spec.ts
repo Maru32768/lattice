@@ -311,11 +311,11 @@ test("a failed 詳しく says so and is asked again", async ({ shell }) => {
   await expect(cards(shell)).toHaveCount(1);
 });
 
-test("a citation goes to its block; a number without a block of the article is text", async ({ app }) => {
+test("a citation goes to its block; a number without a block of the article that says the same is text", async ({ app }) => {
   await openSnapshot(app);
   await askAbout(app, "詳しく", "#b-103");
   const answer = card(app, "詳しく").locator(".answer");
-  await expect(answer).toHaveText(/\[7\].*\[2\]/);
+  await expect(answer).toHaveText(/\[7\].*\[2\].*\[3\]/);
   await expect(answer.getByRole("button")).toHaveText(["1"]);
   await expect(app.locator(".is-cite")).toHaveCount(0);
   await answer.getByRole("button").click();
