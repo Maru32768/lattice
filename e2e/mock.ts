@@ -1117,55 +1117,40 @@ export const handlers = {
   },
   mcp_edit: ({ edit }: { edit: McpEdit }): McpEdited => {
     const regs = store.mcp.registrations;
-    /** The agent whose own settings the edit reaches into. */
-    let agent: string | null = null;
+    const target = edit.kind === "create" ? edit.target : regs.find((r) => "id" in edit && r.id === edit.id)?.target;
+    const { agent, copy, remove } = MCP_TARGETS[target ?? "other"];
     switch (edit.kind) {
       case "enable":
         store.mcp = { ...store.mcp, enabled: edit.on };
         break;
       case "create": {
-        agent = MCP_TARGETS[edit.target].agent;
         const name = edit.name.trim() || (agent ?? "");
         if (regs.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
-          throw JSON.stringify({ code: "mcp.nameTaken", params: { name } });
+          reject("mcp.nameTaken", { name });
         }
         const other = agent && regs.find((r) => r.target === edit.target);
         if (other) {
-          throw JSON.stringify({ code: "mcp.targetTaken", params: { agent, name: other.name } });
+          reject("mcp.targetTaken", { agent, name: other.name });
         }
-        const copy = MCP_TARGETS[edit.target].copy(`t${++store.mcpTokens}`);
-        const { remove } = MCP_TARGETS[edit.target];
-        const reg = { id: `r${store.mcpTokens}`, name, role: edit.role, target: edit.target, copy, remove, sessions: [], calls: [] };
+        const token = `t${++store.mcpTokens}`;
+        const reg = { id: `r${store.mcpTokens}`, name, role: edit.role, target: edit.target, copy: copy(token), remove, sessions: [], calls: [] };
         store.mcp = { ...store.mcp, enabled: true, registrations: [...regs, reg] };
         break;
       }
-      case "connect": {
-        const reg = regs.find((r) => r.id === edit.id);
-        agent = reg ? MCP_TARGETS[reg.target].agent : null;
-        store.mcp = { ...store.mcp, enabled: store.mcp.enabled || !!reg };
+      case "connect":
+        store.mcp = { ...store.mcp, enabled: store.mcp.enabled || !!target };
         break;
-      }
       case "regenerate":
-        store.mcp = {
-          ...store.mcp,
-          registrations: regs.map((r) => {
-            if (r.id !== edit.id) {
-              return r;
-            }
-            agent = MCP_TARGETS[r.target].agent;
-            return { ...r, copy: MCP_TARGETS[r.target].copy(`t${++store.mcpTokens}`) };
-          }),
-        };
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, copy: copy(`t${++store.mcpTokens}`) } : r)) };
         break;
       case "set_role":
         store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
         break;
       case "delete":
-        agent = MCP_TARGETS[regs.find((r) => r.id === edit.id)?.target ?? "other"].agent;
         store.mcp = { ...store.mcp, registrations: regs.filter((r) => r.id !== edit.id) };
         break;
     }
-    if (!agent) {
+    if (!agent || edit.kind === "set_role") {
       return { status: store.mcp, agent: null };
     }
     return { status: store.mcp, agent: store.mcpAgentError ? { kind: "failed", error: store.mcpAgentError } : { kind: "written" } };
