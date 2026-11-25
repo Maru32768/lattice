@@ -587,7 +587,8 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
             };
             let figure = is_number(&before.text) && is_number(&after.text);
             // A hyphen breaks a word, so the line wrapped whatever room it left.
-            let fits = !before.text.ends_with('-') && before.x1 - before.x0 + (word as f64 + 2.) * letter <= room;
+            let broken = goes_on_after(&before.text, &['-']);
+            let fits = !broken && before.x1 - before.x0 + (word as f64 + 2.) * letter <= room;
             let at = baselines.partition_point(|b| b.0 <= after.y) - 1;
             let (_, columns, starts) = &mut baselines[at];
             *starts |= figure || fits;
@@ -599,7 +600,7 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
                 // One text goes on without a capital, as a row under the head's may too, after a word it breaks, or at the end
                 // of a line many times as long as the word.
                 let capital = row > 0 && before.text.starts_with(char::is_uppercase) && after.text.starts_with(char::is_lowercase);
-                clear |= capital || before.text.ends_with('-') || !japanese && (word.max(4) as f64 + 2.) * letter <= room / 4.;
+                clear |= capital || broken || !japanese && (word.max(4) as f64 + 2.) * letter <= room / 4.;
                 let ends = room - (before.x1 - before.x0) < 3. * letter;
                 full += usize::from(japanese && ends && room >= 6. * letter);
                 uneven |= japanese && !ends;
@@ -657,7 +658,12 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
 
 /// A number, or a mark among numbers, with nothing after it to go on with.
 fn is_number(t: &str) -> bool {
-    !t.contains(|c: char| c.is_alphabetic() || c.is_whitespace()) && !t.ends_with(['-', ','])
+    !t.contains(|c: char| c.is_alphabetic() || c.is_whitespace()) && !goes_on_after(t, &['-', ','])
+}
+
+/// Whether a line ends in one of `marks` after a word or a number, not in one alone, as a dash stands for no value.
+fn goes_on_after(t: &str, marks: &[char]) -> bool {
+    t.strip_suffix(marks).is_some_and(|t| t.ends_with(char::is_alphanumeric))
 }
 
 /// The rows of a band, each a cell per column, cut where `breaks` starts one.
@@ -3748,6 +3754,14 @@ Saw	It cuts. It sings. It rests."]
         for rows in [marks, blanks, unpriced] {
             no_table(&groups(&fitted(rows), 14., &[&rows[..1], &rows[1..]]));
         }
+    }
+
+    #[test]
+    fn a_dash_in_a_cell_with_no_value_breaks_no_word() {
+        let marks: &[&[&str]] = &[&["Model", "B"], &["Model A", "-"], &["Model B", "x"], &["Model C", "-"]];
+        no_table(&groups(&fitted(marks), 14., &[&marks[..1], &marks[1..]]));
+        let scores: &[&[&str]] = &[&["Model", "F1"], &["Base", "12.3"], &["Ours", "-"], &["Ours (large)", "14.5"]];
+        assert_eq!(texts_of(&groups(&fitted(scores), 14., &[&scores[..1], &scores[1..]])), [as_table(scores)]);
     }
 
     #[test]
