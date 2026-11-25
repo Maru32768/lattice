@@ -696,7 +696,9 @@ mod tests {
         assert_eq!(told(format!("exit 1:\n  bad header \"Authorization: Bearer {token}\"\n")), "exit 1: bad header \"Authorization: ***\"");
         assert_eq!(told(format!("token={token}.")), "token=***.");
         assert_eq!(told("'Bearer sk-someone-elses-secret' rejected".into()), "'***' rejected");
+        assert_eq!(told("bearer sk-someone-elses-secret".into()), "***");
         assert_eq!(told("no bearer token".into()), "no bearer token");
+        assert!(!told(format!("{} {token}", "x".repeat(MAX_ERROR_CHARS - 20))).contains("0123"), "cut where a token is");
         assert_eq!(told("あ".repeat(1000)).chars().count(), MAX_ERROR_CHARS);
     }
 
