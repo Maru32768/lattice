@@ -6898,6 +6898,97 @@ Manual	No. 1234";
     }
 
     #[test]
+    fn a_thin_clip_is_no_rule_when_something_else_is_filled() {
+        let across: String = [100., 180.].iter().map(|y| format!("72 {y} m 540 {y} l S\n", y = 792. - y)).collect();
+        let down = [72., 172., 540.].map(|x| format!("{x} 692 m {x} 612 l S\n")).concat();
+        let clip = "q 72 652 468 0.5 re W n Q\n0 0 m 5 0 l 5 5 l h f\n";
+        let text = shown(78., 124., "Strong") + &shown(178., 124., "Lasting") + &shown(78., 160., "Costly") + &shown(178., 160., "Easy");
+        no_table(&(across + &down + clip + &text));
+    }
+
+    #[test]
+    fn a_bar_lies_at_its_middle() {
+        // The rules down end at its top, 3.8pt over its foot.
+        let down = [72., 172., 540.].map(|x| format!("{x} 692 m {x} 612 l S\n")).concat();
+        let across: String = [100., 140.].iter().map(|y| format!("72 {y} m 540 {y} l S\n", y = 792. - y)).collect();
+        let text = shown(78., 124., "Strong") + &shown(178., 124., "Lasting") + &shown(78., 164., "Costly") + &shown(178., 164., "Easy");
+        assert_eq!(texts_of(&(down + &across + "72 608.2 468 3.8 re f\n" + &text)), [PROS_TEXT]);
+    }
+
+    #[test]
+    fn a_table_closing_a_page_and_one_opening_the_next_are_two() {
+        let pages = [across(80., "The first line is read") + &two_by_two(WIDE, [600., 650., 700.], PROS), two_by_two(WIDE, [100., 150., 200.], CONS)];
+        assert_eq!(blocks_of(&pages_of(&pages)), [&full("The first line is read"), PROS_TEXT, CONS_TEXT]);
+    }
+
+    #[test]
+    fn a_paragraph_under_a_line_of_its_own_goes_on_past_a_figure() {
+        let mut ops: String = (0..4).map(|i| across(44. + 12. * i as f64, "The first paragraph is read")).collect();
+        let under = full("The paragraph under the heading is read");
+        let under = under.trim_end_matches('.');
+        ops += &(shown(72., 100., "Results of the test")
+            + &shown(72., 124., under)
+            + &shown(72., 136., under)
+            + &shown(72., 300., "Figure 1: The machine at work."));
+        let texts = texts_of(&(ops + &shown(72., 330., "where it goes on to its end under the figure.")));
+        assert!(texts.iter().any(|t| t.ends_with("margin where it goes on to its end under the figure.")), "{texts:?}");
+    }
+
+    #[test]
+    fn a_caption_in_capitals_of_two_lines_over_a_table_does_not_run_on_past_it() {
+        let line = |x: f64, y: f64, words: &str| shown(x, y, &format!("{words} column line of the body runs on to it"));
+        let left: String = (0..28).map(|i| line(72., 100. + 12. * i as f64, "Left")).collect();
+        let caption = shown(72., 466., "TABLE 1 What each of the methods in the study") + &shown(72., 478., "did with what the others of them did not do");
+        let right: String = (0..36).map(|i| line(316., 112. + 12. * i as f64, "Right")).collect();
+        let next = shown(316., 100., "then goes on atop the right column until it");
+        let texts = texts_of(&(left + &caption + &two_by_two(LEFT, [490., 510., 530.], PROS) + &next + &right));
+        let at = texts.iter().position(|t| t.starts_with("TABLE 1")).unwrap_or_else(|| panic!("{texts:?}"));
+        assert!(texts[at].ends_with("did not do") && texts[at + 1] == PROS_TEXT, "{texts:?}");
+    }
+
+    #[test]
+    fn a_japanese_caption_of_two_lines_over_a_table_does_not_run_on_past_it() {
+        let cid = (1..9000).find(|&c| crate::pdf_japan1::utf16(c) == Some(&[0x88, 0x68][..])).unwrap();
+        let set = |y: f64, cids: &str| format!("BT /F3 10 Tf 72 {} Td <{cids}> Tj ET\n", 792. - y);
+        let line = TEN_DOWN.repeat(4) + &TEN_DOWN[..20];
+        let caption = set(608., &(format!("{cid:04X}") + &line[4..])) + &set(620., &line);
+        let first = set(560., &line) + &set(572., &(line[..40].to_string() + "027B")) + &caption + &two_by_two(WIDE, [640., 676., 712.], PROS);
+        let second = set(100., &line) + &set(112., "034B034D027B");
+        let ir = to_ir(&with_contents(&japanese(&[vec![], vec![]], "Identity-H", &second), &[(0, &first)]), None).unwrap();
+        let texts = texts(&ir);
+        let at = texts.iter().position(|t| t.starts_with('表')).unwrap_or_else(|| panic!("{texts:?}"));
+        assert!(texts[at + 1] == PROS_TEXT && texts[at].chars().count() == 90, "{texts:?}");
+    }
+
+    #[test]
+    fn the_author_is_dropped_before_a_table_whose_first_row_reads_as_a_section() {
+        let cells = ["1.0 First", "May", "1.1 Next", "June"];
+        let front = sized(72., 80., 20., "Interface Specification") + &shown(72., 100., "Ann Author") + &two_by_two(WIDE, [115., 135., 155.], cells);
+        let texts = texts_of(&(front + &across(180., "A notice is read") + &sized(72., 210., 14., "1 Scope") + &across(230., "The scope is read")));
+        assert!(!texts.iter().any(|t| t == "Ann Author"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_translation_by_the_foot_of_a_tall_heads_cell_has_no_room_over_it() {
+        let line = |x: f64, i: usize| shown(x, 135. + 12. * i as f64, "A column line of the body runs on to its edge");
+        let cells = shown(78., 134., "Strong") + &shown(178., 134., "Lasting") + &shown(78., 160., "Costly") + &shown(178., 160., "Easy");
+        let left: String = (5..30).map(|i| line(72., i)).collect();
+        let right: String = (0..30).map(|i| line(322., i)).collect();
+        let r = regions(&pages_of(&[ruled(&LEFT, &[100., 140., 170.], "strokes") + &cells + &left + &right])).unwrap();
+        assert_eq!(r.iter().find(|r| r.x0 > 300.).map(|r| r.room_up), Some(0.));
+    }
+
+    #[test]
+    fn a_table_all_in_the_titles_size_under_it_is_kept() {
+        let words = [("Supplier", 78., 125.), ("Widget Works", 312., 125.), ("Manual", 78., 165.), ("No. 1234", 312., 165.)];
+        let table = ruled(&[72., 306., 540.], &[100., 140., 180.], "strokes") + &words.map(|(text, x, y)| sized(x, y, 18., text)).concat();
+        let body = across(210., "A notice is read") + &sized(72., 240., 14., "1 Scope") + &across(270., "The scope is read");
+        let ir = to_ir(&pages_of(&[sized(72., 80., 18., "Quality Manual of the Works") + &table + &body]), None).unwrap();
+        assert_eq!(ir.meta.title.as_deref(), Some("Quality Manual of the Works"));
+        assert!(kinds(&ir).contains(&("table", "Supplier\tWidget Works\nManual\tNo. 1234")), "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn the_text_of_a_table_in_a_cell_of_another_is_read_once() {
         let outer = two_by_two([72., 306., 540.], [100., 200., 400.], CONS);
         let texts = texts_of(&(outer + &two_by_two([320., 420., 520.], [220., 250., 280.], PROS))).join(" ");
