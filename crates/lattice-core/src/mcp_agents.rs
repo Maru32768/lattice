@@ -1174,6 +1174,8 @@ http_headers = {
         let split = format!("[mcp_servers.lattice-dev]\n{AT}\n[tui]\na = 1\n");
         assert!(codex_file(&format!("{split}# b = 2\n\n{apart}"), true).await.unwrap_err().contains(CANNOT_KEEP), "that is [tui]'s");
         assert_eq!(codex_file(&format!("{split}\n{apart}"), true).await.unwrap(), "[tui]\na = 1\n");
+        let own = format!("a = 1\n\n[mcp_servers.lattice-dev]\n{AT}\n# its own\n{apart}");
+        assert_eq!(codex_file(&own, true).await.unwrap(), "a = 1\n");
         let dotted = format!("[mcp_servers]\nlattice-dev.{AT}\n\n[tui]\na = 1\n# b = 2\n\n{apart}");
         for before in [format!("# My Codex settings\n\n{apart}\n[mcp_servers.lattice-dev]\n{AT}\n"), dotted] {
             assert!(codex_file(&before, true).await.unwrap_err().contains(CANNOT_KEEP), "{before}");
