@@ -3746,6 +3746,9 @@ Saw	It cuts. It sings. It rests."]
             no_table(&groups(&xs, 14., &[&rows[..1], &rows[1..3], &rows[3..]]));
             no_table(&groups(&xs, 14., &[rows, &total]));
         }
+        // Rows without capitals, under a head over the first rule.
+        let plain: &[&[&str]] = &[&["Name", "Kind"], &["base", "open"], &["large", "shut"], &["tiny", "loose"]];
+        no_table(&groups(&fitted(plain), 14., &[&plain[..3], &plain[3..]]));
         // Lines with text in one of the other columns only, or in none.
         let marks: &[&[&str]] = &[&["Plan", "Free", "Pro"], &["Basic", "x", ""], &["Advanced", "", "x"]];
         let blanks: &[&[&str]] = &[&["What", "Place"], &["old tree", "St. Louis"], &["old heap", ""]];
@@ -3776,8 +3779,9 @@ Saw	It cuts. It sings. It rests."]
         let names: &[&[&str]] =
             &[&["Method", "Kind"], &["Model A", "flat tree"], &["Model B", "deep heap"], &["Model C", "open node"], &["Model D", "cold page"]];
         let mixed: &[&[&str]] = &[&["Method", "Kind"], &["Forest", "flat"], &["Nearest one", "deep heap"], &["Tree", "open"], &["Boosted trees", "cold page"]];
+        let plain: &[&[&str]] = &[&["Method", "Kind"], &["Fir", "flat"], &["nearest one", "deep heap"], &["Oak", "open"], &["boosted trees", "cold page"]];
         let scores: &[&[&str]] = &[&["Method", "F1"], &["Model A", "71.2"], &["Model B", "74.9"], &["Model C", "78.1"], &["Model D", "79.0"]];
-        for rows in [names, mixed, scores] {
+        for rows in [names, mixed, plain, scores] {
             no_table(&spaced(rows, &fitted(rows)));
         }
     }
@@ -3974,6 +3978,7 @@ Saw	It cuts. It sings. It rests."]
         assert_eq!(read(&[[2, 2], [4, 4], [4, 4], [4, 4], [4, 4]]), None);
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 10], [12, 10]]), None);
         assert_eq!(read(&[[2, 2], [12, 10], [8, 6]]), None);
+        assert_eq!(read(&[[2, 2], [24, 24], [20, 20], [24, 24]]), None);
         // A cell of each column that wraps, their last lines apart.
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]]), Some(2));
     }
