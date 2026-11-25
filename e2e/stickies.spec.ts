@@ -1588,6 +1588,19 @@ test("a passage selected from the margins after another one, or extended there b
     await expect(bar(shell), `line ${line}`).toBeVisible();
   }
   await shell.keyboard.up("Shift");
+
+  // Dragged backwards, it is the start that goes on.
+  p = await scroll();
+  await dragTo(shell, [p.x + p.width + 30, p.y + 14 + 31 * 3], [p.x - 30, p.y + 14 + 31 * 2]);
+  await expect(bar(shell)).toBeVisible();
+  p = await scroll();
+  const before = await selected(shell);
+  await shell.keyboard.down("Shift");
+  await shell.mouse.click(p.x - 30, p.y + 14 + 31);
+  const now = await selected(shell);
+  expect(now.endsWith(before) && now !== before).toBe(true);
+  await expect(bar(shell)).toBeVisible();
+  await shell.keyboard.up("Shift");
 });
 
 test("a press that begins outside the article leaves what is selected without a bar", async ({ shell }) => {
@@ -1596,13 +1609,19 @@ test("a press that begins outside the article leaves what is selected without a 
   await doc(shell).evaluate((el) => (el.scrollTop += 20));
   await expect(bar(shell)).toHaveCount(0);
   const border = await boxOf(shell.locator(".splitter.at-list"));
-  await shell.mouse.move(border.x + border.width / 2, border.y + 300);
-  await shell.mouse.down();
-  await shell.mouse.move(border.x + 120, border.y + 300, { steps: 6 });
-  await shell.mouse.up();
-  expect(await selected(shell)).not.toBe("");
-  await frames(shell);
-  await expect(bar(shell)).toHaveCount(0);
+  const nav = await boxOf(shell.locator(".nav"));
+  for (const [x, y] of [
+    [nav.x + nav.width - 4, nav.y + nav.height - 3],
+    [border.x + border.width / 2, border.y + 300],
+  ]) {
+    await shell.mouse.move(x!, y!);
+    await shell.mouse.down();
+    await shell.mouse.move(border.x + 120, border.y + 300, { steps: 6 });
+    await shell.mouse.up();
+    expect(await selected(shell)).toContain(para(2).slice(0, 10));
+    await frames(shell);
+    await expect(bar(shell)).toHaveCount(0);
+  }
 });
 
 test("a passage selected again, as after a scroll took its bar away, can be asked about", async ({ shell }) => {
