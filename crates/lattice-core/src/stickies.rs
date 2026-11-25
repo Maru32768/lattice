@@ -490,6 +490,13 @@ mod tests {
             assert_eq!(ask(&s, &Fake::new(empty), a, None, StickyKind::Term, "fsync", "").await.unwrap_err(), msg!("stickies.malformed"));
         }
         assert_eq!(rows(&s), (0, 0));
+        let s = Arc::new(s);
+        let store = s.clone();
+        let mut llm = Fake::new(ANSWER);
+        llm.meanwhile = Box::new(move || store.exec_for_test("ALTER TABLE sticky_messages RENAME TO gone"));
+        ask(&s, &llm, a, None, StickyKind::Term, "fsync", "").await.unwrap_err();
+        s.exec_for_test("ALTER TABLE gone RENAME TO sticky_messages");
+        assert_eq!(rows(&s), (0, 0), "no sticky without its message");
     }
 
     #[tokio::test]
