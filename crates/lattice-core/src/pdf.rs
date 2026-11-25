@@ -1274,9 +1274,10 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
         _ if g.y > base.y + 0.1 * base.size => Some(SUB),
         _ => None,
     };
-    // A book draws a list's bullet as a full stop a third of the text's size, raised to the middle of the line.
+    // A book draws a list's bullet as a full stop a third of the text's size, raised to the middle of the line, and slides
+    // draw a smaller one.
     let bullet = match ink.as_slice() {
-        [mark, next, ..] => mark.size < 0.5 * base.size && mark.text == "." && next.x > mark.end + 0.15 * mark.size,
+        [mark, next, ..] => mark.size < 0.5 * base.size && (mark.text == "." || mark.text.starts_with(BULLETS)) && next.x > mark.end + 0.15 * mark.size,
         _ => false,
     };
     let formula = formula_glyphs(glyphs);
@@ -2182,8 +2183,10 @@ fn caption_label(t: &str) -> Option<&str> {
     rest[n..].starts_with(['.', ':']).then(|| &t[..t.len() - rest.len() + n])
 }
 
+const BULLETS: [char; 6] = ['•', '◦', '▪', '●', '■', '‣'];
+
 fn is_bullet(t: &str) -> bool {
-    t.starts_with(['•', '◦', '▪', '●', '■', '‣']) && t.chars().nth(1).is_some_and(char::is_whitespace)
+    t.starts_with(BULLETS) && t.chars().nth(1).is_some_and(char::is_whitespace)
 }
 
 /// A metadata title worth showing: not a file name or a word processor's placeholder.
@@ -3072,6 +3075,8 @@ pub(crate) mod tests {
             (80., 200., 9., "Ada Lovelace wrote this while she was at the university."),
             (L, 225., 6., "."),
             (80., 230., 9., "env holds the settings that it was written with."),
+            (80., 258., 4., "•"),
+            (90., 260., 10., "To spread the load."),
         ];
         let bytes = pdf(&[page], None);
         assert_eq!(
@@ -3083,10 +3088,12 @@ pub(crate) mod tests {
                 ("paragraph", "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
                 ("paragraph", "* Ada Lovelace wrote this while she was at the university."),
                 ("paragraph", ". env holds the settings that it was written with."),
+                ("list_item", "• To spread the load."),
             ]
         );
         let r = regions(&bytes).unwrap();
         assert!(r.iter().any(|x| x.text == "• To keep the data close to the people who use it (and so reduce the latency)"), "{r:?}");
+        assert!(r.iter().any(|x| x.text == "• To spread the load." && x.runs.len() == 1), "no superscript: {r:?}");
     }
 
     /// Glyphs as a line would have them, one per character, with `|` starting and ending a stretch in `face`.
