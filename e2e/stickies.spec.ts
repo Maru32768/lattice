@@ -1292,6 +1292,23 @@ test("closing a question on a paragraph that starts above the view, at the end o
   }
 });
 
+test("closing a question on the last paragraph, in a narrow pane, gives the view at the article's end back", async ({ shell }) => {
+  await startNarrow(shell, 4);
+  await askElsewhere(shell, LONG_ID, paraId(50));
+  await expect(cards(shell)).toHaveCount(1);
+  await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await frames(shell);
+  const top = await scrollTop(shell);
+  await askAbout(shell, "質問", paraBlock(79));
+  await expect(field(shell)).toBeFocused();
+  await frames(shell);
+  expect(await scrollTop(shell)).toBeGreaterThan(top + 50);
+  await shell.keyboard.press("Escape");
+  await expect(cards(shell)).toHaveCount(1);
+  await frames(shell);
+  expect(Math.abs((await scrollTop(shell)) - top)).toBeLessThan(2);
+});
+
 test("the line being read by the column's end stays there through other widths, as the opened card has others give way", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell, 6);
