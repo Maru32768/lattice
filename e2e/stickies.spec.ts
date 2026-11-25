@@ -565,6 +565,45 @@ test("in a narrow pane a card is right under its passage, and neither asking nor
   await under();
 });
 
+test("in a narrow pane a card that comes under the paragraph at the top of the view moves no text, whichever its line there", async ({ shell }) => {
+  test.slow();
+  await startNarrow(shell, 12);
+  await askElsewhere(shell, LONG_ID, paraId(50));
+  await expect(cards(shell)).toHaveCount(1);
+  await scrollTo(shell, paraBlock(40), "start");
+  const moved = await doc(shell).evaluate(
+    async (el, [article, block]) => {
+      type Invoke = (cmd: string, args: object) => Promise<{ id: number }>;
+      const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+      const column = el.querySelector(".stickies")!;
+      const come = async (n: number) => {
+        while (column.children.length !== n) {
+          await new Promise((done) => setTimeout(done));
+        }
+      };
+      const p = el.querySelector(`#b-${block}`)!;
+      const start = el.scrollTop;
+      const moved: [number, number][] = [];
+      for (let px = 1; px <= 150; px++) {
+        el.scrollTop = start + px;
+        await new Promise((done) => requestAnimationFrame(done));
+        const y = p.getBoundingClientRect().top;
+        const { id } = await invoke("sticky_ask", { articleId: article, blockId: block, kind: "term", quote: "q", question: "" });
+        await come(2);
+        const by = p.getBoundingClientRect().top - y;
+        if (Math.abs(by) >= 1) {
+          moved.push([px, by]);
+        }
+        await invoke("delete_sticky", { id });
+        await come(1);
+      }
+      return moved;
+    },
+    [LONG_ID, paraId(40)],
+  );
+  expect(moved).toEqual([]);
+});
+
 test("in a narrow pane a card that opens at the bottom of the view moves the text no further than shows the card", async ({ shell }) => {
   await startNarrow(shell);
   await scrollTo(shell, paraBlock(40), "end");

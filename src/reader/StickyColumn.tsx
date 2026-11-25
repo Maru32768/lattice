@@ -47,8 +47,12 @@ function lineAt(scroller: HTMLElement): Line {
   const article = reader.querySelector<HTMLElement>(".blocks")!;
   const block = lastFrom(article.children, top) ?? lastFrom(reader.children, top) ?? reader;
   const r = block.getBoundingClientRect();
-  const share = block !== article && block !== reader && r.height ? Math.min(1, (top - r.top) / r.height) : 0;
-  return { block, share, past: top - r.top - share * r.height, room: roomOf(block) };
+  const room = roomOf(block);
+  if (block === article || block === reader) {
+    return { block, share: 0, past: top - r.top, room };
+  }
+  // None in the block itself: the least of it, as by rounding, would be past cards that come there.
+  return { block, share: r.height ? Math.min(1, (top - r.top) / r.height) : 0, past: Math.max(0, top - r.bottom), room };
 }
 
 /** Where the line is in the pane. */
