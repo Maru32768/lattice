@@ -168,11 +168,11 @@ test("詳しく: a passage over two paragraphs gets an answer beside the first, 
     "PostgreSQL implements it with multi-version concurrency control.",
   ]);
   expect((await callsOf(shell, "chat_ask")).length).toBe(0);
+  await expect(shell.locator("[data-pane='chat']")).toHaveCount(0);
 
   const [beside, block, reader] = [await boxOf(detail), await boxOf(shell.locator("#b-102")), await boxOf(shell.locator(".reader"))];
   expect(Math.abs(beside.y - block.y), "at its block's height").toBeLessThan(1);
   expect(beside.x, "right of the text").toBeGreaterThanOrEqual(reader.x + reader.width);
-  await expect(shell.locator("[data-pane='chat']")).toHaveCount(0);
 });
 
 test("用語 asks at once; a word also offers 単語を登録, and code and tables can be asked about", async ({ app }) => {
