@@ -895,6 +895,24 @@ for (const translated of [false, true]) {
   });
 }
 
+test("the line being read in a last paragraph taller than the view stays at its top", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1200, height: 800 });
+  await startLong(shell, 1, "['paragraph', Array.from({ length: 1500 }, (_, i) => `w${i}`).join(' '), null]");
+  await askElsewhere(shell, LONG_ID, paraId(50));
+  await expect(cards(shell)).toHaveCount(1);
+  await scrollTo(shell, paraBlock(80), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 700));
+  await frames(shell);
+  const passed = async () => {
+    const [b, view] = [await boxOf(shell.locator(paraBlock(80))), await boxOf(doc(shell))];
+    return (view.y - b.y) / b.height;
+  };
+  const before = await passed();
+  await shell.setViewportSize({ width: 1330, height: 800 });
+  await frames(shell);
+  expect(Math.abs((await passed()) - before)).toBeLessThan(0.005);
+});
+
 test("a view in the header stays there through a narrow pane and a wide one", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 800 });
   await startLong(shell);
