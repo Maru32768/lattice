@@ -260,17 +260,11 @@ export function StickyColumn({
     const scroller = root.current!.parentElement!;
     const { from, to } = moved.current ?? {};
     // The column keeps the same line through other widths, and another as the reader goes on.
-    if (!from?.line.block.isConnected || kept.current?.line !== to) {
-      close();
-      return;
-    }
-    const back = () => {
-      scroller.scrollTop += offsetOf(from.line, scroller) - from.offset;
-    };
-    back();
+    const goneOn = kept.current?.line !== to;
     flushSync(close);
-    // A column whose cards give way to the opened one may have ended above the view there was.
-    back();
+    if (from?.line.block.isConnected && !goneOn) {
+      scroller.scrollTop += offsetOf(from.line, scroller) - from.offset;
+    }
   };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
