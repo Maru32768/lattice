@@ -1993,7 +1993,11 @@ fn take_front_matter(lines: &mut Vec<Line>, body: f64, half: f64) -> Front {
     let front = &lines[end..end + heading];
     let author = front.first().filter(|l| l.table.is_none()).map(|l| l.text.trim_end_matches(['∗', '*', '†', '‡']).to_string());
     let author = author.filter(|a| a.len() <= 150 && !a.contains('@'));
-    let dropped = Some(heading).filter(|_| front.iter().all(|l| l.table.is_none())).unwrap_or(0);
+    let dropped = if front.iter().all(|l| l.table.is_none()) {
+        heading
+    } else {
+        0
+    };
     lines.drain(start..end + dropped);
     Front { title: Some(title), author }
 }
@@ -3480,8 +3484,7 @@ Saw	It cuts. It sings. It rests."]
     #[test]
     fn japanese_rows_no_rule_parts_are_read_by_their_lines_and_japanese_cells_that_wrap_are_not_rows() {
         let read = |right: f64, cells: &[(f64, f64, usize)]| {
-            let text: String =
-                cells.iter().map(|&(x, y, n)| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, "034B034D034F".repeat(9)[..4 * n].to_string())).collect();
+            let text: String = cells.iter().map(|&(x, y, n)| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(9)[..4 * n])).collect();
             let ops = ruled(&[72., 200., right], &[100., 120., 180.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
             let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
             ir.blocks[0].attrs.rows.as_ref().map(Vec::len)
