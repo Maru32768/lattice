@@ -669,7 +669,7 @@ type Walked = (Vec<Style>, Vec<Drawn>, Vec<Grid>);
 
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
 /// style of each string, in the order pdf-extract shows them, and the images and the grids its rules make (each line
-/// stroked, and each bar filled thinner than `RULE_SLACK`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
+/// stroked, and each bar filled no thicker than twice `RULE_SLACK`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
 /// so the styles line up with what it reports. Images inside forms, and inline images, are not followed. A clip counts
 /// by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
@@ -748,7 +748,16 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
                 if matches!(paint, "S" | "s" | "B" | "B*" | "b" | "b*") {
                     rules.append(&mut sides);
                 } else if paint != "n" {
-                    rules.extend(boxes.iter().filter(|&&[x0, y0, x1, y1]| (x1 - x0).min(y1 - y0) <= RULE_SLACK));
+                    // Not a shaded cell: so thin that what meets its edge is within `RULE_SLACK` of its middle.
+                    let bars = boxes.iter().filter(|&&[x0, y0, x1, y1]| (x1 - x0).min(y1 - y0) <= 2. * RULE_SLACK);
+                    rules.extend(bars.map(|&[x0, y0, x1, y1]| {
+                        let (x, y) = ((x0 + x1) / 2., (y0 + y1) / 2.);
+                        if x1 - x0 > y1 - y0 {
+                            [x0, y, x1, y]
+                        } else {
+                            [x, y0, x, y1]
+                        }
+                    }));
                 }
                 (path, clipping) = (NOTHING, false);
                 sides.clear();
@@ -3337,6 +3346,25 @@ pub(crate) mod tests {
         let more = [("one row", one_row), ("a merged cell", merged), ("clipped cells", clipped), ("shaded cells", shaded), ("some columns", some_columns)];
         for (shape, rules) in shapes.into_iter().chain(more) {
             assert_eq!(read(&(rules + &text)), plain, "{shape}");
+        }
+    }
+
+    #[test]
+    fn a_thick_rule_under_the_head_or_round_the_table_is_one_of_its_rules() {
+        let (xs, ys) = ([72., 300., 420., 540.], [200., 220., 240., 260.]);
+        let rows: &[&[&str]] = &[&["Item", "Quantity", "Price"], &["Widget", "4", "12.00"], &["Gadget", "2", "30.00"]];
+        let text: String = (0..9).map(|i| shown(xs[i % 3] + 4., ys[i / 3] + 14., rows[i / 3][i % 3])).collect();
+        for thick in [&[1][..], &[0, 3]] {
+            let bar = |(i, y): (usize, &f64)| {
+                let height = if thick.contains(&i) {
+                    2.25
+                } else {
+                    0.5
+                };
+                format!("72 {} 468 {height} re f\n", 792. - y - height / 2.)
+            };
+            let rules = ys.iter().enumerate().map(bar).chain(xs.iter().map(|x| format!("{x} 532 0.5 60 re f\n"))).collect::<String>();
+            assert_eq!(texts_of(&(rules + &text)), [as_table(rows)], "{thick:?}");
         }
     }
 
