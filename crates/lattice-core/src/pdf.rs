@@ -1837,7 +1837,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
         let across = cur.is_some_and(|(d, prev, _)| {
             let across = prev.page != l.page || prev.side != l.side || l.y < prev.y;
             let ended = prev.text.ends_with(['.', '!', '?', ':']);
-            let same = (prev.size - l.size).abs() < 0.5 || !ended && (last_size(d) - size).abs() < 0.5;
+            let same = (prev.size - l.size).abs() < 0.5 || !ended && ends_in_size(d, size);
             let cut = prev.text.ends_with('-') || prev.x1 >= prev.right - 2. * prev.size;
             // After a full stop, a new paragraph may start where an item's text would: its next line stands further out.
             let indented = |n: &&Line| self::flows(l, n, pitch) && n.x0 < l.x0 - 0.5 * l.size && !is_bullet(&n.text);
@@ -1892,10 +1892,10 @@ fn text_size(l: &Line, beside: Option<&Line>) -> f64 {
     beside.map(|b| b.size).filter(|size| l.size < *size && l.size >= 0.85 * size).unwrap_or(l.size)
 }
 
-/// The size of the text a draft ends in.
-fn last_size(d: &Draft) -> f64 {
+/// Whether a draft's last line, or the text around it, is set in this size. A title can be the line before.
+fn ends_in_size(d: &Draft, size: f64) -> bool {
     let mut lines = d.lines.iter().rev();
-    lines.next().map_or(0., |l| text_size(l, lines.next().copied()))
+    lines.next().is_some_and(|l| [l.size, text_size(l, lines.next().copied())].iter().any(|s| (s - size).abs() < 0.5))
 }
 
 /// Whether the line carries on the sentence of an entry's first line, set with a hanging indent. An equation stands
@@ -1957,8 +1957,7 @@ fn interrupted(drafts: &[Draft], l: &Line, size: f64, body: f64) -> Option<usize
     let i = drafts.iter().rposition(|d| !(skipped(d) || asides && is_title(d, body)))?;
     let floats = drafts[i + 1..].iter().any(float);
     let last = drafts[i].lines.last()?;
-    let of_body = in_body(last.size) || in_body(last_size(&drafts[i]));
-    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && of_body && !last.text.ends_with(['.', '!', '?', ':']);
+    let unfinished = matches!(drafts[i].kind, Kind::Paragraph | Kind::Item) && ends_in_size(&drafts[i], body) && !last.text.ends_with(['.', '!', '?', ':']);
     (unfinished && (floats || asides) && (!asides || last.page < l.page) && aligned(&drafts[i], l)).then_some(i)
 }
 
@@ -2913,11 +2912,13 @@ pub(crate) mod tests {
             let ir = to_ir(&pdf(&[first("to answer with the same stored value, which is the one that is the mem"), second], None), None).unwrap();
             assert!(ir.blocks[0].text.ends_with("the mem"), "a box's title, a label or an indented paragraph: {:?}", kinds(&ir));
         }
-        let code = (L, 160., 9., "node_self_current_idx that it has given to each of the copies and sets there, so");
-        let first_page = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).chain([code]).collect();
-        let second = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
-        let ir = to_ir(&pdf(&[first_page, second], None), None).unwrap();
+        let code = |y: f64| (L, y, 9., "node_self_current_idx that it has given to each of the copies and sets there, so");
+        let body = |from: f64| (0..5).map(move |i| (L, from + 12. * i as f64, 10., BODY));
+        let ir = to_ir(&pdf(&[body(100.).chain([code(160.)]).collect(), body(100.).collect()], None), None).unwrap();
         assert_eq!(ir.blocks.len(), 1, "a last line of code type: {:?}", kinds(&ir));
+        let titled = body(100.).chain([(L, 190., 10.7, "Practice Problem 3 (page 36)"), (L, 202., 10., BODY)]).collect();
+        let ir = to_ir(&pdf(&[titled, [code(100.)].into_iter().chain(body(112.)).collect()], None), None).unwrap();
+        assert_eq!(ir.blocks.len(), 2, "a first line of code type after a title and a line: {:?}", kinds(&ir));
         let last = "the write that it was given by the leader of the replicas and the others.";
         let second =
             [(L, 100., 9.5, "2.73 Write a function that the leader has a use for")].into_iter().chain((0..4).map(|i| (L, 112. + 12. * i as f64, 10., BODY)));
