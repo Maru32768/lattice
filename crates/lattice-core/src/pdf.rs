@@ -542,7 +542,8 @@ impl Band {
 /// lines of one row by how the cells' lines end: one that wraps leaves no room for the first word under it, in the `widths`
 /// the columns' text has. Fails where the lines tell of both, as rows read as one run the values of each column together.
 // shortcut: cells that each break their text at the same baselines read as rows where no room round them shows otherwise,
-// so a row of cells holding addresses is cut up; tell them apart if such tables turn up.
+// so a row of cells holding addresses is cut up; and cells that wrap in title case, or in a script without case, tell of
+// rows or of nothing, so their table stays text. Tell them apart if such tables turn up.
 fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64], width: f64) -> Option<Band> {
     let band = &bands[row];
     if band.iter().flatten().any(|g| g.vertical || g.turned) {
