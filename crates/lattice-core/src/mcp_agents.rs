@@ -697,6 +697,7 @@ mod tests {
     fn no_message_carries_a_token() {
         let token = "0123456789abcdef".repeat(4);
         let told = |error: String| message(&Failure::Failed(error).message("Codex"))["params"]["error"].as_str().unwrap().to_string();
+        assert!(!Failure::Lost(token.clone()).message("Codex").contains("0123"));
         assert_eq!(told(format!("exit 1:\n  bad header \"Authorization: Bearer {token}\"\n")), "exit 1: bad header \"Authorization: ***\"");
         assert_eq!(told(format!("token={token}.")), "token=***.");
         assert_eq!(told("'Bearer sk-someone-elses-secret' rejected".into()), "'***' rejected");
@@ -923,6 +924,19 @@ mod tests {
             assert_eq!(calls.len(), runs, "{calls:?}");
             assert_eq!(calls[runs - 1], format!("mcp add-json -s user lattice-dev \"{old}\""), "the last thing tried");
         }
+
+        let mut s = Sandbox::new("claude-back");
+        s.agents.claude = s.fake_claude(&format!(
+            "if %2==remove {wipe}\r\n@if %2==remove exit /b 0\r\n@if not exist \"%~dp0tried\" echo.>\"%~dp0tried\"& exit /b 3\r\n\
+             @copy /y \"%~dp0old.json\" \"%~dp0.claude.json\" >nul"
+        ));
+        let r = s.register(Target::ClaudeCode);
+        let old = json!({ "mcpServers": { CLIENT_NAME: { "headers": { "Authorization": "Bearer old" }, "type": "http", "url": URL } } }).to_string();
+        s.set(".claude.json", &old);
+        s.set("old.json", &old);
+        let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
+        assert_eq!(s.file(".claude.json"), old);
+        assert!(e.contains("mcp.agentFailed"), "it is back: {e}");
     }
 
     #[cfg(windows)]
