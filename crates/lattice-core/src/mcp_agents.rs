@@ -458,18 +458,16 @@ fn put_codex(doc: &mut DocumentMut, token: &str) -> Option<()> {
         within(headers, |headers| drop_authorization(headers, None))?;
     }
     if let Some(headers) = entry.get_mut(HEADERS) {
-        within(headers, |headers| {
-            drop_authorization(headers, Some(AUTHORIZATION));
-            match headers.get_mut(AUTHORIZATION) {
-                None => drop(headers.insert(AUTHORIZATION, toml_edit::value(&bearer))),
-                Some(item) if item.as_str() == Some(&bearer) => (),
-                Some(item) => {
-                    let mut new = toml_edit::Value::from(&bearer);
-                    if let Some(old) = item.as_value() {
-                        *new.decor_mut() = old.decor().clone();
-                    }
-                    *item = Item::Value(new);
+        within(headers, |headers| drop_authorization(headers, Some(AUTHORIZATION)))?;
+        within(headers, |headers| match headers.get_mut(AUTHORIZATION) {
+            None => drop(headers.insert(AUTHORIZATION, toml_edit::value(&bearer))),
+            Some(item) if item.as_str() == Some(&bearer) => (),
+            Some(item) => {
+                let mut new = toml_edit::Value::from(&bearer);
+                if let Some(old) = item.as_value() {
+                    *new.decor_mut() = old.decor().clone();
                 }
+                *item = Item::Value(new);
             }
         })?;
     }
@@ -1159,6 +1157,8 @@ http_headers = {
             (format!("a = 1\r\n[mcp_servers.lattice-dev]\n{AT}\n"), CANNOT_KEEP),
             // Taking a key out would take its neighbour's comment along.
             (format!("[mcp_servers]\nlattice-dev = {{\n  {AT}, # at\n  # sign in\n  bearer_token_env_var = \"T\" # tok\n}}\n"), CANNOT_KEEP),
+            (format!("[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = {{\n  X = \"V\", # x\n  authorization = \"Bearer old\",\n}}\n"), CANNOT_KEEP),
+            (format!("[mcp_servers.lattice-dev]\n{AT}\nenv_http_headers = {{\n  Authorization = \"T\", # t\n  X = \"V\", # x\n}}\n"), CANNOT_KEEP),
         ] {
             let e = codex_file(&before, false).await.unwrap_err();
             assert!(e.contains("mcp.agentFailed") && e.contains("config.toml") && e.contains(reason), "{before}: {e}");
