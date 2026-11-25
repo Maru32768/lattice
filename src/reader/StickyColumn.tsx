@@ -158,8 +158,8 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   }));
   const endOf = (tops: number[]) => Math.max(0, ...tops.map((at, i) => at + spots[i]!.height)) + END;
   const tops = stack(spots, beside ? cards.findIndex(({ el }) => el.hasAttribute("data-opened")) : -1);
-  // Cards that give way to the opened one do not take a view at the column's end up with them.
-  const viewEnd = scroller.getBoundingClientRect().top + scroller.clientHeight - top;
+  // Cards that give way to the opened one do not take a view at the column's end up with them, where it will be.
+  const viewEnd = scroller.getBoundingClientRect().top + scroller.clientHeight + offsetOf(line, scroller) - offset - top;
   column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(spots)), viewEnd))}px`);
   cards.forEach(({ el }, i) => (el.style.top = `${tops[i]}px`));
 

@@ -994,6 +994,29 @@ test("a question opened at the end of an article moves no text as the cards befo
   expect(await at()).toEqual(before);
 });
 
+test("the line being read by the column's end stays there through other widths, as the opened card has others give way", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell, 6);
+  await askMany(shell, LONG_ID, paraId(79), 12);
+  await scrollTo(shell, paraBlock(79), "center");
+  await askAbout(shell, "質問", paraBlock(79));
+  await expect(field(shell)).toBeFocused();
+  await scrollTo(shell, paraBlock(79), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop += 250));
+  await frames(shell);
+  const above = async () => (await boxOf(doc(shell))).y - (await boxOf(shell.locator(paraBlock(79)))).y;
+  const before = await above();
+  const listAt = (px: number) => shell.evaluate((px) => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`), px);
+  const { width } = await boxOf(list(shell));
+  for (const px of [104, 0, 224, 0]) {
+    await listAt(width + px);
+    await frames(shell);
+    if (px === 0) {
+      expect(Math.abs((await above()) - before)).toBeLessThan(1);
+    }
+  }
+});
+
 test("cards that give way to the opened one leave no more below them than the view had", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
