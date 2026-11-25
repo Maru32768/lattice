@@ -269,6 +269,20 @@ test("a failed question keeps its text through leaving the article, and can be s
   await expect(app.getByRole("alert")).toHaveCount(0);
 });
 
+test("a question not sent yet keeps its text through another window's sticky and leaving the article", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "質問", "#b-102");
+  await field(app).fill("half a question");
+  await askElsewhere(app, SNAPSHOT_ID, 103);
+  await expect(card(app, "用語")).toBeVisible();
+  await expect(field(app)).toHaveValue("half a question");
+  await open(app, LONG_ID);
+  await expect(cards(app)).toHaveCount(0);
+  await open(app, SNAPSHOT_ID);
+  await expect(card(app, "用語")).toBeVisible();
+  await expect(field(app)).toHaveValue("half a question");
+});
+
 test("a card that waits survives leaving the article, and an answer that comes meanwhile is there on return", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await shell.goto("/");
