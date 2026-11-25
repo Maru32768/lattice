@@ -413,6 +413,15 @@ mod tests {
             ask(&s, &llm, a, none, StickyKind::Detail, "word", "").await.unwrap();
             assert!((0..10).all(sent) && llm.input().contains("[1] ## One heading"), "from the start without a block");
         }
+
+        let lines: Vec<String> = (0..3000).map(|i| format!("Line {i} of a listing, in a block of its own.")).collect();
+        let lines: Vec<_> = lines.iter().map(|t| (Paragraph, t.as_str())).collect();
+        let b = add(&s, "https://a.dev/lines", "Lines", &lines);
+        ask(&s, &llm, b, Some(block(&s, b, "Line 1500 ")), StickyKind::Detail, "line", "").await.unwrap();
+        let input = llm.input();
+        let size = input.chars().count();
+        assert!(size <= max + 400 && size > max / 2, "many short blocks too: {size}");
+        assert!(!input.contains("[…truncated]") && [1300, 1700].iter().all(|i| input.contains(&format!(" Line {i} "))), "on both sides");
     }
 
     #[tokio::test]
