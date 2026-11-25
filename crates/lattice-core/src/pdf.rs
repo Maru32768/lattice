@@ -3460,6 +3460,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_name_in_the_middle_of_its_row_beside_three_lines_leaves_it_a_table() {
+        let ops = ruled(&WIDE, &[200., 220., 270.], "strokes") + &shown(78., 214., "Name") + &shown(178., 214., "What it does") + &shown(78., 248., "Saw");
+        let lines = shown(178., 236., "It cuts.") + &shown(178., 248., "It sings.") + &shown(178., 260., "It rests.");
+        assert_eq!(
+            texts_of(&(ops + &lines)),
+            ["Name	What it does
+Saw	It cuts. It sings. It rests."]
+        );
+    }
+
+    #[test]
     fn lists_in_the_cells_of_one_row_stay_in_their_cells() {
         let rows: &[&[&str]] = &[&["Pros", "Cons"], &["\\267 Strong", "\\267 Costly"], &["\\267 Lasting", "\\267 Heavy"]];
         let texts = texts_of(&banded(&WIDE, &|_, _| 6., rows));
@@ -3478,6 +3489,9 @@ pub(crate) mod tests {
         let head = [(78., 114., 2), (206., 114., 2)];
         let entries = [(78., 136., 4), (206., 136., 3), (78., 152., 3), (206., 152., 5), (78., 168., 5), (206., 168., 4)];
         assert_eq!(read(340., &[&head[..], &entries].concat()), Some(4));
+        // The line before has room for the first letters of the last row, not for all of it.
+        let long = [&entries[..4], &[(78., 168., 9), (206., 168., 10)]].concat();
+        assert_eq!(read(340., &[&head[..], &long].concat()), Some(4));
         // The second line of the one cell gives up its last letter to the mark that cannot start a line.
         let wrapped = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)];
         assert_eq!(read(332., &[&head[..], &wrapped].concat()), Some(2));
@@ -6138,6 +6152,27 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_table_all_in_the_titles_size_is_kept_with_what_follows_it() {
+        let words = [("Supplier", 78., 85.), ("Widget Works", 312., 85.), ("Manual", 78., 125.), ("No. 1234", 312., 125.)];
+        let head = ruled(&[72., 306., 540.], &[60., 100., 140.], "strokes") + &words.map(|(text, x, y)| sized(x, y, 18., text)).concat();
+        let ops = head + &across(170., "A notice is read") + &sized(72., 200., 14., "1 Scope") + &across(230., "The scope is read");
+        let ir = to_ir(&pages_of(&[ops]), None).unwrap();
+        let (notice, scope) = (full("A notice is read"), full("The scope is read"));
+        let table = "Supplier	Widget Works
+Manual	No. 1234";
+        assert_eq!(kinds(&ir), [("table", table), ("paragraph", &*notice), ("heading", "1 Scope"), ("paragraph", &*scope)]);
+        assert_eq!(ir.meta.author, None);
+    }
+
+    #[test]
+    fn a_table_right_under_the_title_is_not_the_author() {
+        let front = sized(72., 80., 20., "Interface Specification") + &two_by_two(WIDE, [95., 115., 135.], PROS);
+        let ops = front + &across(160., "A notice is read") + &sized(72., 190., 14., "1 Scope") + &across(210., "The scope is read");
+        let ir = to_ir(&pages_of(&[ops]), None).unwrap();
+        assert_eq!((ir.meta.title.as_deref(), ir.meta.author.as_deref()), (Some("Interface Specification"), None));
+    }
+
+    #[test]
     fn text_by_a_table_before_the_first_section_is_no_front_matter() {
         // The second table's rows are numbered as sections are.
         for cells in [PROS, ["1.0 First", "May", "1.1 Next", "June"]] {
@@ -6314,11 +6349,21 @@ pub(crate) mod tests {
 
     #[test]
     fn a_narrow_table_by_a_figures_caption_is_kept() {
-        let table = |y: f64| two_by_two([220., 305., 390.], [y, y + 25., y + 50.], PROS);
-        let figure = shown(72., 220., "Figure 1: The machine.");
-        for ops in [table(150.) + &figure, figure.clone() + &table(240.)] {
-            let texts = texts_of(&(across(80., "The first line is read") + &ops + &across(400., "The last line is read")));
-            assert!(texts.contains(&PROS_TEXT.to_string()), "{texts:?}");
+        // The second table has nothing under its head yet.
+        for (cells, text) in [
+            (PROS, PROS_TEXT),
+            (
+                ["Strong", "Lasting", "", ""],
+                "Strong	Lasting
+	",
+            ),
+        ] {
+            let table = |y: f64| two_by_two([220., 305., 390.], [y, y + 25., y + 50.], cells);
+            let figure = shown(72., 220., "Figure 1: The machine.");
+            for ops in [table(150.) + &figure, figure.clone() + &table(240.)] {
+                let texts = texts_of(&(across(80., "The first line is read") + &ops + &across(400., "The last line is read")));
+                assert!(texts.contains(&text.to_string()), "{texts:?}");
+            }
         }
     }
 
