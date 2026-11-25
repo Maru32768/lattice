@@ -997,12 +997,11 @@ export function Reader({
 
   /** The passage selected in one answer of a sticky, and where to put the bar. */
   function answerPassage() {
-    const sel = window.getSelection();
+    const range = selectedRange();
     const view = scrollEl.current;
-    if (!sel || sel.isCollapsed || !view) {
+    if (!range || !view) {
       return null;
     }
-    const range = sel.getRangeAt(0);
     const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
     const answer = start?.closest<HTMLElement>(".sticky .answer");
     if (!answer || !view.contains(answer)) {
