@@ -313,9 +313,6 @@ fn overwrite(path: &Path, before: Option<&[u8]>, after: &str) -> std::io::Result
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !path.is_symlink() => path.to_path_buf(),
         found => found?,
     };
-    if std::fs::metadata(&path).is_ok_and(|m| m.permissions().readonly()) {
-        return Err(std::io::ErrorKind::PermissionDenied.into());
-    }
     let part = path.with_added_extension(format!("{CLIENT_NAME}.part"));
     let write = || {
         let mut file = std::fs::File::create(&part)?;
