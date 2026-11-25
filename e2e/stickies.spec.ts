@@ -63,10 +63,11 @@ async function startNarrow(shell: Page, sentences = 1) {
 
 const bar = (page: Page) => page.locator(".vw-cap");
 const cards = (page: Page) => page.locator(".stickies > .sticky");
-const card = (page: Page, kind: "質問" | "詳しく" | "用語") => page.locator(".stickies").getByRole("region", { name: kind, exact: true });
+type Kind = "質問" | "詳しく" | "用語";
+const card = (page: Page, kind: Kind | `${Kind}(回答から)`) => page.locator(".stickies").getByRole("region", { name: kind, exact: true });
 const field = (page: Page) => page.getByRole("textbox", { name: "選んだ箇所への質問" });
 /** One on an answer. */
-const child = (page: Page, kind: "質問" | "詳しく" | "用語") => page.locator(".stickies").getByRole("region", { name: `${kind}(回答から)`, exact: true });
+const child = (page: Page, kind: Kind) => card(page, `${kind}(回答から)`);
 const followUp = (page: Page | Locator) => page.getByRole("button", { name: "続けて質問", exact: true });
 const followUpField = (page: Page | Locator) => page.getByRole("textbox", { name: "付箋への続きの質問" });
 const asked = async (page: Page) =>
@@ -118,9 +119,23 @@ async function dragAnswer(page: Page, answer: Locator, beyond = 0) {
 }
 
 /** Asks from the bar over an answer, the whole of it. */
-async function askOn(page: Page, kind: "質問" | "詳しく" | "用語", sticky: Locator, nth = 0) {
+async function askOn(page: Page, kind: Kind, sticky: Locator, nth = 0) {
   await dragAnswer(page, sticky.locator(".answer p").nth(nth));
   await bar(page).getByRole("button", { name: kind, exact: true }).click();
+}
+
+/** Selects `same` again, by a Shift+click where it ends. */
+async function selectAgain(page: Page, same: string) {
+  const end = await page.evaluate(() => {
+    const rects = getSelection()!.getRangeAt(0).getClientRects();
+    const r = rects[rects.length - 1];
+    return { x: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await page.keyboard.down("Shift");
+  await page.mouse.click(end.x, end.y);
+  expect(await selected(page)).toBe(same);
+  await expect(bar(page)).toBeVisible();
+  await page.keyboard.up("Shift");
 }
 
 /** Selects from the start of `from` to the end of `to` and lets the mouse go there, without moving it. */
@@ -140,7 +155,7 @@ const selectFrom = (page: Page, from: string, to: string) =>
   );
 
 /** Asks from the bar over `block`, a whole paragraph. */
-async function askAbout(page: Page, kind: "質問" | "詳しく" | "用語", block: string) {
+async function askAbout(page: Page, kind: Kind, block: string) {
   await drag(page, block, block);
   await bar(page).getByRole("button", { name: kind, exact: true }).click();
 }
@@ -152,8 +167,8 @@ const invoke = (page: Page, cmd: string, args: object) =>
       (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke(cmd, args),
     [cmd, args] as const,
   );
-const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere") =>
-  invoke(page, "sticky_ask", { articleId, blockId, parent: null, kind: "term", quote, question: "" });
+const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere", parent: number | null = null) =>
+  invoke(page, "sticky_ask", { articleId, blockId, parent, kind: "term", quote, question: "" });
 
 /** `n` more stickies on a block, there as it returns. */
 async function askMany(page: Page, articleId: number, blockId: number, n: number) {
@@ -178,7 +193,8 @@ const frames = (page: Page) =>
     }
   });
 
-const hold = (shell: Page, cmd: string) => shell.addInitScript((c) => void (window.__e2eHold = [c]), cmd);
+const hold = (shell: Page, ...cmds: string[]) => shell.addInitScript((cmds) => void (window.__e2eHold = cmds), cmds);
+const modelUp = (page: Page) => page.evaluate(() => void ((window as unknown as { __modelUp: boolean }).__modelUp = true));
 
 test("詳しく: a passage over two paragraphs gets an answer beside the first, and no chat hears of it", async ({ shell }) => {
   await hold(shell, "sticky_ask");
@@ -306,7 +322,7 @@ test("a failed question keeps its text through leaving the article, and can be s
   await expect(card(app, "質問").getByRole("alert")).toBeVisible();
   await expect(field(app)).toHaveValue("the model is down?");
   await expect(field(app), "coming back takes no keyboard").not.toBeFocused();
-  await app.evaluate(() => void ((window as unknown as { __modelUp: boolean }).__modelUp = true));
+  await modelUp(app);
   await card(app, "質問").getByRole("button", { name: "再試行" }).click();
   await expect(card(app, "質問").locator(".answer")).toHaveText(ANSWERED);
   await expect(cards(app)).toHaveCount(1);
@@ -1232,7 +1248,7 @@ for (const seed of [1, 2]) {
           } else if (kind === 7) {
             const parent = messages[int(messages.length)].id;
             steps.push(`ask on ${parent}`);
-            await invoke(shell, "sticky_ask", { articleId: LONG_ID, blockId: null, parent, kind: "term", quote: "q", question: "" });
+            await askElsewhere(shell, LONG_ID, null, "q", parent);
           }
           await frames(shell);
         }
@@ -1799,16 +1815,7 @@ test("a passage selected again, as after a scroll took its bar away, can be aske
   const before = await selected(shell);
   await doc(shell).evaluate((el) => (el.scrollTop += 20));
   await expect(bar(shell)).toHaveCount(0);
-  const end = await shell.evaluate(() => {
-    const rects = getSelection()!.getRangeAt(0).getClientRects();
-    const r = rects[rects.length - 1];
-    return { x: r.right - 1, y: r.top + r.height / 2 };
-  });
-  await shell.keyboard.down("Shift");
-  await shell.mouse.click(end.x, end.y);
-  expect(await selected(shell)).toBe(before);
-  await expect(bar(shell)).toBeVisible();
-  await shell.keyboard.up("Shift");
+  await selectAgain(shell, before);
 });
 
 test("a passage that visual mode extends is asked about as it is then", async ({ shell }) => {
@@ -2278,7 +2285,7 @@ test("a follow-up that failed keeps its text through leaving the article, and ca
   await expect(sticky.getByRole("alert")).toBeVisible();
   await expect(followUpField(sticky)).toHaveValue("the model is down?");
   await expect(followUpField(sticky), "coming back takes no keyboard").not.toBeFocused();
-  await app.evaluate(() => void ((window as unknown as { __modelUp: boolean }).__modelUp = true));
+  await modelUp(app);
   await sticky.getByRole("button", { name: "再試行" }).click();
   await expect(sticky.locator(".answer")).toHaveCount(2);
   await expect(app.getByRole("alert")).toHaveCount(0);
@@ -2336,8 +2343,7 @@ test("a sticky whose follow-up is answered stays in its place among the others",
   await followUpField(app).fill("なぜ？");
   await app.keyboard.press("Control+Enter");
   await expect(app.locator(".stickies").getByRole("alert")).toHaveText(/list_stickies failed/);
-  const answers = app.locator(".stickies").getByRole("region", { name: "用語", exact: true }).locator(".answer");
-  await expect(answers).toHaveCount(3);
+  await expect(card(app, "用語").locator(".answer")).toHaveCount(3);
   await expect(card(app, "用語").first().locator(".answer")).toHaveCount(2);
 });
 
@@ -2419,7 +2425,7 @@ test("a child of a child is set in further, down to the third", async ({ app }) 
   await openSnapshot(app);
   await askElsewhere(app, SNAPSHOT_ID, 102);
   for (const parent of [1, 2, 3, 4]) {
-    await invoke(app, "sticky_ask", { articleId: SNAPSHOT_ID, blockId: null, parent, kind: "term", quote: `on ${parent}`, question: "" });
+    await askElsewhere(app, SNAPSHOT_ID, null, `on ${parent}`, parent);
   }
   await expect(cards(app)).toHaveCount(5);
   const x = async (nth: number) => (await boxOf(cards(app).nth(nth))).x - (await boxOf(cards(app).first())).x;
@@ -2482,16 +2488,7 @@ test("the bar of an answer goes as the card is pressed or the column scrolls, an
   await expect(bar(shell)).toBeVisible();
   await doc(shell).evaluate((el) => (el.scrollTop += 20));
   await expect(bar(shell)).toHaveCount(0);
-  const end = await shell.evaluate(() => {
-    const rects = getSelection()!.getRangeAt(0).getClientRects();
-    const r = rects[rects.length - 1];
-    return { x: r.right - 1, y: r.top + r.height / 2 };
-  });
-  await shell.keyboard.down("Shift");
-  await shell.mouse.click(end.x, end.y);
-  expect(await selected(shell)).toBe(whole);
-  await expect(bar(shell)).toBeVisible();
-  await shell.keyboard.up("Shift");
+  await selectAgain(shell, whole);
   await doc(shell).evaluate((el) => (el.scrollTop += 5));
   await expect(bar(shell)).toHaveCount(0);
   await shell.keyboard.press("Shift+ArrowLeft");
@@ -2522,7 +2519,7 @@ test("a question on an answer keeps its text as one on the article does, and Esc
   await open(app, SNAPSHOT_ID);
   await expect(child(app, "質問").getByRole("alert")).toBeVisible();
   await expect(field(app)).toHaveValue("the model is down?");
-  await app.evaluate(() => void ((window as unknown as { __modelUp: boolean }).__modelUp = true));
+  await modelUp(app);
   await child(app, "質問").getByRole("button", { name: "再試行" }).click();
   await expect(child(app, "質問").locator(".answer")).toHaveText(ANSWERED);
   expect((await asked(app)).map((c) => c.parent)).toEqual([null, 1, 1]);
@@ -2588,7 +2585,7 @@ test("a question on an answer whose sticky goes while it waits can be sent again
 
 /** The article's cards in a wide pane: one on a block, and the one that was asked last, with no room for both at their blocks' heights. */
 async function startCrowded(shell: Page) {
-  await shell.addInitScript(() => void (window.__e2eHold = ["sticky_ask", "sticky_follow_up"]));
+  await hold(shell, "sticky_ask", "sticky_follow_up");
   await shell.setViewportSize({ width: 1500, height: 1400 });
   await startLong(shell);
   for (const [i, block] of [30, 31].entries()) {
@@ -2751,7 +2748,7 @@ test("a child, and a follow-up, of the card that is pinned leave it and the ones
 });
 
 test("in a narrow pane a child is right below its parent, and neither it nor a follow-up moves the text or the card above it", async ({ shell }) => {
-  await shell.addInitScript(() => void (window.__e2eHold = ["sticky_ask", "sticky_follow_up"]));
+  await hold(shell, "sticky_ask", "sticky_follow_up");
   await startNarrow(shell);
   await shell.setViewportSize({ width: 1200, height: 1300 });
   await scrollTo(shell, paraBlock(39), "start");
