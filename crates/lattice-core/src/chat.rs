@@ -28,7 +28,7 @@ const PER_ARTICLE: usize = 4;
 const MAX_BLOCK_CHARS: usize = 1_500;
 const HISTORY_TURNS: usize = 3;
 const HISTORY_ANSWER_CHARS: usize = 1_000;
-pub(crate) const MAX_QUESTION_CHARS: usize = 4_000;
+const MAX_QUESTION_CHARS: usize = 4_000;
 
 /// How much of the scope one question sends (Settings › 要約・対話). Cost and latency grow with it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -164,6 +164,15 @@ pub(crate) fn schema() -> Value {
 
 pub(crate) fn to_json<T: Serialize + ?Sized>(v: &T) -> String {
     serde_json::to_string(v).expect("chat types always serialize")
+}
+
+/// A question as it is to be sent.
+pub(crate) fn checked_question(question: &str) -> std::result::Result<&str, String> {
+    let question = question.trim();
+    if question.is_empty() || question.chars().count() > MAX_QUESTION_CHARS {
+        return Err(msg!("chat.badQuestion"));
+    }
+    Ok(question)
 }
 
 pub(crate) fn cut(s: &str, max: usize) -> String {
@@ -322,10 +331,7 @@ pub async fn ask<L: LlmProvider, E: EmbeddingProvider>(
     scope: Scope,
 ) -> std::result::Result<ChatMessage, String> {
     let e = |e: rusqlite::Error| e.to_string();
-    let question = question.trim();
-    if question.is_empty() || question.chars().count() > MAX_QUESTION_CHARS {
-        return Err(msg!("chat.badQuestion"));
-    }
+    let question = checked_question(question)?;
     let history = match thread_id {
         Some(t) => store.chat_messages(t).map_err(e)?,
         None => Vec::new(),
