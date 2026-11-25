@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use regex::Regex;
 use serde_json::{Map, Value, json};
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use toml_edit::{Decor, DocumentMut, InlineTable, Item, TableLike};
@@ -60,7 +61,7 @@ pub struct Agents {
     claude_dir: Option<PathBuf>,
     /// `CODEX_HOME`; None when there is no home folder either.
     codex_home: Option<PathBuf>,
-    /// For one change, however many processes it takes.
+    /// For one run of the program.
     timeout: Duration,
 }
 
@@ -179,10 +180,7 @@ impl Agents {
             return Ok(false);
         };
         let written = match target {
-            Target::ClaudeCode => {
-                let timed_out = |_| Err(Failure::failed(format!("timed out after {:?}", self.timeout)));
-                tokio::time::timeout(self.timeout, self.write_claude_code(want)).await.unwrap_or_else(timed_out)
-            }
+            Target::ClaudeCode => self.write_claude_code(want).await,
             Target::Codex => self.write_codex(want),
             Target::ClaudeCodeProject | Target::Other => Ok(false),
         };
@@ -201,20 +199,27 @@ impl Agents {
     }
 
     async fn write_claude_code(&self, want: Want<'_>) -> Result<bool, Failure> {
-        let found = entry(&self.claude_code_entry()?, "headers");
+        let found = self.claude_code_entry()?;
         let remove = ["mcp", "remove", CLIENT_NAME, "-s", "user"];
-        let token = match step(&found, want)? {
+        // From stdin: other programs can read the arguments.
+        let add = ["mcp", "add-json", "-s", "user", CLIENT_NAME, "-"];
+        match step(&entry(&found, "headers"), want)? {
             Step::Leave => return Ok(false),
-            Step::Remove => return self.claude(&remove).await.map(|()| true),
-            Step::Add(token) => token,
+            Step::Remove => self.claude(&remove, "").await?,
+            Step::Add(token) => self.claude(&add, &claude_code_with(&found, token).to_string()).await?,
             Step::Replace(token) => {
-                // `add` refuses a name it already has.
-                self.claude(&remove).await?;
-                token
+                let new = claude_code_with(&found, token);
+                if new != found {
+                    // `add-json` refuses a name it already has.
+                    self.claude(&remove, "").await?;
+                    if let Err(failure) = self.claude(&add, &new.to_string()).await {
+                        // As an argument: an older Claude Code, or one run inside a session of its own, refuses stdin.
+                        let _ = self.claude(&["mcp", "add-json", "-s", "user", CLIENT_NAME, &found.to_string()], "").await;
+                        return Err(failure);
+                    }
+                }
             }
-        };
-        let header = format!("Authorization: Bearer {token}");
-        self.claude(&["mcp", "add", "--transport", "http", "--scope", "user", CLIENT_NAME, &url(), "--header", &header]).await?;
+        }
         Ok(true)
     }
 
@@ -229,13 +234,21 @@ impl Agents {
         }
     }
 
-    async fn claude(&self, args: &[&str]) -> Result<(), Failure> {
+    async fn claude(&self, args: &[&str], stdin: &str) -> Result<(), Failure> {
         let mut cmd = command(&self.claude)?;
         if let Some(dir) = &self.claude_dir {
             cmd.env("CLAUDE_CONFIG_DIR", dir);
         }
-        let child = spawn(cmd.args(args).stdin(Stdio::null()), &self.claude)?;
-        let out = child.wait_with_output().await.map_err(Failure::failed)?;
+        let mut child = spawn(cmd.args(args).stdin(Stdio::piped()), &self.claude)?;
+        let run = async {
+            let mut input = child.stdin.take().expect("stdin piped");
+            // A program that ends without reading it says why itself.
+            let _ = input.write_all(stdin.as_bytes()).await;
+            drop(input);
+            child.wait_with_output().await
+        };
+        let out = tokio::time::timeout(self.timeout, run).await;
+        let out = out.map_err(|_| Failure::Failed(format!("timed out after {:?}", self.timeout)))?.map_err(Failure::failed)?;
         if out.status.success() {
             return Ok(());
         }
@@ -319,6 +332,18 @@ fn overwrite(path: &Path, before: Option<&[u8]>, after: &str) -> std::io::Result
         let _ = std::fs::remove_file(&part);
     }
     written
+}
+
+/// The entry with the token, and with whatever else the user has in it.
+fn claude_code_with(found: &Value, token: &str) -> Value {
+    let mut entry = found.as_object().cloned().unwrap_or_default();
+    let mut headers = entry.get("headers").and_then(Value::as_object).cloned().unwrap_or_default();
+    headers.retain(|name, _| !name.eq_ignore_ascii_case(AUTHORIZATION));
+    headers.insert(AUTHORIZATION.into(), format!("Bearer {token}").into());
+    entry.insert("type".into(), "http".into());
+    entry.insert("url".into(), url().into());
+    entry.insert("headers".into(), headers.into());
+    entry.into()
 }
 
 const SERVERS: &str = "mcp_servers";
@@ -539,10 +564,10 @@ mod tests {
             edit(&self.store, &Edit::Delete { id: r.id.clone() }).unwrap();
         }
 
-        /// False, with a word on it, when the agent's CLI is not installed.
+        /// False, with a word on it, when the agent's CLI is not installed or takes no server from stdin where this runs.
         async fn installed(&self, r: &Registration) -> bool {
             let connected = self.agents.connect(&self.store, &r.id).await;
-            if connected.as_ref().is_err_and(|e| e.contains("mcp.agentMissing")) {
+            if connected.as_ref().is_err_and(|e| e.contains("mcp.agentMissing") || e.contains("inside a Claude Code session")) {
                 eprintln!("skipped: {connected:?}");
                 return false;
             }
@@ -562,11 +587,11 @@ mod tests {
             serde_json::from_str::<Value>(&self.file(".claude.json")).unwrap()["mcpServers"].clone()
         }
 
-        /// A program that records how it was called in `<name>.txt` and then does `then`, as a batch file.
+        /// A program that records how it was called and what it was sent in `<name>.txt` and then does `then`, as a batch file.
         #[cfg(windows)]
         fn fake(&self, name: &str, then: &str) -> String {
             let program = format!("{name}.cmd");
-            self.set(&program, &format!("@echo %*>>\"%~dp0{name}.txt\"\r\n@{then}\r\n"));
+            self.set(&program, &format!("@echo %*>>\"%~dp0{name}.txt\"\r\n@findstr \"^\">>\"%~dp0{name}.txt\"\r\n@{then}\r\n"));
             self.dir.join(program).to_string_lossy().into_owned()
         }
     }
@@ -713,28 +738,47 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(15));
     }
 
+    #[test]
+    fn claude_codes_entry_keeps_what_the_user_has_in_it() {
+        let fresh = json!({ "type": "http", "url": URL, "headers": { "Authorization": "Bearer new" } });
+        assert_eq!(claude_code_with(&Value::Null, "new"), fresh);
+        assert_eq!(claude_code_with(&json!({ "url": URL }), "new"), fresh);
+        assert_eq!(claude_code_with(&fresh, "new"), fresh);
+        let found = json!({
+            "type": "streamable-http", "url": URL, "timeout": 5000, "alwaysLoad": true,
+            "headers": { "Authorization": "Bearer old", "authorization": "Bearer older", "X-Mine": "1" },
+        });
+        let with = json!({ "type": "http", "url": URL, "timeout": 5000, "alwaysLoad": true, "headers": { "Authorization": "Bearer new", "X-Mine": "1" } });
+        assert_eq!(claude_code_with(&found, "new"), with);
+    }
+
     #[cfg(windows)]
     #[tokio::test]
     async fn claude_code_is_called_for_lattices_entry_alone() {
         let mut s = Sandbox::new("claude-calls");
         s.agents.claude = s.fake("claude", "exit /b 0");
         let r = s.register(Target::ClaudeCode);
-        let add = format!(r#"mcp add --transport http --scope user lattice-dev {URL} --header "Authorization: Bearer {}""#, r.token);
-        let remove = "mcp remove lattice-dev -s user";
+        let (add, remove) = ("mcp add-json -s user lattice-dev -", "mcp remove lattice-dev -s user");
+        let ours = json!({ "type": "http", "url": URL, "headers": { "Authorization": format!("Bearer {}", r.token) } });
         let calls = || {
             let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().to_string()).collect();
             s.set("claude.txt", "");
             calls
         };
-        let holds = |entry: Value| s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: entry } }).to_string());
+        let holds = |entry: &Value| s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: entry } }).to_string());
 
         assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
-        assert_eq!(calls(), [add.as_str()], "no settings file yet");
-        holds(json!({ "type": "http", "url": URL }));
+        assert_eq!(calls(), [add, &ours.to_string()], "no settings file yet");
+        holds(&json!({ "type": "http", "url": URL, "timeout": 5000 }));
         assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
-        assert_eq!(calls(), [remove, &add], "`add` refuses a name it has");
+        let mut kept = ours.clone();
+        kept["timeout"] = json!(5000);
+        assert_eq!(calls(), [remove, add, &kept.to_string()], "`add-json` refuses a name it has");
+        holds(&kept);
+        assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
+        assert!(calls().is_empty(), "it is there already");
 
-        holds(json!({ "command": "mine" }));
+        holds(&json!({ "command": "mine" }));
         let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
         assert_eq!(message(&e), json!({ "code": "mcp.agentOther", "params": { "agent": "Claude Code", "name": "lattice-dev" } }));
         s.set(".claude.json", "{");
@@ -742,7 +786,7 @@ mod tests {
         assert!(e.contains("mcp.agentFailed") && e.contains(".claude.json"), "{e}");
         assert!(calls().is_empty(), "nothing for someone else's entry, nor over settings that cannot be read");
 
-        holds(json!({ "url": URL, "headers": { "Authorization": format!("Bearer {}", r.token) } }));
+        holds(&ours);
         assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false), "a registration that is left uses it");
         assert!(calls().is_empty());
         s.delete(&r);
@@ -755,13 +799,33 @@ mod tests {
 
     #[cfg(windows)]
     #[tokio::test]
-    async fn a_command_that_repeats_its_arguments_does_not_show_the_token() {
+    async fn an_entry_claude_code_will_not_replace_is_put_back() {
+        for (fails, error) in [("echo no stdin 1>&2& exit /b 3", "exit code: 3: no stdin"), ("rem\r\n:again\r\n@goto again", "timed out after 3s")] {
+            let mut s = Sandbox::new("claude-put-back");
+            s.agents.timeout = Duration::from_secs(3);
+            s.agents.claude = s.fake("claude", &format!("if not \"%6\"==\"-\" exit /b 0\r\n@{fails}"));
+            let r = s.register(Target::ClaudeCode);
+            let old = json!({ "headers": { "Authorization": "Bearer old" }, "timeout": 5000, "type": "http", "url": URL });
+            s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: old } }).to_string());
+            let e = message(&s.agents.connect(&s.store, &r.id).await.unwrap_err());
+            assert_eq!(e["params"]["error"].as_str().unwrap().trim(), error, "the first failure");
+            let calls: Vec<String> = s.file("claude.txt").lines().map(|l| l.trim().replace("\"\"", "\"")).collect();
+            assert_eq!(calls.len(), 4, "{calls:?}");
+            assert_eq!(calls[..2], ["mcp remove lattice-dev -s user", "mcp add-json -s user lattice-dev -"]);
+            assert!(calls[2].contains(&r.token), "{calls:?}");
+            assert_eq!(calls[3], format!("mcp add-json -s user lattice-dev \"{old}\""));
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_command_that_repeats_its_input_does_not_show_the_token() {
         let mut s = Sandbox::new("claude-fails");
-        s.agents.claude = s.fake("claude", "echo cannot run %* 1>&2& exit /b 3");
+        s.agents.claude = s.fake("claude", "type \"%~dp0claude.txt\" 1>&2& exit /b 3");
         let r = s.register(Target::ClaudeCode);
         let e = s.agents.connect(&s.store, &r.id).await.unwrap_err();
-        assert!(s.file("claude.txt").contains(&r.token), "it was called with it");
-        assert!(!e.contains(&r.token) && e.contains("mcp.agentFailed") && e.contains("cannot run mcp add"), "{e}");
+        assert!(s.file("claude.txt").contains(&r.token), "it was sent it");
+        assert!(!e.contains(&r.token) && e.contains("mcp.agentFailed") && e.contains("add-json") && e.contains("***"), "{e}");
     }
 
     #[tokio::test]
@@ -775,6 +839,14 @@ mod tests {
         }
         let ours = |token: &str| json!({ "type": "http", "url": URL, "headers": { "Authorization": format!("Bearer {token}") } });
         assert_eq!(s.claude_servers(), json!({ "other": other, CLIENT_NAME: ours(&r.token) }));
+        let ours = |token: &str| {
+            let mut ours = ours(token);
+            ours["headers"]["X-Mine"] = json!("1");
+            ours["timeout"] = json!(5000);
+            ours["alwaysLoad"] = json!(true);
+            ours
+        };
+        s.set(".claude.json", &json!({ "mcpServers": { "other": other, CLIENT_NAME: ours(&r.token) } }).to_string());
         let renewed = s.regenerate(&r);
         for _ in 0..2 {
             assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
