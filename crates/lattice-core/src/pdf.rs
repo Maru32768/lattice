@@ -3767,8 +3767,8 @@ Saw	It cuts. It sings. It rests."]
             no_table(&groups(&xs, 14., &[rows, &total]));
         }
         // Rows without capitals, under a head over the first rule.
-        let plain: &[&[&str]] = &[&["Name", "Kind"], &["base", "open"], &["large", "shut"], &["tiny", "loose"]];
-        no_table(&groups(&fitted(plain), 14., &[&plain[..3], &plain[3..]]));
+        let plain: &[&[&str]] = &[&["Name of it", "Kind"], &["base", "open"], &["large", "shut"], &["tiny", "loose"]];
+        no_table(&groups(&roomy(plain), 14., &[&plain[..3], &plain[3..]]));
         // Lines with text in one of the other columns only, or in none.
         let marks: &[&[&str]] = &[&["Plan", "Free", "Pro"], &["Basic", "x", ""], &["Advanced", "", "x"]];
         let blanks: &[&[&str]] = &[&["What", "Place"], &["old tree", "St. Louis"], &["old heap", ""]];
@@ -3885,6 +3885,25 @@ Saw	It cuts. It sings. It rests."]
         assert_eq!(texts_of(&ops), [&table[..]]);
         // As Word ends a cell: with a space in the padding.
         assert_eq!(texts_of(&(ops + &shown(right - 3.28, 183.8, " "))), [table]);
+    }
+
+    #[test]
+    fn a_column_set_to_its_right_has_its_padding_at_the_right() {
+        // Its lines end 3pt short of the rule, further than an em from the left one.
+        let at = |y: f64, text: &str| shown(241. - wide(text), y, text);
+        let ops = ruled(&[72., 172., 244.], &[100., 120., 150.], "strokes")
+            + &shown(78., 114., "Name")
+            + &at(114., "What")
+            + &shown(78., 134., "Oak")
+            + &at(134., "Old tree")
+            + &shown(78., 146., "Elm")
+            + &at(146., "Tall one");
+        assert_eq!(
+            texts_of(&ops),
+            ["Name	What
+Oak	Old tree
+Elm	Tall one"]
+        );
     }
 
     #[test]
@@ -7118,14 +7137,15 @@ Manual	No. 1234";
 
     #[test]
     fn a_caption_in_capitals_of_two_lines_over_a_table_does_not_run_on_past_it() {
-        let line = |x: f64, y: f64, words: &str| shown(x, y, &format!("{words} column line of the body runs on to it"));
+        let line = |x: f64, y: f64, words: &str| shown(x, y, &format!("{words} column line of the body runs on to it and on"));
         let left: String = (0..28).map(|i| line(72., 100. + 12. * i as f64, "Left")).collect();
-        let caption = shown(72., 466., "TABLE 1 What each of the methods in the study") + &line(72., 478., "Cap");
+        let caption = shown(72., 466., "TABLE 1 What each of the methods in the study") + &line(72., 478., "Left");
         let right: String = (0..36).map(|i| line(316., 112. + 12. * i as f64, "Right")).collect();
         let next = shown(316., 100., "then goes on atop the right column until it");
-        let texts = texts_of(&(left + &caption + &two_by_two(LEFT, [490., 510., 530.], PROS) + &next + &right));
+        let texts = texts_of(&(left + &caption + &two_by_two([72., 160., 240.], [490., 510., 530.], PROS) + &next + &right));
         let at = texts.iter().position(|t| t.starts_with("TABLE 1")).unwrap_or_else(|| panic!("{texts:?}"));
-        assert!(texts[at].ends_with("runs on to it") && texts[at + 1] == PROS_TEXT, "{texts:?}");
+        let caption = "TABLE 1 What each of the methods in the study Left column line of the body runs on to it and on";
+        assert!(texts[at] == caption && texts[at + 1] == PROS_TEXT, "{texts:?}");
     }
 
     #[test]
