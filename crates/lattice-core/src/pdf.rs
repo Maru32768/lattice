@@ -3850,6 +3850,9 @@ Saw	It cuts. It sings. It rests."]
         let rows: &[&[&str]] = &[&["Cost", "Queries"], &["It costs about", "Easy to insert, but"], &["300", "hard to query"]];
         let texts = texts_of(&groups(&fitted(rows), 14., &[&rows[..1], &rows[1..]]));
         assert_eq!(texts, ["Cost\tQueries\nIt costs about 300\tEasy to insert, but hard to query"]);
+        // Nor does it make its column one of numbers.
+        let rows: &[&[&str]] = &[&["Cost", "Queries"], &["It costs about", "Easy"], &["300", "and quick"]];
+        no_table(&groups(&[72., fitted(rows)[1], 300.], 14., &[&rows[..1], &rows[1..]]));
     }
 
     #[test]
@@ -3874,9 +3877,9 @@ Saw	It cuts. It sings. It rests."]
 
     #[test]
     fn numbers_broken_after_a_comma_are_of_one_cell() {
-        let lines: &[(f64, &[&str])] =
-            &[(174., &["In", "Event"]), (194., &["3.1,", "The first public"]), (206., &["3.2", "release"]), (224., &["4.0", "The last"])];
-        assert_eq!(texts_of(&grouped(&[72., 108., 200.], &[160., 180., 210., 230.], lines)), ["In\tEvent\n3.1, 3.2\tThe first public release\n4.0\tThe last"]);
+        let rows: &[&[&str]] = &[&["In", "Event"], &["3.1,", "The first public"], &["3.2", "release"], &["4.0", "The last"]];
+        let texts = texts_of(&groups(&fitted(rows), 12., &[&rows[..1], &rows[1..3], &rows[3..]]));
+        assert_eq!(texts, ["In\tEvent\n3.1, 3.2\tThe first public release\n4.0\tThe last"]);
     }
 
     #[test]
@@ -6986,11 +6989,11 @@ Manual	No. 1234";
 
     #[test]
     fn a_bar_lies_at_its_middle() {
-        // The rules down end at its top, 3.8pt over its foot.
+        // The rules down end at its top, 6pt over its foot.
         let down = [72., 172., 540.].map(|x| format!("{x} 692 m {x} 612 l S\n")).concat();
         let across: String = [100., 140.].iter().map(|y| format!("72 {y} m 540 {y} l S\n", y = 792. - y)).collect();
         let text = shown(78., 124., "Strong") + &shown(178., 124., "Lasting") + &shown(78., 164., "Costly") + &shown(178., 164., "Easy");
-        assert_eq!(texts_of(&(down + &across + "72 608.2 468 3.8 re f\n" + &text)), [PROS_TEXT]);
+        assert_eq!(texts_of(&(down + &across + "72 606 468 6 re f\n" + &text)), [PROS_TEXT]);
     }
 
     #[test]
