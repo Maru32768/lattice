@@ -105,6 +105,7 @@ pub async fn ask<L: LlmProvider>(
     if all.is_empty() {
         return Err(msg!("article.noContent"));
     }
+    let url = store.article_url(article_id).map_err(err)?;
     let max_chars = chat::budget(store)?.limits().context_chars;
     let (mut text, mut sent) = chat::sources_text(&all, max_chars, max_chars);
     let mut sources = &all[..];
@@ -121,7 +122,9 @@ pub async fn ask<L: LlmProvider>(
     let c = llm.complete_json(&system, &input, &chat::schema()).await.map_err(|e| e.message())?;
     let answer = c.value["answer"].as_str().map(str::trim).filter(|a| !a.is_empty()).ok_or_else(|| msg!("stickies.malformed"))?;
     let citations = chat::citations(store, &c.value, answer, &sources[..sent]).map_err(err)?;
-    save(store, article_id, block_id, kind, quote, question, answer, &citations, &c.provider, c.model.as_deref()).map_err(err)
+    save(store, article_id, url.as_deref(), block_id, kind, quote, question, answer, &citations, &c.provider, c.model.as_deref())
+        .map_err(err)?
+        .ok_or_else(|| msg!("stickies.articleGone"))
 }
 
 /// How many of the article's sent blocks come before `block_id`, itself sent or not (an image); 0 without one.
@@ -157,11 +160,13 @@ fn around(sources: &[Source], anchor: usize, max_chars: usize, block_chars: usiz
     }
 }
 
-/// The block may be gone by now (a re-extraction while the model answered), or be another article's: then none.
+/// The block may be gone by now (a re-extraction while the model answered), or be another article's: then none. The article
+/// may be too (deleted, or merged away), and its id, which SQLite gives again, another article's: then it returns None.
 #[allow(clippy::too_many_arguments, reason = "the columns of one sticky and its message")]
 fn save(
     store: &Store,
     article_id: i64,
+    url: Option<&str>,
     block_id: Option<i64>,
     kind: StickyKind,
     quote: &str,
@@ -170,22 +175,28 @@ fn save(
     citations: &[Citation],
     provider: &str,
     model: Option<&str>,
-) -> rusqlite::Result<Sticky> {
+) -> rusqlite::Result<Option<Sticky>> {
     let mut c = store.conn();
     let tx = c.transaction()?;
-    let id: i64 = tx.query_row(
-        "INSERT INTO stickies (article_id, block_id, kind, quote) VALUES (?1, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?3, ?4)
-         RETURNING id",
-        params![article_id, block_id, json!(kind).as_str(), quote],
-        |r| r.get(0),
-    )?;
+    let id: Option<i64> = tx
+        .query_row(
+            "INSERT INTO stickies (article_id, block_id, kind, quote)
+             SELECT id, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?3, ?4 FROM articles WHERE id = ?1 AND original_url = ?5
+             RETURNING id",
+            params![article_id, block_id, json!(kind).as_str(), quote, url],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(id) = id else {
+        return Ok(None);
+    };
     tx.execute(
         "INSERT INTO sticky_messages (sticky_id, question, answer, citations, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![id, question, answer, chat::to_json(citations), provider, model, PROMPT_VERSION],
     )?;
     let sticky = tx.query_row(&format!("{STICKY} WHERE s.id = ?1"), [id], |r| from_json_col(r, 0, str::to_string))?;
     tx.commit()?;
-    Ok(sticky)
+    Ok(Some(sticky))
 }
 
 /// The article's stickies, oldest first.
@@ -486,6 +497,25 @@ mod tests {
         let on_kept = ask(&s, &llm, a, Some(kept), StickyKind::Term, "fsync", "").await.unwrap();
         assert_eq!(on_kept.block_id, Some(kept));
         assert_eq!(list(&s, a).unwrap(), [Sticky { block_id: None, ..before }, during, on_kept], "with its quote and answer");
+    }
+
+    #[tokio::test]
+    async fn an_answer_about_an_article_that_is_gone_is_not_kept_on_the_one_that_got_its_id() {
+        for then in ["", "https://a.dev/next"] {
+            let s = Arc::new(Store::open_in_memory().unwrap());
+            let a = add(&s, "https://a.dev/wal", "WAL", WAL);
+            let store = s.clone();
+            let mut llm = Fake::new(ANSWER);
+            llm.meanwhile = Box::new(move || {
+                store.delete_article(a).unwrap();
+                if !then.is_empty() {
+                    assert_eq!(add(&store, then, "Next", WAL), a, "SQLite gives the last id again");
+                }
+            });
+            let e = ask(&s, &llm, a, Some(block(&s, a, "The log")), StickyKind::Detail, "the log", "").await.unwrap_err();
+            assert_eq!(e, msg!("stickies.articleGone"), "{then}");
+            assert_eq!(rows(&s), (0, 0));
+        }
     }
 
     #[tokio::test]
