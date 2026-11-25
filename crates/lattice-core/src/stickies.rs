@@ -554,9 +554,11 @@ mod tests {
     }
 
     #[test]
-    fn deleting_a_block_finds_its_stickies_by_index() {
+    fn deleting_what_stickies_hang_on_finds_them_by_index() {
         let s = Store::open_in_memory().unwrap();
-        let plan: String = s.conn().query_row("EXPLAIN QUERY PLAN SELECT 1 FROM stickies WHERE block_id = 1", [], |r| r.get(3)).unwrap();
-        assert!(plan.contains("stickies_block"), "{plan}");
+        for (table, column) in [("stickies", "article_id"), ("stickies", "block_id"), ("sticky_messages", "sticky_id")] {
+            let plan: String = s.conn().query_row(&format!("EXPLAIN QUERY PLAN SELECT 1 FROM {table} WHERE {column} = 1"), [], |r| r.get(3)).unwrap();
+            assert!(plan.contains(" INDEX "), "{plan}");
+        }
     }
 }
