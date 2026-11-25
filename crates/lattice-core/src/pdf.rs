@@ -734,7 +734,7 @@ type Walked = (Vec<Style>, Vec<Drawn>, Vec<Grid>);
 
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
 /// style of each string, in the order pdf-extract shows them, and the images and the grids its rules make (each line
-/// stroked, and each bar filled no thicker than twice `RULE_SLACK`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
+/// stroked, and each bar filled no thicker than `BAR`), in the PDF's own coordinates. pdf-extract calls `begin_word` once per string,
 /// so the styles line up with what it reports. Images inside forms, and inline images, are not followed. A clip counts
 /// by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
@@ -811,18 +811,10 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
                     sides.push(bounds(&ctm, &[at, start]));
                 }
                 if matches!(paint, "S" | "s" | "B" | "B*" | "b" | "b*") {
-                    rules.append(&mut sides);
+                    rules.extend(sides.iter().filter(|side| thickness(side) <= RULE_SLACK));
                 } else if paint != "n" {
-                    // Not a shaded cell: so thin that what meets its edge is within `RULE_SLACK` of its middle.
-                    let bars = boxes.iter().filter(|&&[x0, y0, x1, y1]| (x1 - x0).min(y1 - y0) <= 2. * RULE_SLACK);
-                    rules.extend(bars.map(|&[x0, y0, x1, y1]| {
-                        let (x, y) = ((x0 + x1) / 2., (y0 + y1) / 2.);
-                        if x1 - x0 > y1 - y0 {
-                            [x0, y, x1, y]
-                        } else {
-                            [x, y0, x, y1]
-                        }
-                    }));
+                    // Not a shaded cell.
+                    rules.extend(boxes.iter().filter(|bar| thickness(bar) <= BAR));
                 }
                 (path, clipping) = (NOTHING, false);
                 sides.clear();
@@ -918,8 +910,16 @@ impl Grid {
 /// the strokes it draws a cell's side at a time.
 const RULE_SLACK: f64 = 2.;
 
-/// A rule across or down the page: where it lies, and where it runs from and to.
-type Rule = (f64, f64, f64);
+/// How thick a filled box may be and still be a rule: Word's and a browser's thickest usual borders are 6pt.
+const BAR: f64 = 6.;
+
+fn thickness([x0, y0, x1, y1]: &Bounds) -> f64 {
+    (x1 - x0).min(y1 - y0)
+}
+
+/// A rule across or down the page: where its middle lies, where it runs from and to, and half its thickness, which a rule
+/// that stops at its edge is from its middle.
+type Rule = (f64, f64, f64, f64);
 
 /// The grids rules make: rules across and down that meet, at least two columns and two rows, each rule running the whole
 /// width or height. A chart's grid lines make one too, which `take_tables` passes over when its cells hold little text.
@@ -928,10 +928,10 @@ type Rule = (f64, f64, f64);
 fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
     let (mut across, mut down) = (Vec::new(), Vec::new());
     for [x0, y0, x1, y1] in rules {
-        if y1 - y0 <= RULE_SLACK && x1 - x0 > y1 - y0 {
-            across.push(((y0 + y1) / 2., x0, x1));
-        } else if x1 - x0 <= RULE_SLACK && y1 - y0 > x1 - x0 {
-            down.push(((x0 + x1) / 2., y0, y1));
+        if x1 - x0 > y1 - y0 {
+            across.push(((y0 + y1) / 2., x0, x1, (y1 - y0) / 2.));
+        } else if y1 - y0 > x1 - x0 {
+            down.push(((x0 + x1) / 2., y0, y1, (x1 - x0) / 2.));
         }
     }
     let (across, down) = (joined(across), joined(down));
@@ -939,7 +939,8 @@ fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
     if across.len() * down.len() > 1_000_000 {
         return Vec::new();
     }
-    let meet = |a: &Rule, d: &Rule| d.0 > a.1 - RULE_SLACK && d.0 < a.2 + RULE_SLACK && a.0 > d.1 - RULE_SLACK && a.0 < d.2 + RULE_SLACK;
+    let reaches = |r: &Rule, to: &Rule| to.0 > r.1 - RULE_SLACK - to.3 && to.0 < r.2 + RULE_SLACK + to.3;
+    let meet = |a: &Rule, d: &Rule| reaches(a, d) && reaches(d, a);
     let (mut reached_across, mut reached_down) = (vec![false; across.len()], vec![false; down.len()]);
     let mut groups = Vec::new();
     for first in 0..across.len() {
@@ -984,8 +985,11 @@ fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
             let (&[left, .., right], &[top, .., bottom]) = (&xs[..], &ys[..]) else {
                 return None;
             };
-            let whole = |r: &Rule, from: f64, to: f64| r.1 < from + RULE_SLACK && r.2 > to - RULE_SLACK;
-            let ruled = across.iter().all(|r| whole(r, left, right)) && down.iter().all(|r| whole(r, top, bottom));
+            let whole = |rules: &[Rule], others: &[Rule], from: f64, to: f64| {
+                let slack = RULE_SLACK + others.iter().map(|r| r.3).fold(0., f64::max);
+                rules.iter().all(|r| r.1 < from + slack && r.2 > to - slack)
+            };
+            let ruled = whole(&across, &down, left, right) && whole(&down, &across, top, bottom);
             (ruled && xs.len() >= 3 && ys.len() >= 3).then_some(Grid { at: [left, top, right, bottom], xs, ys })
         })
         .collect()
@@ -1000,10 +1004,10 @@ fn joined(mut rules: Vec<Rule>) -> Vec<Rule> {
         let mut line = line.to_vec();
         line.sort_by(|a, b| a.1.total_cmp(&b.1));
         let start = out.len();
-        for (_, from, to) in line {
+        for (_, from, to, half) in line {
             match out[start..].last_mut() {
-                Some(last) if from <= last.2 + RULE_SLACK => last.2 = last.2.max(to),
-                _ => out.push((at, from, to)),
+                Some(last) if from <= last.2 + RULE_SLACK => (last.2, last.3) = (last.2.max(to), last.3.max(half)),
+                _ => out.push((at, from, to, half)),
             }
         }
     }
@@ -6622,6 +6626,20 @@ Manual	No. 1234";
         let mark = shown(78., 226., "Name") + &shown(250., 226., "Value") + &sized(60., 244., 48., "CONFIDENTIAL");
         for cells in [name, over, past, mark] {
             no_table(&(ruled(&[72., 170., 320.], &[200., 235., 270.], "strokes") + &shown(78., 214., "Setting") + &shown(250., 214., "Default") + &cells));
+        }
+    }
+
+    #[test]
+    fn rules_up_to_6pt_thick_are_rules_of_their_table() {
+        // As a browser fills the borders of a table whose top one is thick: the sides start under it.
+        let bar = |x: f64, y: f64, w: f64, h: f64| format!("{x} {} {w} {h} re f\n", 792. - y - h);
+        for thick in [4.5, 6.] {
+            let mut ops = bar(72., 200., 218., thick);
+            for (top, y) in [(200. + thick, 226.), (227., 252.)] {
+                ops += &(bar(72., y, 218., 0.75) + &[72., 172., 289.25].map(|x| bar(x, top, 0.75, y - top)).concat());
+            }
+            let words = shown(78., 218., "Strong") + &shown(178., 218., "Lasting") + &shown(78., 244., "Costly") + &shown(178., 244., "Easy");
+            assert_eq!(texts_of(&(ops + &words)), [PROS_TEXT], "{thick}");
         }
     }
 
