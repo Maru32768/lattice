@@ -823,7 +823,7 @@ for (const article of ["with stickies", "without"] as const) {
           await doc(shell).evaluate(
             (el, [first, by, px]) => {
               const steps = [() => (el.scrollTop += by), () => document.querySelector<HTMLElement>(".app")!.style.setProperty("--list-w", `${px}px`)];
-              for (const step of first === "scroll" ? steps : steps.reverse()) {
+              for (const step of first === "scroll" ? steps : steps.toReversed()) {
                 step();
               }
             },
@@ -1614,7 +1614,7 @@ test("a press that begins outside the article leaves what is selected without a 
     [nav.x + nav.width - 4, nav.y + nav.height - 3],
     [border.x + border.width / 2, border.y + 300],
   ]) {
-    await shell.mouse.move(x!, y!);
+    await shell.mouse.move(x, y);
     await shell.mouse.down();
     await shell.mouse.move(border.x + 120, border.y + 300, { steps: 6 });
     await shell.mouse.up();
