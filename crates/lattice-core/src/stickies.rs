@@ -379,8 +379,9 @@ mod tests {
         let texts: Vec<String> = (0..100).map(|i| format!("P{i}. {}END{i}.", "word ".repeat(400))).collect();
         let huge = format!("HUGE {}", "x".repeat(max * 2));
         let mut blocks: Vec<(BlockKind, &str)> = vec![(Heading, "One heading over everything")];
+        blocks.extend(std::iter::repeat_n((Image, "A diagram"), 25));
         blocks.extend(texts.iter().map(|t| (Paragraph, t.as_str())));
-        blocks.insert(81, (Image, "IMAGE"));
+        blocks.insert(26 + 80, (Image, "IMAGE"));
         blocks.push((Code, &huge));
         let a = add(&s, "https://a.dev/long", "Long", &blocks);
         let llm = Fake::new(ANSWER);
