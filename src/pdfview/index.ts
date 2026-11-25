@@ -455,6 +455,11 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
 
 /** A translation covers the original in the colour the page is printed on there: an aside's tinted box keeps its tint. */
 function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
+  // A page drawn again keeps the colours it has.
+  const unread = regionsOf(host).filter((el) => !el.style.getPropertyValue("--paper"));
+  if (!unread.length) {
+    return;
+  }
   // Reading and counting the millions of pixels under a page's boxes takes about 60 ms. One in sixteen tells the colour as well.
   const small = document.createElement("canvas");
   small.width = Math.ceil(canvas.width / 4);
@@ -466,14 +471,12 @@ function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
   // Nearest pixels: a mean of the glyphs and the paper between them is no colour of the page.
   context.imageSmoothingEnabled = false;
   context.drawImage(canvas, 0, 0, small.width, small.height);
-  for (const el of regionsOf(host)) {
+  for (const el of unread) {
     const box = boxes.get(el);
     const under = box && pixelsUnder(box, small.width, small.height);
-    if (!under || el.style.getPropertyValue("--paper")) {
-      continue;
+    if (under) {
+      el.style.setProperty("--paper", paperColor(context.getImageData(...under).data) ?? "#fff");
     }
-    // Set where `paperColor` gives nothing too, so that a page drawn again does not read it again.
-    el.style.setProperty("--paper", paperColor(context.getImageData(...under).data) ?? "#fff");
   }
 }
 
