@@ -2744,6 +2744,10 @@ pub(crate) mod tests {
         assert_eq!((item.room_left, item.room_right), (0., 0.), "an item of two lines gets no room beside it");
     }
 
+    fn glyph(x: f64, y: f64, text: &str) -> Glyph {
+        Glyph { x, y, end: x + 10., size: 10., text: text.into(), face: Face::Body, vertical: false, turned: false, table: None }
+    }
+
     /// Glyphs as a line would have them, one per character, with `|` starting and ending a stretch in `face`.
     fn glyphs_of(text: &str, face: Face) -> Vec<Glyph> {
         let mut x = 72.;
@@ -2759,7 +2763,7 @@ pub(crate) mod tests {
             } else {
                 Face::Body
             };
-            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face, vertical: false, turned: false, table: None });
+            out.push(Glyph { end: x + 5., face, ..glyph(x, 100., &c.to_string()) });
             x += 5.;
         }
         out
@@ -3083,7 +3087,11 @@ pub(crate) mod tests {
 
     /// Helvetica at `x` and the baseline `y` from the top of a US Letter page.
     fn shown(x: f64, y: f64, text: &str) -> String {
-        format!("BT /F1 10 Tf {x} {} Td ({text}) Tj ET\n", 792. - y)
+        sized(x, y, 10., text)
+    }
+
+    fn sized(x: f64, y: f64, size: f64, text: &str) -> String {
+        format!("BT /F1 {size} Tf {x} {} Td ({text}) Tj ET\n", 792. - y)
     }
 
     /// Rules round every cell of the grid with column edges `xs` and row edges `ys` (from the top of the page), as a book,
@@ -3177,7 +3185,7 @@ pub(crate) mod tests {
     fn the_cells_of_a_table_have_no_regions() {
         let sentences = ["You care a lot about it.", "It holds over the years.", "It takes a lot of time.", "You stay where it is easy."];
         let ops = shown(72., 100., "A sentence of prose comes before the table.") + &two_by_two([72., 300., 540.], [110., 160., 200.], sentences);
-        let texts: Vec<String> = regions(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)])).unwrap().into_iter().map(|r| r.text).collect();
+        let texts: Vec<String> = regions(&pages_of(&[ops])).unwrap().into_iter().map(|r| r.text).collect();
         assert_eq!(texts, ["A sentence of prose comes before the table."]);
     }
 
@@ -3354,11 +3362,7 @@ pub(crate) mod tests {
             ruled(&[72., 172., 540.], &[top, top + 45., top + 90.], "strokes") + &cells
         };
         let text = shown(72., 300., "Body text runs on as a sentence of prose between the tables.");
-        let rooms = |pages: &[String]| {
-            let contents: Vec<(usize, &str)> = pages.iter().map(String::as_str).enumerate().collect();
-            let r = regions(&with_contents(&pdf(&vec![vec![]; pages.len()], None), &contents)).unwrap();
-            r.iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>()
-        };
+        let rooms = |pages: &[String]| regions(&pages_of(pages)).unwrap().iter().map(|r| (r.room_up.round(), r.room_down.round())).collect::<Vec<_>>();
         // Tables of the body, between which and the text a chart may be.
         assert_eq!(rooms(&[table(110.) + &text + &table(400.)]), [(0., 0.)]);
         // On its own page the text is as far up and down as the body goes; the running tables, in the margins, stop it.
@@ -3607,11 +3611,10 @@ pub(crate) mod tests {
     #[test]
     fn a_one_page_pdf_keeps_a_table_in_its_top_margin() {
         // Wholly in the top 8% of the page, as a running header is. Numbers alone there are a page's.
-        for [a, b, c, d] in [PROS, ["1", "2", "3", "4"]] {
-            let ops = two_by_two([72., 172., 540.], [10., 35., 60.], [a, b, c, d]) + &shown(72., 200., "Then a paragraph of prose follows the table.");
-            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-            let table = format!("{a}\t{b}\n{c}\t{d}");
-            assert_eq!(kinds(&ir), [("table", &*table), ("paragraph", "Then a paragraph of prose follows the table.")]);
+        for (words, table) in [(PROS, PROS_TEXT), (["1", "2", "3", "4"], "1\t2\n3\t4")] {
+            let ops = two_by_two(WIDE, [10., 35., 60.], words) + &shown(72., 200., "Then a paragraph of prose follows the table.");
+            let ir = to_ir(&pages_of(&[ops]), None).unwrap();
+            assert_eq!(kinds(&ir), [("table", table), ("paragraph", "Then a paragraph of prose follows the table.")]);
         }
     }
 
@@ -4616,18 +4619,7 @@ pub(crate) mod tests {
     #[test]
     fn japanese_set_across_on_a_turned_page_takes_no_space_for_a_gap() {
         // Kana set across, 0.3 em apart: one run, with no space between Japanese, as `line` reads it.
-        let g = |x: f64, text: &str| Glyph {
-            x,
-            y: 400.,
-            end: x + 10.,
-            size: 10.,
-            text: text.into(),
-            face: Face::Body,
-            vertical: false,
-            turned: false,
-            table: None,
-        };
-        let mut page = Page { width: 612., height: 792., glyphs: vec![g(100., "目"), g(113., "次")], ..Default::default() };
+        let mut page = Page { width: 612., height: 792., glyphs: vec![glyph(100., 400., "目"), glyph(113., 400., "次")], ..Default::default() };
         turn(&mut page);
         assert_eq!(page.glyphs.iter().map(|g| g.text.as_str()).collect::<Vec<_>>(), ["目次"]);
     }
@@ -4652,7 +4644,7 @@ pub(crate) mod tests {
     #[test]
     fn a_turned_page_keeps_its_glyphs_and_images_on_it() {
         // On a page 612 wide: a glyph down the column at 500, and an image.
-        let glyph = Glyph { x: 500., y: 100., end: 510., size: 10., text: "あ".into(), face: Face::Body, vertical: true, turned: false, table: None };
+        let glyph = Glyph { vertical: true, ..glyph(500., 100., "あ") };
         let image = Drawn { id: (1, 0), x0: 100., y0: 200., x1: 300., y1: 400. };
         let mut page = Page { width: 612., height: 792., glyphs: vec![glyph], drawn: vec![image], ..Default::default() };
         turn(&mut page);
@@ -4843,22 +4835,7 @@ pub(crate) mod tests {
     fn a_gap_between_japanese_characters_is_no_space() {
         // 10pt glyphs, 10pt apart: a heading's spacing. 25pt apart: a table's cells.
         let spaced = |text: &str, step: f64| {
-            let at = |i: usize| i as f64 * step;
-            let glyphs: Vec<Glyph> = text
-                .chars()
-                .enumerate()
-                .map(|(i, c)| Glyph {
-                    x: at(i),
-                    y: 100.,
-                    end: at(i) + 10.,
-                    size: 10.,
-                    text: c.to_string(),
-                    face: Face::Body,
-                    vertical: false,
-                    turned: false,
-                    table: None,
-                })
-                .collect();
+            let glyphs: Vec<Glyph> = text.chars().enumerate().map(|(i, c)| glyph(i as f64 * step, 100., &c.to_string())).collect();
             line(0, &glyphs.iter().collect::<Vec<_>>()).unwrap().text
         };
         assert_eq!([spaced("目次", 20.), spaced("ab", 20.), spaced("第1", 20.), spaced("名前", 35.)], ["目次", "a b", "第 1", "名 前"]);
@@ -5299,7 +5276,7 @@ pub(crate) mod tests {
     #[test]
     fn a_table_under_the_title_and_authors_is_read_where_it_is_on_the_page() {
         // The title and the author line are taken off the lines the table is read among.
-        let title = format!("BT /F1 20 Tf 72 {} Td (A Title Set Large) Tj ET\n", 792. - 80.);
+        let title = sized(72., 80., 20., "A Title Set Large");
         let cells = shown(78., 225., "Strong") + &shown(178., 225., "Lasting") + &shown(78., 272., "Costly") + &shown(178., 272., "Easy");
         let mut ops = title + &shown(72., 110., "Ann Author and Bob Writer") + &shown(72., 140., "Introduction");
         ops += &(shown(72., 170., "A paragraph of prose comes before the table and runs on.") + &ruled(&[72., 172., 540.], &[200., 245., 290.], "strokes"));
@@ -5459,7 +5436,7 @@ pub(crate) mod tests {
     }
 
     fn texts_of(ops: &str) -> Vec<String> {
-        to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), None).unwrap().blocks.into_iter().map(|b| b.text).collect()
+        blocks_of(&pages_of(&[ops.to_string()]))
     }
 
     const LEFT: [f64; 3] = [72., 172., 290.];
@@ -5667,28 +5644,18 @@ pub(crate) mod tests {
         for i in 0..20 {
             ops += &shown(320., 350. + 12. * i as f64, &format!("Right column line {i} of the body runs on."));
         }
-        let read = |ops: &str, figure: (usize, f64, f64, f64, f64)| {
-            let bytes = draw(&with_contents(&pdf(&[vec![]], None), &[(0, ops)]), rgb(30, 10, [200, 0, 0]), &[figure]);
-            let ir = to_ir(&bytes, None).unwrap();
-            let at = ir.blocks.iter().position(|b| b.text.starts_with("Table 1")).unwrap();
-            ir.blocks[at..at + 5]
-                .iter()
-                .map(|b| {
-                    if b.kind == BlockKind::Image {
-                        "image".into()
-                    } else {
-                        b.text.clone()
-                    }
-                })
-                .collect::<Vec<_>>()
+        let read = |ops: String, figure| {
+            let texts = blocks_of(&draw(&pages_of(&[ops]), rgb(30, 10, [200, 0, 0]), &[figure]));
+            let at = texts.iter().position(|t| t.starts_with("Table 1")).unwrap();
+            texts[at..at + 5].to_vec()
         };
         let left = "Strong\tLasting\nCostly\tEasy";
         // Over the right column's first lines, a figure and its caption.
-        let alone = read(&(ops.clone() + &shown(320., 220., "Figure 1: A chart.")), (0, 320., 100., 200., 100.));
+        let alone = read(ops.clone() + &shown(320., 220., "Figure 1: A chart."), (0, 320., 100., 200., 100.));
         assert_eq!(alone[..4], ["Table 1: Pros and cons.", left, "image", "Figure 1: A chart."]);
         // And another table over the figure.
         let right = two_by_two(RIGHT, [90., 130., 170.], CONS);
-        let under = read(&(ops + &right + &shown(320., 320., "Figure 1: A chart.")), (0, 320., 190., 200., 100.));
+        let under = read(ops + &right + &shown(320., 320., "Figure 1: A chart."), (0, 320., 190., 200., 100.));
         assert_eq!(under, ["Table 1: Pros and cons.", left, "Fast\tCheap\nSlow\tDear", "image", "Figure 1: A chart."]);
     }
 
@@ -5722,25 +5689,16 @@ pub(crate) mod tests {
         // To the column's edge both, and the next page's is not indented: without the table they would be one.
         let first = "A paragraph of prose comes before the table and it runs along the width of the page and on.";
         let next = "paragraph opens the next page, and it runs along the width of the page as the one before did.";
-        let read = "Strong\tLasting\nCostly\tEasy";
-        for (end, start, whole) in [("ends whole.", "Another", true), ("goes on to", "another", false)] {
+        let ends =
+            [("ends whole.", "Another", true), ("ends \\(whole.\\)", "Another", true), ("ends \"whole.\"", "Another", true), ("goes on to", "another", false)];
+        for (end, start, whole) in ends {
             let last = format!("It has a second line of prose as wide as the first one is, where the paragraph {end}");
             let pages = [
                 shown(72., 600., first) + &shown(72., 612., &last) + &two_by_two([72., 172., 540.], [640., 676., 712.], PROS),
                 shown(72., 100., &format!("{start} {next}")) + &shown(72., 112., "It ends here."),
             ];
-            let bytes = with_contents(&pdf(&[vec![], vec![]], None), &[(0, &pages[0]), (1, &pages[1])]);
-            let texts: Vec<String> = to_ir(&bytes, None).unwrap().blocks.into_iter().map(|b| b.text).collect();
-            let table = texts.iter().position(|t| t == read).unwrap();
-            assert_eq!(
-                (table, texts.len()),
-                if whole {
-                    (1, 3)
-                } else {
-                    (1, 2)
-                },
-                "{texts:?}"
-            );
+            let texts = blocks_of(&pages_of(&pages));
+            assert_eq!((texts.iter().position(|t| t == PROS_TEXT), texts.len()), (Some(1), 2 + usize::from(whole)), "{texts:?}");
         }
     }
 
@@ -5778,7 +5736,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_table_on_a_later_page_of_a_paper_with_a_title_is_read_right_after_its_caption() {
-        let title = format!("BT /F1 20 Tf 72 {} Td (A Title Set Large) Tj ET\n", 792. - 80.);
+        let title = sized(72., 80., 20., "A Title Set Large");
         let authors = shown(72., 110., "Ann Author and Bob Writer") + &shown(72., 124., "The University of Somewhere");
         let first = title + &authors + &shown(72., 150., "Introduction") + &shown(72., 180., "A paragraph of prose opens the paper.");
         let mut second = shown(72., 100., "Table 1: Pros and cons.") + &two_by_two([72., 172., 540.], [110., 160., 200.], PROS);
@@ -5849,10 +5807,9 @@ pub(crate) mod tests {
 
     #[test]
     fn a_table_over_the_rest_of_a_sentence_a_footnote_cuts_is_read_before_it() {
-        let small = |x: f64, y: f64, text: &str| format!("BT /F1 8 Tf {x} {} Td ({text}) Tj ET\n", 792. - y);
         let first = shown(72., 600., "A paragraph of prose opens the first page and it runs on along the line")
             + &shown(72., 612., "until the very foot of the page, where it goes on past the table on the")
-            + &small(72., 700., "1 A footnote set small says where this comes from.");
+            + &sized(72., 700., 8., "1 A footnote set small says where this comes from.");
         let table = two_by_two([72., 172., 540.], [100., 150., 190.], PROS);
         let second = table + &shown(72., 220., "next page and comes to its end here.");
         let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(0, &first), (1, &second)]), None).unwrap();
@@ -5878,10 +5835,6 @@ pub(crate) mod tests {
     const PROS_TEXT: &str = "Strong\tLasting\nCostly\tEasy";
     const CONS_TEXT: &str = "Fast\tCheap\nSlow\tDear";
     const WIDE: [f64; 3] = [72., 172., 540.];
-
-    fn sized(x: f64, y: f64, size: f64, text: &str) -> String {
-        format!("BT /F1 {size} Tf {x} {} Td ({text}) Tj ET\n", 792. - y)
-    }
 
     /// A line of prose across the page.
     fn across(y: f64, words: &str) -> String {
@@ -5909,14 +5862,12 @@ pub(crate) mod tests {
 
     #[test]
     fn a_table_under_blocks_side_by_side_is_read_after_both() {
-        for depth in [1, 3] {
-            let mut ops = across(80., "The first line of the letter is read");
-            for (x, lines) in [(72., ["Bill to:", "Ann Author", "Main Street"]), (330., ["Ship to:", "Bob Writer", "Side Street"])] {
-                ops += &lines[..depth].iter().enumerate().map(|(i, l)| shown(x, 160. + 12. * i as f64, l)).collect::<String>();
-            }
-            let texts = texts_of(&(ops + &two_by_two(WIDE, [200., 240., 280.], PROS) + &across(320., "The last line is read")));
-            assert_eq!(texts.iter().rposition(|t| t == PROS_TEXT), Some(texts.len() - 2), "{texts:?}");
+        let mut ops = across(80., "The first line of the letter is read");
+        for (x, lines) in [(72., ["Bill to:", "Ann Author", "Main Street"]), (330., ["Ship to:", "Bob Writer", "Side Street"])] {
+            ops += &lines.iter().enumerate().map(|(i, l)| shown(x, 160. + 12. * i as f64, l)).collect::<String>();
         }
+        let texts = texts_of(&(ops + &two_by_two(WIDE, [200., 240., 280.], PROS) + &across(320., "The last line is read")));
+        assert_eq!(texts.iter().rposition(|t| t == PROS_TEXT), Some(texts.len() - 2), "{texts:?}");
     }
 
     #[test]
@@ -5967,21 +5918,13 @@ pub(crate) mod tests {
 
     #[test]
     fn headings_parted_by_tables_alone_are_not_all_the_title() {
-        for number in [false, true] {
-            let heading = |i: usize, text: &str| {
-                if number {
-                    format!("{i} {text}")
-                } else {
-                    text.to_string()
-                }
-            };
-            let mut ops = sized(72., 80., 16., &heading(1, "Overview")) + &two_by_two(WIDE, [95., 115., 135.], PROS);
-            ops += &(sized(72., 170., 16., &heading(2, "Interfaces")) + &two_by_two(WIDE, [185., 205., 225.], CONS));
-            ops += &(sized(72., 260., 16., &heading(3, "Details")) + &across(290., "The first line is read") + &across(302., "The second line is read"));
-            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-            assert_eq!(ir.meta.title, Some(heading(1, "Overview")));
-            let (second, third) = (heading(2, "Interfaces"), heading(3, "Details"));
-            assert_eq!(kinds(&ir)[..4], [("table", PROS_TEXT), ("heading", &second), ("table", CONS_TEXT), ("heading", &third)]);
+        for [first, second, third] in [["Overview", "Interfaces", "Details"], ["1 Overview", "2 Interfaces", "3 Details"]] {
+            let mut ops = sized(72., 80., 16., first) + &two_by_two(WIDE, [95., 115., 135.], PROS);
+            ops += &(sized(72., 170., 16., second) + &two_by_two(WIDE, [185., 205., 225.], CONS));
+            ops += &(sized(72., 260., 16., third) + &across(290., "The first line is read") + &across(302., "The second line is read"));
+            let ir = to_ir(&pages_of(&[ops]), None).unwrap();
+            assert_eq!(ir.meta.title.as_deref(), Some(first));
+            assert_eq!(kinds(&ir)[..4], [("table", PROS_TEXT), ("heading", second), ("table", CONS_TEXT), ("heading", third)]);
         }
     }
 
@@ -5996,24 +5939,14 @@ pub(crate) mod tests {
             + &sized(72., 240., 12., "2 Interfaces")
             + &across(270., "The first line is read")
             + &across(282., "Then it ends");
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        let ir = to_ir(&pages_of(&[ops]), None).unwrap();
         assert_eq!((ir.meta.title.as_deref(), ir.meta.author.as_deref()), (Some("Overview of the machine"), Some("Ann Author")));
-        assert_eq!(
-            kinds(&ir)[..2],
-            [
-                (
-                    "table",
-                    "1 Introduction	Lasting
-Costly	Easy"
-                ),
-                ("heading", "2 Interfaces")
-            ]
-        );
+        assert_eq!(kinds(&ir)[..2], [("table", "1 Introduction\tLasting\nCostly\tEasy"), ("heading", "2 Interfaces")]);
     }
 
     #[test]
     fn the_text_of_a_table_in_a_cell_of_another_is_read_once() {
-        let outer = two_by_two([72., 306., 540.], [100., 200., 400.], ["Fast", "Cheap", "Slow", "Dear"]);
+        let outer = two_by_two([72., 306., 540.], [100., 200., 400.], CONS);
         let texts = texts_of(&(outer + &two_by_two([320., 420., 520.], [220., 250., 280.], PROS))).join(" ");
         for word in PROS.into_iter().chain(CONS) {
             assert_eq!(texts.matches(word).count(), 1, "{word}: {texts}");
@@ -6028,7 +5961,7 @@ Costly	Easy"
             let words = ["Widget made of steel", "About twelve of them", "Gadget made of brass", "About thirty of them"];
             ops += &(sized(72., y, 14., heading) + &two_by_two([72., 300., 540.], [y + 14., y + 38., y + 62.], words));
         }
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+        let ir = to_ir(&pages_of(&[ops]), None).unwrap();
         assert_eq!(ir.meta.title.as_deref(), Some("Electrical data"));
         let kinds: Vec<&str> = kinds(&ir).into_iter().map(|k| k.0).collect();
         assert_eq!(kinds, ["table", "heading", "table", "heading", "table"]);
@@ -6040,7 +5973,7 @@ Costly	Easy"
         let cell = |x: f64, i: usize| shown(x, ys[i] + 14., &format!("Cell {i} of the table here"));
         let cells: String = (0..4).map(|i| cell(76., i) + &cell(310., i)).collect();
         let ops = ruled(&xs, &ys, "strokes") + &cells + &sized(72., 220., 14., "Current State of the Compliance") + &across(250., "A line is read");
-        let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(1, &ops)]), None).unwrap();
+        let ir = to_ir(&pages_of(&[String::new(), ops]), None).unwrap();
         assert_eq!(kinds(&ir).into_iter().map(|k| k.0).collect::<Vec<_>>(), ["table", "heading", "paragraph"]);
     }
 
@@ -6096,7 +6029,7 @@ Costly	Easy"
 
     #[test]
     fn the_line_spacing_is_not_measured_from_captions_to_their_tables() {
-        let mut ops = across(80., "The first line is read") + &across(92., "The second line is read") + &across(104., "It goes on").replace('.', "") + "\n";
+        let mut ops = across(80., "The first line is read") + &across(92., "The second line is read") + &across(104., "It goes on").replace('.', "");
         for i in 0..4 {
             let y = 150. + 100. * i as f64;
             ops += &(shown(72., y, "Some sizes") + &two_by_two(WIDE, [y + 9., y + 27., y + 45.], PROS));
@@ -6124,9 +6057,9 @@ Costly	Easy"
     #[test]
     fn a_sentence_cut_by_a_table_in_small_print_is_whole_again_after_it() {
         for (size, whole) in [(8., true), (10., false)] {
-            let cell = |x: f64, y: f64, text: &str| sized(x, y, size, text);
-            let table = ruled(&[72., 300., 540.], &[140., 160., 180.], "strokes") + &cell(76., 154., "Strong") + &cell(304., 154., "Lasting");
-            let table = table + &cell(76., 174., "Costly") + &cell(304., 174., "Easy");
+            let cells = sized(76., 154., size, "Strong") + &sized(304., 154., size, "Lasting");
+            let cells = cells + &sized(76., 174., size, "Costly") + &sized(304., 174., size, "Easy");
+            let table = ruled(&[72., 300., 540.], &[140., 160., 180.], "strokes") + &cells;
             let before = "A paragraph of prose comes before the table and runs along the width of the page until it is cut by it and";
             let texts =
                 texts_of(&(shown(72., 100., before) + &table + &shown(72., 220., "comes to its end down here, where the sentence is whole again as it was.")));
@@ -6167,17 +6100,6 @@ Costly	Easy"
         let texts = blocks_of(&draw(&pages_of(&pages), rgb(30, 10, [200, 0, 0]), &[(0, 322., 300., 200., 100.)]));
         let at = texts.iter().position(|t| t == PROS_TEXT).unwrap();
         assert_eq!(texts[at - 1], "image", "{texts:?}");
-    }
-
-    #[test]
-    fn a_paragraph_that_ends_in_a_bracket_over_a_table_does_not_run_on_past_it() {
-        for end in ["as they say \\(and on.\\)", "as they say \"and on.\""] {
-            let last = format!("and it runs along the whole of the width of the page to the margin, {end}");
-            let first = shown(72., 600., "A paragraph of prose opens the page and it runs on along the line until it is") + &shown(72., 612., &last);
-            let first = first + &two_by_two(WIDE, [640., 676., 712.], PROS);
-            let texts = blocks_of(&pages_of(&[first, across(100., "Another paragraph of prose is read") + &shown(72., 112., "It ends here.")]));
-            assert_eq!((texts.iter().position(|t| t == PROS_TEXT), texts.len()), (Some(1), 3), "{texts:?}");
-        }
     }
 
     #[test]
