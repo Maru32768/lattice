@@ -860,7 +860,7 @@ test("the cards are under their block in a narrow pane, and beside it in a wider
   await shell.mouse.down();
   await shell.mouse.move(grip.x + grip.width - 4, grip.y + grip.height + 116, { steps: 6 });
   await shell.mouse.up();
-  await expect.poll(async () => (await next()) - before, { timeout: 3000 }).toBeGreaterThan(100);
+  await expect.poll(async () => (await next()) - before).toBeGreaterThan(100);
   expect(await callsOf(shell, "log_ui_error"), "in the app's log").toEqual([]);
   await shell.keyboard.press("Escape");
   await shell.setViewportSize({ width: 1500, height: 900 });
@@ -1061,6 +1061,7 @@ for (const layout of ["wide", "narrow"] as const) {
     await (layout === "wide" ? startLong(shell) : startNarrow(shell));
     await askElsewhere(shell, LONG_ID, paraId(8), "the quote of the card");
     await expect(cards(shell)).toHaveCount(1);
+    await expect(shell.locator(".stickies[data-beside]")).toHaveCount(layout === "wide" ? 1 : 0);
     await scrollTo(shell, paraBlock(8), "center");
     const answer = await boxOf(cards(shell).first().locator(".answer"));
     const from: [number, number] = [answer.x + 4, answer.y + 12];
@@ -1081,6 +1082,7 @@ for (const layout of ["wide", "narrow"] as const) {
       await askElsewhere(shell, LONG_ID, paraId(i), `the quote of card ${i}`);
     }
     await expect(cards(shell)).toHaveCount(3);
+    await expect(shell.locator(".stickies[data-beside]")).toHaveCount(layout === "wide" ? 1 : 0);
     await scrollTo(shell, paraBlock(8), "center");
     const [middle, next] = [await boxOf(cards(shell).nth(1)), await boxOf(cards(shell).nth(2))];
     const own = (await cards(shell).nth(1).innerText()).replace(/\s+/g, "");
