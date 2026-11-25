@@ -2665,23 +2665,24 @@ test("a child, and a follow-up, move neither the cards above them nor the text a
     () => expect(child(shell, "詳しく").locator(".answer")).toBeVisible(),
   ]);
   await expect(cards(shell).locator(".sticky-kind")).toHaveText(["用語", "用語(回答から)", "詳しく(回答から)", "用語"]);
-  // A question on the first child, and one in it, move neither it nor its parent. Scrolled to leave the question's field in view.
-  await doc(shell).evaluate((el) => el.scrollBy(0, 300));
-  await frames(shell);
-  await staysStill(shell, 1, [
-    () => askOn(shell, "質問", child(shell, "用語")),
-    () => expect(field(shell)).toBeFocused(),
-    () => shell.keyboard.type("one\ntwo\nthree"),
-    () => shell.keyboard.press("Escape"),
-    () => followUp(child(shell, "用語")).click(),
-    () => shell.keyboard.type("one\ntwo\nthree"),
-    () => child(shell, "用語").getByRole("button", { name: "キャンセル" }).click(),
-  ]);
 
   // Asked on the text again, it has its block's height, and those above give way to that.
   await scrollTo(shell, paraBlock(32), "center");
   await askAbout(shell, "質問", paraBlock(32));
   expect(Math.abs(await off(4, 32))).toBeLessThan(1);
+  // Then a question on the first child, and one in it, move neither it nor its parent, which no ask on them has held under
+  // this pin yet. Scrolled to leave the question's field in view.
+  const first = await boxOf(child(shell, "用語"));
+  await doc(shell).evaluate((el, by) => el.scrollBy(0, by), first.y - 200);
+  await frames(shell);
+  await staysStill(shell, 1, [
+    () => askOn(shell, "質問", child(shell, "用語")),
+    () => expect(child(shell, "質問").getByRole("textbox")).toBeFocused(),
+    () => shell.keyboard.type("one\ntwo\nthree"),
+    () => shell.keyboard.press("Escape"),
+    () => followUp(child(shell, "用語")).click(),
+    () => shell.keyboard.type("one\ntwo\nthree"),
+  ]);
 });
 
 test("a card asked on in a narrow pane is laid out as any in the column as the pane widens, and the pinned one stays at its block", async ({ shell }) => {
