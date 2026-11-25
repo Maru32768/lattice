@@ -7,6 +7,23 @@ import type { FilterGroup } from "../library/scopes.ts";
 test("only validated citation numbers become chips", () => {
   assert.deepEqual(splitCitations("WAL は先に書く[1]。詳細 [2][99]。", new Set([1, 2])), ["WAL は先に書く", { n: 1 }, "。詳細 ", { n: 2 }, "[99]", "。"]);
   assert.deepEqual(splitCitations("配列 a[0] はそのまま", new Set([1])), ["配列 a", "[0]", " はそのまま"]);
+  // Right after a word it may be an index in code: text, unless the source is cited nowhere else.
+  assert.deepEqual(splitCitations("argv[1] を m[2][3] に書く [1][3]。MVCC[2]で読む [2]。", new Set([1, 2, 3])), [
+    "argv",
+    "[1]",
+    " を m",
+    "[2]",
+    "[3]",
+    " に書く ",
+    { n: 1 },
+    { n: 3 },
+    "。MVCC",
+    "[2]",
+    "で読む ",
+    { n: 2 },
+    "。",
+  ]);
+  assert.deepEqual(splitCitations("MVCC[1]で読む", new Set([1])), ["MVCC", { n: 1 }, "で読む"]);
 });
 
 test("the open articles: saved ones once each, in tab order; unsaved pages and unknown articles left out", () => {

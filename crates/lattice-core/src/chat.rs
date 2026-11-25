@@ -453,9 +453,16 @@ pub(crate) fn sources_text(sources: &[Source], max_chars: usize, block_chars: us
     (out, sent)
 }
 
-/// `[n]` markers in the answer.
+/// `[n]` markers in the answer, but for those right after a word (`argv[1]`, `m[1][2]`), which may be code.
 fn markers(answer: &str) -> impl Iterator<Item = usize> + '_ {
-    answer.split('[').skip(1).filter_map(|p| p.split_once(']')?.0.parse().ok())
+    let mut in_word = false;
+    answer.split('[').zip(answer.split('[').skip(1)).filter_map(move |(before, p)| {
+        in_word = match before.split_once(']') {
+            Some((_, "")) => in_word,
+            _ => before.ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_'),
+        };
+        p.split_once(']')?.0.parse().ok().filter(|_| !in_word)
+    })
 }
 
 /// Cited numbers (from "citations" and inline markers) that point at a source actually sent;
@@ -756,5 +763,6 @@ mod tests {
         assert!(sent > 0 && sent < sources.len());
         assert!(text.chars().count() < max + 100 && text.contains("[…truncated]"));
         assert_eq!(markers("a [1] b [x] [12]c [").collect::<Vec<_>>(), [1, 12]);
+        assert_eq!(markers("argv[1] を m[2][3] に書く [4][5]。x_[6] 先に書く[7]").collect::<Vec<_>>(), [4, 5, 7]);
     }
 }
