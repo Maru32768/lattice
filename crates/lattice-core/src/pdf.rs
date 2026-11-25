@@ -401,10 +401,10 @@ fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
     (lines, body, front)
 }
 
-/// A table read from a `Grid`: its box, in points from the page's top left, and the text of its cells row by row.
+/// A table read from a `Grid`: its box, in points from the page's top left, and the lines of its cells row by row.
 struct Table {
     at: Bounds,
-    rows: Vec<Vec<String>>,
+    rows: Vec<Vec<Vec<Line>>>,
 }
 
 /// The tables of the page's grids that hold text in half their cells or more. A glyph is in the cell its middle is in. One
@@ -445,8 +445,8 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
             continue;
         }
         let breaks = std::iter::once(Vec::new()).chain(breaks.into_iter().map(Option::unwrap_or_default));
-        let rows: Vec<Vec<String>> = cells.iter().zip(breaks).flat_map(|(band, breaks)| band_rows(band, &breaks, p.width)).collect();
-        let filled = rows.iter().flatten().filter(|t| !t.is_empty()).count();
+        let rows: Vec<Vec<Vec<Line>>> = cells.iter().zip(breaks).flat_map(|(band, breaks)| band_rows(band, &breaks, p.width)).collect();
+        let filled = rows.iter().flatten().filter(|lines| lines.iter().any(|l| !l.text.trim().is_empty())).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
             for g in p.glyphs.iter_mut().filter(|g| cell(g).is_some()) {
                 g.table = Some(p.tables.len());
@@ -550,27 +550,26 @@ fn is_word(t: &str) -> bool {
     !t.contains(|c: char| c.is_whitespace() || joins_without_space(c))
 }
 
-/// The rows of a band, each a text per column, cut where `breaks` starts one.
-fn band_rows(band: &[Vec<&Glyph>], breaks: &[f64], width: f64) -> Vec<Vec<String>> {
+/// The rows of a band, each a cell per column, cut where `breaks` starts one.
+fn band_rows(band: &[Vec<&Glyph>], breaks: &[f64], width: f64) -> Vec<Vec<Vec<Line>>> {
     let mut rows = vec![vec![Vec::new(); band.len()]; breaks.len() + 1];
     for (column, glyphs) in band.iter().enumerate() {
         for &g in glyphs {
             rows[breaks.partition_point(|&y| g.y > y - 0.6 * g.size)][column].push(g);
         }
     }
-    rows.iter().map(|row| row.iter().map(|glyphs| cell_text(glyphs, width)).collect()).collect()
+    rows.iter().map(|row| row.iter().map(|glyphs| cell_lines(glyphs, width)).collect()).collect()
 }
 
-/// A cell's text, built as a paragraph's is, and one set down the page read as a turned page is. Only the lines' text is
-/// read, so their page is left 0.
-fn cell_text(glyphs: &[&Glyph], width: f64) -> String {
+/// A cell's lines, one set down the page read as a turned page is. Only their text is read, so their page is left 0.
+fn cell_lines(glyphs: &[&Glyph], width: f64) -> Vec<Line> {
     let mut down = Page { width, ..Default::default() };
     if glyphs.iter().any(|g| g.vertical || g.turned) {
         down.glyphs = glyphs.iter().map(|&g| g.clone()).collect();
         turn(&mut down);
     }
     let turned: Vec<&Glyph> = down.glyphs.iter().collect();
-    let lines = page_lines(
+    page_lines(
         0,
         if turned.is_empty() {
             glyphs
@@ -578,8 +577,7 @@ fn cell_text(glyphs: &[&Glyph], width: f64) -> String {
             &turned
         },
         down.width,
-    );
-    text_of(&lines, &vocabulary(&lines))
+    )
 }
 
 #[derive(Clone)]
@@ -1825,7 +1823,8 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     let key = |l: &Line| in_margin(l).then(|| running_key(&l.text));
     // Wholly in it: a report's table of the body, one a page with only its numbers changed, can reach into the margin.
     // Its tabs, which no line has, keep it apart from the lines' keys.
-    let table_key = |page: usize, t: &Table| margin(page, t.at).then(|| running_key(&t.rows.concat().join("\t")));
+    let table_text = |t: &Table| t.rows.iter().flatten().flatten().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\t");
+    let table_key = |page: usize, t: &Table| margin(page, t.at).then(|| running_key(&table_text(t)));
     // The number a margin line starts or ends with, less the page's index. A heading starts with its
     // number too ("2 Related Work"), so at the start it counts only when no word follows it.
     let folio = |l: &Line| {
@@ -2289,7 +2288,10 @@ fn text_of<'a>(lines: impl IntoIterator<Item = &'a Line>, vocab: &HashSet<String
 
 fn block(d: Draft, vocab: &HashSet<String>, pages: &[Page]) -> Option<Block> {
     let (kind, attrs) = match d.kind {
-        Kind::Table => return d.lines[0].table.map(|t| Block::table(pages[d.lines[0].page].tables[t].rows.clone())),
+        Kind::Table => {
+            let rows = &pages[d.lines[0].page].tables[d.lines[0].table?].rows;
+            return Some(Block::table(rows.iter().map(|row| row.iter().map(|lines| text_of(lines, vocab)).collect()).collect()));
+        }
         Kind::Paragraph => (BlockKind::Paragraph, BlockAttrs::default()),
         Kind::Heading(level) => (BlockKind::Heading, BlockAttrs { level: Some(level), ..Default::default() }),
         Kind::Caption => (BlockKind::Caption, BlockAttrs::default()),
@@ -6151,6 +6153,14 @@ pub(crate) mod tests {
         let prose = shown(72., 100., "Here we look at what a model that was pre-") + &shown(72., 112., "trained does when it is given more words to read.");
         let texts = texts_of(&(prose + &two_by_two(WIDE, [200., 220., 240.], ["Kind", "Score", "a pre-trained one", "1.0"])));
         assert!(texts[0].contains("was pre-trained does"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_hyphen_the_body_writes_is_kept_in_a_cell() {
+        let body = shown(72., 100., "A sentence of prose takes a pre-trained model and goes on with it to the end.");
+        let cells = shown(78., 226., "Model") + &shown(178., 226., "Accuracy") + &shown(78., 252., "A pre-") + &shown(78., 264., "trained one");
+        let texts = texts_of(&(body + &ruled(&WIDE, &[200., 240., 280.], "strokes") + &cells + &shown(178., 256., "High")));
+        assert_eq!(texts[1], "Model\tAccuracy\nA pre-trained one\tHigh");
     }
 
     #[test]
