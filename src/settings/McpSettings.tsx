@@ -106,12 +106,17 @@ export function McpSettings() {
     const agent = at ? AGENTS[at] : null;
     setError(null);
     setDone(null);
-    setBusy(agent);
+    // An edit that reaches into no agent may still be out while one that does begins, and must not say it is over.
+    if (agent) {
+      setBusy(agent);
+    }
     const edited = await mcp.edit(change).catch((e: unknown) => {
       setError({ text: String(e) });
       return null;
     });
-    setBusy(null);
+    if (agent) {
+      setBusy(null);
+    }
     if (!edited) {
       return false;
     }
