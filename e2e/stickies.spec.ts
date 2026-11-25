@@ -504,8 +504,15 @@ test("the card just asked is at its block's height, and stays there with its ans
 });
 
 test("the column goes on below a short article, and scrolls with it", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 1100 });
   await openSnapshot(app);
-  await askMany(app, SNAPSHOT_ID, 107, 8);
+  await askMany(app, SNAPSHOT_ID, 107, 1);
+  const width = () => doc(app).evaluate((el) => el.clientWidth);
+  const scrolls = () => doc(app).evaluate((el) => el.scrollHeight > el.clientHeight);
+  const [before, fits] = [await width(), !(await scrolls())];
+  await askMany(app, SNAPSHOT_ID, 107, 7);
+  expect([fits, await scrolls()]).toEqual([true, true]);
+  expect(await width(), "the scrollbar that comes takes none").toBe(before);
   await doc(app).evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(cards(app).last()).toBeInViewport({ ratio: 1 });
   const [last, view] = [await boxOf(cards(app).last()), await boxOf(doc(app))];
