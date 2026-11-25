@@ -3780,7 +3780,9 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
-    fn a_dash_in_a_cell_with_no_value_breaks_no_word() {
+    fn a_dash_in_a_cell_with_no_value_or_after_a_grade_breaks_no_word() {
+        let grades: &[&[&str]] = &[&["Name", "Grade"], &["Ada", "A-"], &["Bob", "B"], &["Cy", "A-"], &["Di", "C"]];
+        assert_eq!(texts_of(&groups(&[72., 200., 300.], 14., &[&grades[..1], &grades[1..]])), [as_table(grades)]);
         let marks: &[&[&str]] = &[&["Model", "B"], &["Model A", "-"], &["Model B", "x"], &["Model C", "-"]];
         no_table(&groups(&fitted(marks), 14., &[&marks[..1], &marks[1..]]));
         let scores: &[&[&str]] = &[&["Model", "F1"], &["Base", "12.3"], &["Ours", "-"], &["Ours (large)", "14.5"]];
@@ -3799,10 +3801,12 @@ Saw	It cuts. It sings. It rests."]
         let names: &[&[&str]] =
             &[&["Method", "Kind"], &["Model A", "flat tree"], &["Model B", "deep heap"], &["Model C", "open node"], &["Model D", "cold page"]];
         let mixed: &[&[&str]] = &[&["Method", "Kind"], &["Forest", "flat"], &["Nearest one", "deep heap"], &["Tree", "open"], &["Boosted trees", "cold page"]];
-        let plain: &[&[&str]] = &[&["Method", "Kind"], &["Fir", "flat"], &["nearest one", "deep heap"], &["Oak", "open"], &["boosted trees", "cold page"]];
+        let plain: &[&[&str]] =
+            &[&["Method", "Kind"], &["Old fir", "flat"], &["nearest of them all", "deep heap"], &["Old oak", "open"], &["boosted trees", "cold page"]];
         let scores: &[&[&str]] = &[&["Method", "F1"], &["Model A", "71.2"], &["Model B", "74.9"], &["Model C", "78.1"], &["Model D", "79.0"]];
         for rows in [names, mixed, plain, scores] {
             no_table(&spaced(rows, &fitted(rows)));
+            no_table(&spaced(rows, &roomy(rows)));
         }
     }
 
@@ -3819,7 +3823,12 @@ Saw	It cuts. It sings. It rests."]
         no_table(&groups(&xs, 12., &[head, words, long, long, long]));
         assert_eq!(texts_of(&groups(&xs, 12., &[head, words, long, long, long, long])).len(), 1);
         // A row of lines under one name is one, but these could be of a group of rows it names.
-        no_table(&groups(&xs, 12., &[head, words, named]));
+        no_table(&groups(&xs, 12., &[head, short, named]));
+        let said: &[&[&str]] = &[&["Model", "It is in"], &["", "the park"]];
+        assert_eq!(texts_of(&groups(&xs, 12., &[head, short, said])), ["Name\tKind\nRandom forest\tOpen source\nModel\tIt is in the park"]);
+        // Under one name, but in columns whose lines are beside each other as those of rows are.
+        let rows: &[&[&str]] = &[&["Name", "Kind", "Place"], &["Model", "Ash", "Rome"], &["", "Oak", "Bonn"]];
+        no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..]]));
     }
 
     #[test]
@@ -3832,11 +3841,19 @@ Saw	It cuts. It sings. It rests."]
         assert_eq!(read(&roomy(&[head, one].concat()), &[one]), 2);
         no_table(&groups(&fitted(row), 12., &[head, row]));
         assert_eq!(read(&fitted(row), &[row, row]), 3);
+        let [first, last] = [fitted(row)[1], fitted(row)[2]];
+        assert_eq!(read(&[72., first, last + 8.], &[row]), 2);
+        let three: &[&[&str]] = &[&["It is in", "Of all of"], &["the park", "the trees"], &["by a lake", "in that park"]];
+        assert_eq!(read(&fitted(three), &[three]), 2);
+        // A column with no text is no wider than it.
+        let empty: &[&[&str]] = &[&["It is in", "Of all of", ""], &["the park", "the trees", ""]];
+        no_table(&groups(&[72., first, last, last + 60.], 12., &[&[&["Name", "Kind", ""]], empty]));
         // Names of one word each, rows that all start without a capital, and a name that does after one that has it.
         let words: &[&[&str]] = &[&["String", "Field"], &["int", "count"], &["char", "letter"]];
         let lower: &[&[&str]] = &[&["it is in", "of all of"], &["the park", "the trees"]];
         let named: &[&[&str]] = &[&["Ada Byron", "The first"], &["von Neumann", "Of the rest"]];
-        for rows in [words, lower, named] {
+        let priced: &[&[&str]] = &[&["Ada Byron", "12.5"], &["von Neumann", "14.0"]];
+        for rows in [words, lower, named, priced] {
             no_table(&groups(&roomy(rows), 12., &[head, rows]));
         }
     }
@@ -3845,6 +3862,8 @@ Saw	It cuts. It sings. It rests."]
     fn a_first_band_whose_lines_in_threes_break_as_rows_do_stays_text() {
         let rows: &[&[&str]] = &[&["Name", "Kind"], &["Saw", "tool"], &["Oak", "tree"], &["Total", "two"]];
         no_table(&groups(&[72., 222., 382.], 14., &[&rows[..3], &rows[3..]]));
+        let blank: &[&[&str]] = &[&["Name", "Kind"], &["Saw", "tool"], &["Oak", ""], &["Total", "two"]];
+        no_table(&groups(&[72., 222., 382.], 14., &[&blank[..3], &blank[3..]]));
         // A head whose cells wrap, and one whose lines are broken by hand beside a name in the middle of it.
         let head: &[&[&str]] = &[&["Number of", "Mean"], &["active", "response"], &["users", ""]];
         let body: &[&[&str]] = &[&["12", "0.8"]];
@@ -3970,6 +3989,12 @@ Saw	It cuts. It sings. It rests."]
         let rows: &[&[&str]] = &[&["Pros", "Cons"], &["\\267 Strong", "\\267 Costly"], &["\\267 Lasting", "\\267 Heavy"]];
         let texts = texts_of(&banded(&WIDE, &|_, _| 6., rows));
         assert_eq!(texts, ["Pros\tCons\n• Strong • Lasting\t• Costly • Heavy"]);
+        // Rows with a bullet each.
+        let named: &[&[&str]] = &[&["Name", "What"], &["Ada", "\\267 Oak"], &["Bob", "\\267 Elm"]];
+        let listed: &[&[&str]] = &[&["What", "Who"], &["\\267 Oak", "Ada"], &["\\267 Elm", "Bob"]];
+        for rows in [named, listed] {
+            no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..]]));
+        }
     }
 
     #[test]
@@ -4012,6 +4037,7 @@ Saw	It cuts. It sings. It rests."]
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 0.), None);
         // A cell of each column that wraps, their last lines apart.
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 4.), Some(2));
+        assert_eq!(read(&[[2, 2], [12, 10], [10, 10], [12, 10], [8, 6]], 4.), Some(2));
     }
 
     #[test]
