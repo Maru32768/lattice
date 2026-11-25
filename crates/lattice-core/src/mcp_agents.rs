@@ -213,7 +213,7 @@ impl Agents {
                     // `add-json` refuses a name it already has.
                     self.claude(&remove, "").await?;
                     if let Err(failure) = self.claude(&add, &new.to_string()).await {
-                        // As an argument: an older Claude Code, or one run inside a session of its own, refuses stdin.
+                        // As an argument: run inside a session of its own, Claude Code refuses stdin (2.1.327).
                         let _ = self.claude(&["mcp", "add-json", "-s", "user", CLIENT_NAME, &found.to_string()], "").await;
                         return Err(failure);
                     }
