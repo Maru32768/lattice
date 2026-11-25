@@ -37,7 +37,8 @@
 .sticky textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--doc); font-size: 13px; line-height: 1.6; resize: vertical; }
 /* Brought into view to the card's edge. */
 .sticky-ask { display: flex; flex-direction: column; gap: 8px; scroll-margin-bottom: 11px; }
-.sticky textarea:disabled { color: inherit; resize: none; }
+/* Chromium sends no mouseup from a disabled field: a selection made over it is to get its bar too. */
+.sticky textarea:disabled { color: inherit; resize: none; pointer-events: none; }
 .sticky-acts { display: flex; justify-content: flex-end; gap: 6px; }
 /* As high as the buttons it is in the place of. */
 .sticky .pending { min-height: 24px; }

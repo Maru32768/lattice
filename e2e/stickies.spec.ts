@@ -2707,6 +2707,24 @@ test("a child is right below its parent where that stays far above its block, as
   expect((await boxOf(child(shell, "用語"))).y - y - height).toBeCloseTo(10, 0);
 });
 
+test("a drag in an answer that ends on a question that waits below it offers the bar", async ({ shell }) => {
+  await hold(shell, "sticky_follow_up");
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toBeVisible();
+  await followUp(sticky).click();
+  await followUpField(sticky).fill("なぜ？");
+  await shell.keyboard.press("Control+Enter");
+  await expect(followUpField(sticky)).toBeDisabled();
+  const p = await boxOf(sticky.locator(".answer p"));
+  const f = await boxOf(followUpField(sticky));
+  await dragTo(shell, [p.x + 1, p.y + 8], [f.x + 20, f.y + 10]);
+  expect(await selected(shell)).toMatch(ANSWERED);
+  await expect(bar(shell).getByRole("button", { name: "用語", exact: true })).toBeVisible();
+});
+
 /** Four cards, the last asked last, in a view tall enough for all: those before it give way. */
 async function startTall(shell: Page) {
   await hold(shell, "sticky_ask", "sticky_follow_up");
