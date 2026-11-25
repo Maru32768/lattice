@@ -864,6 +864,8 @@ export function Reader({
   const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
+  /** Where the press that is held began, or the last one. */
+  const pressedText = useRef(false);
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
     passage?: { blockId: number; quote: string };
@@ -999,6 +1001,7 @@ export function Reader({
     const at = e.target as Element;
     return !!at.closest(".stickies") || !e.currentTarget.contains(at);
   };
+  const onText = (e: React.SyntheticEvent) => !!blocksEl.current?.contains(e.target as Element);
   function ask(kind: StickyKind, passage: { blockId: number; quote: string }) {
     setCap(null);
     window.getSelection()?.removeAllRanges();
@@ -1132,9 +1135,14 @@ export function Reader({
           tabIndex={-1}
           data-pane-target
           onScroll={cap && !cap.status ? () => setCap(null) : undefined}
-          onPointerDown={(e) => onSticky(e) && setCap(null)}
+          onPointerDown={(e) => {
+            pressedText.current = onText(e);
+            if (onSticky(e)) {
+              setCap(null);
+            }
+          }}
           // Not on the blocks alone: a drag over a passage often ends in the margin.
-          onMouseUp={(e) => onSticky(e) || offerBar()}
+          onMouseUp={(e) => (pressedText.current || onText(e)) && offerBar()}
           // Nor here: the text of a block that cannot take the focus leaves it to the scroller.
           onKeyUp={(e) => e.shiftKey && !onSticky(e) && offerBar()}
         >

@@ -1026,6 +1026,24 @@ test("a word in a sentence's tooltip can be saved, and not asked about", async (
   await expect(bar(app).getByRole("button")).toHaveText([/単語を登録/]);
 });
 
+test("letting go of the scrollbar brings no bar", async ({ shell }) => {
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(3), "center");
+  await drag(shell, paraBlock(3), paraBlock(3));
+  await expect(bar(shell)).toBeVisible();
+  // Where the scrollbar's track is, below its thumb.
+  const [x, y] = await doc(shell).evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return [r.left + (el.clientWidth + r.width) / 2, r.bottom - 60];
+  });
+  await shell.mouse.move(x, y);
+  await shell.mouse.down();
+  await expect.poll(() => scrollTop(shell)).toBeGreaterThan(0);
+  await shell.mouse.up();
+  expect(await selected(shell)).not.toBe("");
+  await expect(bar(shell)).toHaveCount(0);
+});
+
 test("a passage over the limit cannot be asked about", async ({ app }) => {
   await openSnapshot(app);
   const grow = (n: number) => app.locator("#b-102 .sent").evaluate((el, text) => (el.textContent = text), "𠮷".repeat(n));
