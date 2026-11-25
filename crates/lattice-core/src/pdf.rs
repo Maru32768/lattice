@@ -1606,6 +1606,10 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
             // A paragraph's last line ends short of a quotation's edge too, but starts before it.
             let block = blocks.iter().find(|b| fits(b) && b.1 <= l.x0 + 0.25).or_else(|| blocks.iter().find(fits));
             (l.left, l.right) = block.map_or((lo, hi), |&(_, left, right)| (left, right));
+            // Where the body has no block, it starts at the column's edge. A box's title out there starts with a capital.
+            if l.left > l.x0 + 0.25 && l.text.starts_with(char::is_lowercase) {
+                l.left = lo;
+            }
         }
     }
     if !two {
@@ -2694,6 +2698,19 @@ pub(crate) mod tests {
         let second = [(L, 100., 10., "and that is the end of it.")].into_iter().chain(quotation).chain(body(200.)).collect();
         let ir = to_ir(&pdf(&[body(100.).collect(), second], None), None).unwrap();
         assert!(ir.blocks[0].text.ends_with("the end of it."), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_paragraphs_last_line_over_nothing_but_a_quotation_or_items_carries_it_on() {
+        const ITEM: &str = "it copies every write to all of the replicas and then waits for each of";
+        let first: Vec<Run> = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
+        let items = (0..3).flat_map(|i| [(84., 0., "•"), (96., 0., ITEM), (96., 12., ITEM)].map(|(x, y, t)| (x, 124. + 30. * i as f64 + y, 10., t))).collect();
+        let quotation: Vec<Run> = (0..4).map(|i| (L + 30., 130. + 12. * i as f64, 10., SPREAD[0].3)).collect();
+        for rest in [items, quotation] {
+            let second = [(L, 100., 10., "and that is the end of it.")].into_iter().chain(rest).collect();
+            let ir = to_ir(&pdf(&[first.clone(), second], None), None).unwrap();
+            assert!(ir.blocks[0].text.ends_with("the end of it."), "{:?}", kinds(&ir));
+        }
     }
 
     #[test]
