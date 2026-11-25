@@ -6160,6 +6160,218 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_cell_outlined_again_over_a_tables_rules_keeps_it_a_table() {
+        let full: String = [110., 160., 200.].iter().map(|y| format!("72 {y} m 540 {y} l S\n", y = 792. - y)).collect();
+        let down: String = [72., 172., 540.].iter().map(|x| format!("{x} 682 m {x} 592 l S\n")).collect();
+        // The first cell picked out by a border of its own.
+        let again = "72 632 100 50 re S\n";
+        let cells = shown(78., 138., "Strong") + &shown(178., 138., "Lasting") + &shown(78., 183., "Costly") + &shown(178., 183., "Easy");
+        assert_eq!(texts_of(&(full + &down + again + &cells)), [PROS_TEXT]);
+    }
+
+    #[test]
+    fn a_dot_stroked_on_a_tables_border_leaves_it_a_table() {
+        // A dot drawn as a stroke of no length with round caps, as a connector's end is, on the left border.
+        let dot = "1 J 4 w 72 660 m 72 660 l S 0 J 1 w\n";
+        assert_eq!(texts_of(&(two_by_two(WIDE, [110., 160., 200.], PROS) + dot)), [PROS_TEXT]);
+    }
+
+    #[test]
+    fn bars_filled_by_the_even_odd_rule_are_rules() {
+        for end in ["f*", "F"] {
+            let bytes = tables_page(&|xs, ys| ruled(xs, ys, "bars").replace("re f\n", &format!("re {end}\n")));
+            assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), TABLES_PAGE, "{end}");
+        }
+    }
+
+    #[test]
+    fn bars_filled_under_a_transform_are_rules_where_they_show() {
+        let bars = |xs: &[f64], ys: &[f64]| {
+            let mut ops = "q 0.75 0 0 -0.75 0 792 cm\n".to_string();
+            let (left, right, top, bottom) = (xs[0], xs[xs.len() - 1], ys[0], ys[ys.len() - 1]);
+            for &y in ys {
+                ops += &format!("{} {} {} 0.75 re f\n", left / 0.75, y / 0.75, (right - left) / 0.75);
+            }
+            for &x in xs {
+                ops += &format!("{} {} 0.75 {} re f\n", x / 0.75, top / 0.75, (bottom - top) / 0.75);
+            }
+            ops + "Q\n"
+        };
+        assert_eq!(kinds(&to_ir(&tables_page(&bars), None).unwrap()), TABLES_PAGE);
+    }
+
+    #[test]
+    fn a_space_after_each_row_outside_the_rules_leaves_it_a_table() {
+        // Word ends each row with a space of its own past the last cell.
+        let space = |y: f64| shown(545., y, " ");
+        let table = two_by_two(WIDE, [110., 160., 200.], PROS);
+        let ops = across(80., "The first line is read") + &table + &space(138.) + &space(183.) + &across(240., "The last line is read");
+        assert_eq!(texts_of(&ops), [&full("The first line is read"), PROS_TEXT, &full("The last line is read")]);
+    }
+
+    #[test]
+    fn a_table_ruled_round_its_last_columns_within_a_column_is_left_as_text() {
+        for (labels, xs, other) in [(322., [400., 470., 540.], 72.), (230., [72., 130., 190.], 322.)] {
+            let mut text = String::new();
+            for i in 0..14 {
+                text += &shown(other, 106. + 12. * i as f64, &format!("Line {i} of the other column runs on."));
+            }
+            let own = if other < 300. {
+                322.
+            } else {
+                72.
+            };
+            for (i, y) in [60., 72., 84., 220., 232., 244.].into_iter().enumerate() {
+                text += &shown(own, y, &format!("Line {i} of its own column runs on."));
+            }
+            text += &(shown(labels, 133., "Signs it") + &shown(xs[0] + 6., 133., "Yes") + &shown(xs[1] + 6., 133., "No"));
+            text += &(shown(labels, 173., "Keeps it") + &shown(xs[0] + 6., 173., "Yes") + &shown(xs[1] + 6., 173., "Yes"));
+            assert_eq!(texts_of(&(ruled(&xs, &[110., 150., 190.], "strokes") + &text)), texts_of(&text), "{labels}");
+        }
+    }
+
+    #[test]
+    fn rows_no_rule_parts_are_rows_beside_an_empty_column() {
+        let mut ops = ruled(&[72., 200., 300., 400.], &[110., 130., 200.], "strokes");
+        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert") + &shown(306., 124., "Notes"));
+        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
+        ops += &(shown(78., 166., "Nested Sets") + &shown(206., 166., "Hard"));
+        ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
+        assert_eq!(texts_of(&ops), ["Design\tInsert\tNotes\nAdjacency List\tEasy\t\nNested Sets\tHard\t\nClosure Table\tEasy\t"]);
+    }
+
+    #[test]
+    fn a_gap_in_the_middle_of_the_page_in_a_cell_is_no_row() {
+        // A wide gap there parts a line in two on one baseline.
+        let mut ops = ruled(&[72., 440., 540.], &[110., 130., 160.], "strokes") + &shown(78., 124., "Signed by") + &shown(446., 124., "Seen");
+        ops += &(shown(78., 148., "Name: Ann Author") + &shown(330., 148., "Date: 1 May") + &shown(446., 148., "Yes"));
+        assert_eq!(texts_of(&ops), ["Signed by\tSeen\nName: Ann Author Date: 1 May\tYes"]);
+    }
+
+    #[test]
+    fn a_superscript_in_a_row_no_rule_parts_stays_in_its_row() {
+        // As TeX sets it: 7pt raised 3.6pt.
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert"));
+        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
+        ops += &(shown(78., 166., "Nested Sets") + &sized(133., 162.4, 7., "a") + &shown(206., 166., "Hard"));
+        ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
+        let texts = texts_of(&ops);
+        let rows: Vec<&str> = texts[0].split('\n').collect();
+        assert!(rows.len() == 4 && rows[1] == "Adjacency List\tEasy" && rows[2].contains('a') && rows[2].starts_with("Nested Sets"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_cells_japanese_lines_are_joined_without_a_space_and_a_broken_word_whole() {
+        let set = |x: f64, y: f64, cids: &str| format!("BT /F3 10 Tf {x} {} Td <{cids}> Tj ET\n", 792. - y);
+        let cells = set(78., 130., "034B034D034F") + &set(178., 124., TEN_DOWN) + &set(178., 136., "0351") + &shown(78., 174., "repre-");
+        let cells = cells + &shown(78., 186., "sentation") + &shown(178., 180., "Easy");
+        let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
+        let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+        assert_eq!(kinds(&ir), [("table", "あいう\tあいうえおかきくぐけえ\nrepresentation\tEasy")]);
+    }
+
+    #[test]
+    fn a_chart_under_a_table_leaves_it_a_table() {
+        let chart = ruled(&[72., 172., 272., 372., 540.], &[300., 350., 400., 450.], "strokes") + &shown(300., 330., "1200");
+        let ops = two_by_two(WIDE, [110., 160., 200.], PROS) + &chart + &across(500., "The last line is read");
+        let texts = texts_of(&ops);
+        assert!(texts.contains(&PROS_TEXT.to_string()) && texts.contains(&"1200".to_string()), "{texts:?}");
+    }
+
+    #[test]
+    fn a_table_drawn_from_its_foot_up_is_read_before_the_note_beside_its_second_row() {
+        let mut ops = String::new();
+        for (i, y) in [100., 112., 124., 320., 332., 344.].into_iter().enumerate() {
+            ops += &shown(72., y, &format!("Left column line {i} of the body runs on."));
+        }
+        let words = [(78., 263., "Costly"), (136., 263., "Easy"), (78., 223., "Strong"), (136., 223., "Lasting")];
+        ops += &ruled(&[72., 130., 190.], &[200., 240., 280.], "strokes");
+        ops += &words.map(|(x, y, w)| shown(x, y, w)).concat();
+        ops += &shown(200., 243., "A note is here.");
+        for i in 0..20 {
+            ops += &shown(322., 100. + 12. * i as f64, &format!("Right column line {i} of the body runs on."));
+        }
+        let texts = texts_of(&ops);
+        let at = |w: &str| texts.iter().position(|t| t == w).unwrap_or_else(|| panic!("{w}: {texts:?}"));
+        assert!(at(PROS_TEXT) < at("A note is here."), "{texts:?}");
+    }
+
+    #[test]
+    fn pairs_of_fields_under_a_table_across_the_page_are_read_row_by_row() {
+        // The table's middle column is over the middle of the page, so its rows do not part there, and it holds most of the text.
+        let (xs, ys) = ([72., 240., 390., 540.], [80., 110., 140., 170., 200.]);
+        let cell = |r: usize, c: usize| shown(xs[c] + 6., ys[r] + 18., &format!("Row {r} cell {c} of it holds this"));
+        let mut ops = ruled(&xs, &ys, "strokes") + &(0..4).flat_map(|r| (0..3).map(move |c| cell(r, c))).collect::<String>();
+        let fields =
+            [("Name: Ann Author", "Date: the first of May"), ("Street: 42 Main Street", "Phone: 555 0123"), ("Town: Somewhere", "Seen by: Bob Writer")];
+        for (i, (left, right)) in fields.into_iter().enumerate() {
+            ops += &(shown(72., 260. + 30. * i as f64, left) + &shown(330., 260. + 30. * i as f64, right));
+        }
+        let want: Vec<&str> = fields.into_iter().flat_map(|(l, r)| [l, r]).collect();
+        assert_eq!(texts_of(&ops)[1..], want);
+    }
+
+    #[test]
+    fn a_narrow_table_by_a_figures_caption_is_kept() {
+        let table = |y: f64| two_by_two([220., 305., 390.], [y, y + 25., y + 50.], PROS);
+        let figure = shown(72., 220., "Figure 1: The machine.");
+        for ops in [table(150.) + &figure, figure.clone() + &table(240.)] {
+            let texts = texts_of(&(across(80., "The first line is read") + &ops + &across(400., "The last line is read")));
+            assert!(texts.contains(&PROS_TEXT.to_string()), "{texts:?}");
+        }
+    }
+
+    #[test]
+    fn a_list_of_references_goes_on_past_a_table() {
+        let prose = across(80., "The first line is read") + &across(92., "The second line is read") + &across(104., "The third line is read");
+        let mut ops = prose + &sized(72., 140., 12., "References");
+        ops += &(shown(72., 160., "[1] A. Author. The first of the works it draws on. Press, 2001.") + &two_by_two(WIDE, [180., 220., 260.], PROS));
+        ops += &shown(72., 290., "[2] B. Writer. The second of the works it draws on. Press, 2002.");
+        ops += &shown(72., 302., "[3] C. Editor. The third of the works it draws on. Press, 2003.");
+        let ir = to_ir(&pages_of(&[ops]), None).unwrap();
+        let k: Vec<&str> = kinds(&ir).iter().skip_while(|k| k.1 != "References").map(|k| k.0).collect();
+        assert_eq!(k, ["heading", "list_item", "table", "list_item", "list_item"], "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_reference_that_runs_on_over_the_page_past_a_table_is_whole() {
+        let prose = across(80., "The first line is read") + &across(92., "The second line is read") + &across(104., "The third line is read");
+        let first = prose + &sized(72., 140., 12., "References") + &shown(72., 160., "[1] A. Author. The first of the works it draws on. Press, 2001.");
+        let first = first + &shown(72., 172., "[2] B. Writer. The second of the works it draws on, which has a title that");
+        let second = two_by_two(WIDE, [100., 150., 190.], PROS) + &shown(72., 220., "runs on over the page. Press, 2002.");
+        let second = second + &shown(72., 232., "[3] C. Editor. The third of the works it draws on. Press, 2003.");
+        let ir = to_ir(&pages_of(&[first, second]), None).unwrap();
+        assert!(kinds(&ir).iter().any(|k| k.0 == "list_item" && k.1.ends_with("a title that runs on over the page. Press, 2002.")), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_box_in_the_margin_of_two_pages_of_seven_is_kept() {
+        let page = |n: usize| {
+            let table = if n < 2 {
+                two_by_two(WIDE, [10., 35., 60.], PROS)
+            } else {
+                String::new()
+            };
+            table + &across(120., &format!("Page number {} of the report is read", ["one", "two", "three", "four", "five", "six", "seven"][n]))
+        };
+        let ir = to_ir(&pages_of(&(0..7).map(page).collect::<Vec<_>>()), None).unwrap();
+        assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Table).count(), 2, "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_japanese_paragraph_that_ends_in_a_bracket_over_a_table_does_not_run_on_past_it() {
+        // `a_japanese_paragraph_that_ends_over_a_table_does_not_run_on_past_it` with 。」 at its end.
+        let set = |y: f64, cids: &str| format!("BT /F3 10 Tf 72 {} Td <{cids}> Tj ET\n", 792. - y);
+        let line = TEN_DOWN.repeat(4) + &TEN_DOWN[..20];
+        let first = set(600., &line) + &set(612., &(line[..line.len() - 8].to_string() + "027B02AF")) + &two_by_two(WIDE, [640., 676., 712.], PROS);
+        let second = set(100., &line) + &set(112., "034B034D027B");
+        let texts = blocks_of(&with_contents(&japanese(&[vec![], vec![]], "Identity-H", &second), &[(0, &first)]));
+        assert!(texts[0].ends_with("。」"), "{texts:?}");
+        assert_eq!((texts.iter().position(|t| t == PROS_TEXT), texts.len()), (Some(1), 3), "{texts:?}");
+    }
+
+    #[test]
     fn a_hyphen_the_body_writes_is_kept_in_a_cell() {
         let body = shown(72., 100., "A sentence of prose takes a pre-trained model and goes on with it to the end.");
         let cells = shown(78., 226., "Model") + &shown(178., 226., "Accuracy") + &shown(78., 252., "A pre-") + &shown(78., 264., "trained one");
