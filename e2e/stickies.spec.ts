@@ -1955,6 +1955,24 @@ test("what came of saving a word stays as a key is pressed", async ({ app }) => 
   await expect(bar(app)).toContainText("登録しました");
 });
 
+test("why a word could not be saved stays as a key is pressed", async ({ app }) => {
+  await openSnapshot(app);
+  await app.evaluate(() => {
+    const tauri = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    const invoke = tauri.invoke;
+    tauri.invoke = (cmd, args) => (cmd === "vocab_add" ? Promise.reject(new Error("no such word")) : invoke(cmd, args));
+  });
+  const word = await boxOf(app.locator("#b-106 p"));
+  await app.mouse.dblclick(word.x + 10, word.y + 12);
+  await bar(app)
+    .getByRole("button", { name: /単語を登録/ })
+    .click();
+  await expect(bar(app)).toContainText("no such word");
+  await app.keyboard.press("Control");
+  await frames(app);
+  await expect(bar(app)).toContainText("no such word");
+});
+
 test("a word in a sentence's tooltip can be saved, and not asked about", async ({ app }) => {
   await openSnapshot(app);
   await app.locator("#b-103 .sent").hover();
