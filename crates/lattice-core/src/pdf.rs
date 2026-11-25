@@ -1608,7 +1608,7 @@ fn order(mut lines: Vec<Line>, width: f64) -> Vec<Line> {
             (l.left, l.right) = block.map_or((lo, hi), |&(_, left, right)| (left, right));
             // Where the body has no block, it starts at the column's edge. A box's title out there starts with a capital.
             if l.left > l.x0 + 0.25 && l.text.starts_with(char::is_lowercase) {
-                l.left = lo;
+                l.left = lo.min(l.x0);
             }
         }
     }
@@ -2704,13 +2704,18 @@ pub(crate) mod tests {
     fn a_paragraphs_last_line_over_nothing_but_a_quotation_or_items_carries_it_on() {
         const ITEM: &str = "it copies every write to all of the replicas and then waits for each of";
         let first: Vec<Run> = (0..5).map(|i| (L, 100. + 12. * i as f64, 10., BODY)).collect();
-        let items = (0..3).flat_map(|i| [(84., 0., "•"), (96., 0., ITEM), (96., 12., ITEM)].map(|(x, y, t)| (x, 124. + 30. * i as f64 + y, 10., t))).collect();
+        let items = (0..3).flat_map(|i| [(84., 0., "•"), (96., 0., ITEM), (96., 12., ITEM)].map(|(x, y, t)| (x, 124. + 30. * i as f64 + y, 10., t)));
+        let items: Vec<Run> = items.collect();
         let quotation: Vec<Run> = (0..4).map(|i| (L + 30., 130. + 12. * i as f64, 10., SPREAD[0].3)).collect();
-        for rest in [items, quotation] {
-            let second = [(L, 100., 10., "and that is the end of it.")].into_iter().chain(rest).collect();
+        for (rest, last) in [(&items, "and that is the end of it."), (&quotation, "and that is the end of it."), (&quotation, "them.")] {
+            let second = [(L, 100., 10., last)].into_iter().chain(rest.iter().copied()).collect();
             let ir = to_ir(&pdf(&[first.clone(), second], None), None).unwrap();
-            assert!(ir.blocks[0].text.ends_with("the end of it."), "{:?}", kinds(&ir));
+            assert!(ir.blocks[0].text.ends_with(last), "{:?}", kinds(&ir));
         }
+        let set_in = [(L + 20., 100., 10., "where each of them has a copy of it")];
+        let second = set_in.into_iter().chain(quotation).chain([(L, 200., 10., "and that is the end of it.")]).collect();
+        let ir = to_ir(&pdf(&[first.clone(), second], None), None).unwrap();
+        assert!(!ir.blocks[0].text.contains("where each"), "a line set in from the column's edge: {:?}", kinds(&ir));
         let title = (60., 100., 10., "Aside Laws that hold for all of them");
         let second = [title].into_iter().chain((0..5).map(|i| (L, 118. + 12. * i as f64, 10., BODY))).collect();
         let ir = to_ir(&pdf(&[first, second], None), None).unwrap();
