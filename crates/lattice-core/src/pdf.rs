@@ -2711,6 +2711,10 @@ pub(crate) mod tests {
             let ir = to_ir(&pdf(&[first.clone(), second], None), None).unwrap();
             assert!(ir.blocks[0].text.ends_with("the end of it."), "{:?}", kinds(&ir));
         }
+        let title = (60., 100., 10., "Aside Laws that hold for all of them");
+        let second = [title].into_iter().chain((0..5).map(|i| (L, 118. + 12. * i as f64, 10., BODY))).collect();
+        let ir = to_ir(&pdf(&[first, second], None), None).unwrap();
+        assert!(!ir.blocks[0].text.contains("Aside"), "a title out in the margin: {:?}", kinds(&ir));
     }
 
     #[test]
