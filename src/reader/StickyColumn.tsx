@@ -519,8 +519,8 @@ function AskBody({ article, ask, onCancel }: AskProps<Ask>) {
   const t = useT();
   const sendKey = useSendKey();
   const failed = ask.step === "failed";
+  const pending = ask.step === "pending";
   const typed = isFollowUp(ask) || ask.kind === "question";
-  const writing = typed && ask.step !== "pending";
   const blank = typed && !ask.question.trim();
   const send = (from: HTMLElement) => {
     if (!blank) {
@@ -534,10 +534,12 @@ function AskBody({ article, ask, onCancel }: AskProps<Ask>) {
   };
   return (
     <>
-      {writing ? (
+      {typed && (
+        // Here while it waits too: a card that got shorter would take a view at the article's end up with it.
         <textarea
           rows={3}
           value={ask.question}
+          disabled={pending}
           aria-label={t(isFollowUp(ask) ? "stickies.followUpLabel" : "stickies.questionLabel")}
           placeholder={t(isFollowUp(ask) ? "stickies.followUpPlaceholder" : "stickies.placeholder")}
           onChange={(e) => changeAsk(article, ask.key, { question: e.target.value })}
@@ -552,10 +554,8 @@ function AskBody({ article, ask, onCancel }: AskProps<Ask>) {
             }
           }}
         />
-      ) : (
-        ask.question && <p className="sticky-q">{ask.question}</p>
       )}
-      {ask.step === "pending" ? (
+      {pending ? (
         <p className="pending" role="status">
           <span className="dot" />
           {t("chatPane.answering")}

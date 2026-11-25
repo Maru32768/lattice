@@ -2250,7 +2250,8 @@ test("続けて質問: the question is written in the card, goes with the send k
   expect(await callsOf(shell, "sticky_follow_up"), "Enter is a new line by default").toEqual([]);
   await shell.keyboard.press("Control+Enter");
   await expect(sticky.getByRole("status")).toHaveText("回答を生成しています…");
-  await expect(sticky.locator(".sticky-q")).toHaveText("つまり？");
+  await expect(followUpField(sticky)).toHaveValue("つまり？");
+  await expect(followUpField(sticky)).toBeDisabled();
   await expect(followUp(sticky)).toHaveCount(0);
   await expect(doc(shell)).toBeFocused();
   expect(await callsOf(shell, "sticky_follow_up")).toEqual([{ id: 1, question: "つまり？" }]);
@@ -2319,7 +2320,7 @@ test("a follow-up that waits survives leaving the article, and its answer comes 
   await expect(cards(shell)).toHaveCount(2);
   for (const q of ["最初の", "次の"]) {
     await followUp(shell).first().click();
-    await followUpField(shell).fill(q);
+    await followUpField(shell).last().fill(q);
     await shell.keyboard.press("Control+Enter");
   }
   await open(shell, LONG_ID);
@@ -2705,6 +2706,43 @@ test("a child is right below its parent where that stays far above its block, as
   expect(y + height).toBeLessThan((await boxOf(shell.locator(paraBlock(30)))).y - 100);
   expect((await boxOf(child(shell, "用語"))).y - y - height).toBeCloseTo(10, 0);
 });
+
+for (const width of [1200, 1500]) {
+  test(`at the article's end a question that is sent, and its answer, take up no view, ${width} wide`, async ({ shell }) => {
+    await hold(shell, "sticky_ask", "sticky_follow_up");
+    await shell.setViewportSize({ width, height: 800 });
+    await startLong(shell);
+    await Promise.all([askMany(shell, LONG_ID, paraId(79), 2), expect.poll(() => release(shell, "sticky_ask")().then(() => cards(shell).count())).toBe(2)]);
+    const last = cards(shell).nth(1);
+    const toEnd = async () => {
+      await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+      await frames(shell);
+    };
+    const send = async (input: Locator, card: Locator, answer: () => Promise<unknown>) => {
+      await toEnd();
+      await input.fill("なぜ？");
+      await staysStill(
+        shell,
+        1,
+        [
+          () => shell.keyboard.press("Control+Enter"),
+          () => expect(card.getByRole("status")).toBeVisible(),
+          answer,
+          () => expect(card.getByRole("status")).toHaveCount(0),
+        ],
+        79,
+      );
+    };
+    await toEnd();
+    await followUp(last).click();
+    await send(followUpField(last), last, release(shell, "sticky_follow_up"));
+    await expect(last.locator(".answer")).toHaveCount(2);
+    await toEnd();
+    await askOn(shell, "質問", last, 1);
+    await send(field(shell), child(shell, "質問"), release(shell, "sticky_ask"));
+    await expect(child(shell, "質問").locator(".answer")).toBeVisible();
+  });
+}
 
 test("a sticky that gets the id of the pinned one, which is gone, is not pinned", async ({ shell }) => {
   const off = await startCrowded(shell);
