@@ -499,7 +499,9 @@ test("an agent whose settings cannot be changed keeps its registration, says why
 
   await agentError("mcp.agentOther", { agent: "Claude Code", name: "lattice" });
   await row("Claude Code").getByRole("button", { name: "Claude Codeに登録" }).click();
-  await expect(alert).toContainText("Claude Codeの設定には、Latticeのものではない「lattice」という登録がもうあるので、変えませんでした。");
+  await expect(alert.locator("p"), "nothing that would remove the user's own server").toHaveText([
+    "Claude Codeの設定には、Latticeのものではない「lattice」という登録がもうあるので、変えませんでした。それを消すか名前を変えると登録できます。",
+  ]);
 
   await agentError(null);
   await row("Claude Code").getByRole("button", { name: "Claude Codeに登録" }).click();

@@ -121,6 +121,9 @@ export function McpSettings() {
       const removing = change.kind === "delete";
       if (edited.agent.kind === "written") {
         setDone({ kind: removing ? "removed" : "added", agent });
+      } else if (edited.agent.error.startsWith('{"code":"mcp.agentOther"')) {
+        // No help: the command that removes would take out the user's own server, and the message says what to do.
+        setError({ text: edited.agent.error });
       } else {
         // A deleted registration is gone from the new status, and one just made is not in the old.
         const reg = [...edited.status.registrations, ...(status?.registrations ?? [])].find((r) => r.target === at);
