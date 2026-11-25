@@ -329,10 +329,8 @@ mod tests {
         let question = "<question>\nなぜ？\n</question>\n\nAnswer the question above about the passage, in Japanese.\n";
         assert_eq!(llm.input(), format!("{ARTICLE}<passage>\nログが先\n</passage>\n\n{question}"));
         let system = llm.system();
-        assert!(["PROFILE", "CHAT-RULE", "SUMMARY-RULE", "About the reader"].iter().all(|x| !system.contains(x)), "{system}");
-        assert!(system.ends_with(UNTRUSTED), "{system}");
+        assert_eq!(system, format!("{RULES}\n\n{UNTRUSTED}"));
         assert!(system.contains("translation") && system.contains("in Japanese") && system.contains("goes beyond the article"), "{system}");
-        assert!(!system.contains(PARTIAL), "sent whole");
 
         // The question of a kind that has none is left out.
         for (kind, opens) in [
