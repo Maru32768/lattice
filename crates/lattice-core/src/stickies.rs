@@ -304,9 +304,17 @@ mod tests {
         s.conn().query_row("SELECT (SELECT count(*) FROM stickies), (SELECT count(*) FROM sticky_messages)", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
     }
 
-    use BlockKind::{Code, Heading, Image, Paragraph, Table};
-    const WAL: &[(BlockKind, &str)] =
-        &[(Heading, "Durability"), (Paragraph, "The log goes first."), (Image, "A diagram of pages"), (Code, "fsync(fd);"), (Table, "sync\tms\nfull\t4")];
+    use BlockKind::{Blockquote, Caption, Code, Heading, Image, ListItem, Paragraph, Table};
+    const WAL: &[(BlockKind, &str)] = &[
+        (Heading, "Durability"),
+        (Paragraph, "The log goes first."),
+        (Image, "A diagram of pages"),
+        (Code, "fsync(fd);"),
+        (Table, "sync\tms\nfull\t4"),
+        (Caption, "Milliseconds"),
+        (ListItem, "Then the pages."),
+        (Blockquote, "Write ahead."),
+    ];
 
     #[tokio::test]
     async fn the_model_gets_the_article_the_passage_and_the_request_and_nothing_else() {
@@ -323,7 +331,8 @@ mod tests {
         ));
         let llm = Fake::new(ANSWER);
         let first = block(&s, a, "The log");
-        const ARTICLE: &str = "<sources>\n\n# 記事: WAL\n[1] ## Durability\n[2] The log goes first.\n[3] fsync(fd);\n[4] sync\tms\nfull\t4\n</sources>\n\n";
+        const ARTICLE: &str = "<sources>\n\n# 記事: WAL\n[1] ## Durability\n[2] The log goes first.\n[3] fsync(fd);\n[4] sync\tms\nfull\t4\n\
+             [5] Milliseconds\n[6] Then the pages.\n[7] Write ahead.\n</sources>\n\n";
 
         ask(&s, &llm, a, Some(first), StickyKind::Question, " ログが先 ", " なぜ？ ").await.unwrap();
         let question = "<question>\nなぜ？\n</question>\n\nAnswer the question above about the passage, in Japanese.\n";
