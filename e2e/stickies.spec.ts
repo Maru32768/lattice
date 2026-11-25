@@ -771,9 +771,11 @@ test("in a narrow pane a view of cards alone stays there as the text above it, a
     await expect(shell.locator(paraBlock(i))).not.toBeInViewport();
   }
   expect(await y()).toBeCloseTo(-40, 0);
-  await shell.locator(paraBlock(10)).evaluate((el) => (el.style.paddingBottom = "333px"));
-  await frames(shell);
-  expect(await y()).toBeCloseTo(-40, 0);
+  for (const px of [333, 335]) {
+    await shell.locator(paraBlock(10)).evaluate((el, px) => (el.style.paddingBottom = `${px}px`), px);
+    await frames(shell);
+    expect(await y()).toBeCloseTo(-40, 0);
+  }
   for (const width of [1230, 1260, 1900, 1200]) {
     await shell.setViewportSize({ width, height: 800 });
     await frames(shell);
