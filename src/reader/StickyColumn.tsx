@@ -126,6 +126,8 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   }));
   const tops = stack(spots, beside ? cards.findIndex(({ el }) => el.hasAttribute("data-opened")) : -1);
   cards.forEach(({ el }, i) => (el.style.top = `${tops[i]}px`));
+  // Cards that give way to the opened one do not take the column's end up, and a view at it.
+  column.style.setProperty("--sticky-end", `${Math.max(0, ...stack(spots).map((at, i) => at + spots[i]!.height))}px`);
 
   if (line) {
     const moved = offsetOf(line, scroller) - offset;

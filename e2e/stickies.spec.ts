@@ -600,6 +600,23 @@ test("a view that starts in a card, or at the article's end, is there again afte
   expect(await scrollTop(shell)).toBe(top);
 });
 
+test("a question opened at the end of an article moves no text as the cards before it give way", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await askMany(shell, LONG_ID, paraId(77), 12);
+  await scrollTo(shell, paraBlock(77), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop -= 40));
+  await frames(shell);
+  const at = async () => [await scrollTop(shell), (await boxOf(shell.locator(paraBlock(79)))).y];
+  const before = await at();
+  await askAbout(shell, "質問", paraBlock(79));
+  await expect(field(shell)).toBeFocused();
+  expect(await at()).toEqual(before);
+  await shell.keyboard.press("Escape");
+  await expect(cards(shell)).toHaveCount(12);
+  expect(await at()).toEqual(before);
+});
+
 test("in a narrow pane the text being read stays still as an answer above it comes and goes", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await startNarrow(shell);
