@@ -82,6 +82,8 @@ test("a summary's sentences and points go to the blocks they cite, and a number 
   await expect(app.locator("#b-103")).toHaveClass(/is-cite/);
   await expect(app.locator("#b-103 .blk-label")).toHaveText("要約の出典");
   await expect(app.locator(".summary-strip .summary-body")).toContainText("MVCCで実装する");
+  // Not the place this tab's Reader kept at the jump before.
+  await expect(app.locator("#b-103")).toBeInViewport({ ratio: 1 });
 });
 
 test("g y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
