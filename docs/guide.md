@@ -921,7 +921,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 
 ## CLI and MCP
 
-`lattice-cli.exe` lets you search, read and change your saved articles from a terminal. AI agents such as Claude Code use the same library through the MCP server built into Lattice ([Use Lattice from Claude Code](#use-lattice-from-claude-code)).
+`lattice-cli.exe` lets you search, read and change your saved articles from a terminal. AI agents such as Claude Code and Codex use the same library through the MCP server built into Lattice ([Use Lattice from Claude Code or Codex](#use-lattice-from-claude-code-or-codex)).
 
 - Both the installer and the portable zip put it in the same folder as `Lattice.exe`. The installer's default location is `%LOCALAPPDATA%\Lattice`. It is not added to PATH, so run it by its full path.
 - It uses the same data as the app, including a portable copy's `data` folder or a folder chosen in **Settings › Logs & storage**. It works while the app is running.
@@ -1003,13 +1003,15 @@ Options for every command:
 - Changes made with the CLI show in the app the next time it reloads the list.
 - With `--allow-delete`, the CLI deletes without asking you, because you run it yourself. An agent deletes through the MCP server, and Lattice asks you before each deletion.
 
-### Use Lattice from Claude Code
+### Use Lattice from Claude Code or Codex
 
 Agents connect to the MCP server built into Lattice, at `http://127.0.0.1:8788/mcp`. It is off by default, runs only while Lattice is running, and accepts connections only from this PC.
 
-1. In **Settings › AI agents (MCP)**, turn on **Run the MCP server**.
-2. In **New registration**, enter a name, choose a role and where to use it, and press **Register**.
-3. Press **Copy command** on the registration and run the copied command in a terminal. If the registration is for **One project**, run the command in that project's folder.
+1. In **New registration** in **Settings › AI agents (MCP)**, choose a role and what to register for. For **All of Claude Code** and **Codex**, an empty name becomes the agent's name.
+2. Press **Register**. This turns on **Run the MCP server** if it is off. For **All of Claude Code** and **Codex**, Lattice also adds the registration to that agent's own settings. Open sessions can use it once they reconnect.
+3. For **One Claude Code project**, press **Copy command** on the registration and run the copied command from a terminal in that project's folder. For **Other**, press **Copy settings** and paste the copied settings into the agent's MCP settings.
+
+If Lattice cannot change the agent's settings, it shows why. The registration in Lattice stays, so try again with **Add to Claude Code** or **Add to Codex**, or add it by hand with the copied text. If the agent's settings already have another registration named `lattice`, Lattice leaves it as it is. It also leaves the rest of the agent's settings as they are.
 
 Each registration has its own token, and its role decides what the agent can do:
 
@@ -1019,9 +1021,9 @@ Each registration has its own token, and its role decides what the agent can do:
 | **Edit** | Also use the commands that need write permission. |
 | **Delete** | Also use the commands that need delete permission. Lattice asks you before each deletion ([Approve deletions](#approve-deletions)). |
 
-- Only one registration can be for **All of Claude Code**, and every project uses it. A registration for **One project** is used in its project instead. In a Git repository, it applies to the whole repository. Elsewhere, it applies only to the project's folder.
+- **All of Claude Code** and **Codex** take one registration each, and every project uses it. In a project with a registration for **One Claude Code project**, Claude Code uses that one instead. In a Git repository, it applies to the whole repository. Elsewhere, it applies only to the project's folder.
 - A role change takes effect from the agent's next call, but the tools the agent sees change only when it reconnects.
-- After **Regenerate token** or **Delete**, the old token stops working from the next call, even for agents that are already connected. The confirmation dialog shows the `claude mcp remove` command that takes the old registration out of Claude Code.
+- After **Regenerate token** or **Delete**, the old token stops working from the next call, even for agents that are already connected. For **All of Claude Code** and **Codex**, Lattice also changes the token in the agent's settings or removes the registration from them. Reconnect open sessions after you regenerate a token. For **One Claude Code project**, the confirmation dialog shows the `claude mcp remove` command that takes the old registration out of Claude Code. For **Other**, change the agent's settings by hand.
 - **Activity** lists the sessions that agents have started and each registration's latest 20 calls. Turning the server off or quitting Lattice clears both.
 - Changes an agent makes show in the app at once.
 - Registrations are left out of backups. After you restore a backup, make them again.
