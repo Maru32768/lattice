@@ -217,8 +217,8 @@ export function StickyColumn({
     const read = () => {
       const k = kept.current;
       // In a pane of another width `place` is yet to come, to tell by the scrollTop.
-      if (k?.width === widthOf(scroller)) {
-        kept.current = lineOf(k, scroller) ? { ...k, top: scroller.scrollTop } : keep(scroller);
+      if (k?.width === widthOf(scroller) && !lineOf(k, scroller)) {
+        kept.current = keep(scroller);
       }
     };
     scroller.addEventListener("scroll", read, { passive: true });
