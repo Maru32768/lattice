@@ -557,6 +557,21 @@ test("in a narrow pane a card that opens at the bottom of the view moves the tex
   expect(await scrollTop(shell)).toBe(opened + 30);
 });
 
+test("a scroll of a few pixels is kept as a card changes", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(40), "center");
+  await askAbout(shell, "質問", paraBlock(40));
+  await expect(field(shell)).toBeFocused();
+  for (const px of [1, 3, 7, 20]) {
+    await doc(shell).evaluate((el, px) => (el.scrollTop += px), px);
+    await frames(shell);
+    const top = await scrollTop(shell);
+    await shell.keyboard.type("x");
+    await frames(shell);
+    expect(await scrollTop(shell), `${px}`).toBe(top);
+  }
+});
+
 test("closing a card that is not the one opened last moves no text", async ({ shell }) => {
   await startNarrow(shell);
   await scrollTo(shell, paraBlock(40), "center");
