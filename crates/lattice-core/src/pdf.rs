@@ -426,6 +426,9 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
                 cells[row][column].push(g);
             }
         }
+        if crossed(p, grid) {
+            continue;
+        }
         // shortcut: a page that turns keeps every grid that holds enough text, as numbers set across in the columns beside
         // a table (縦中横) sit on its baselines by chance; tell them from a row's other cells if a partly ruled table turns
         // up in vertical writing.
@@ -451,6 +454,39 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
             p.tables.push(Table { at: *at, rows });
         }
     }
+}
+
+/// Whether a word runs across a grid's rules: one too long for its cell, or a mark laid over the page. Each cell would hold
+/// a piece of it.
+fn crossed(p: &Page, grid: &Grid) -> bool {
+    // Where a glyph starts and ends along its line, and where its line is.
+    let along = |g: &Glyph| {
+        if g.vertical || g.turned {
+            (g.y, g.y + g.end - g.x, g.x)
+        } else {
+            (g.x, g.end, g.y)
+        }
+    };
+    let mut ink: Option<Option<(usize, usize)>> = None;
+    let mut prev: Option<&Glyph> = None;
+    for g in &p.glyphs {
+        let goes_on = prev.is_some_and(|prev| {
+            let ((_, end, line), (start, _, next)) = (along(prev), along(g));
+            (prev.vertical || prev.turned) == (g.vertical || g.turned) && (start - end).abs() < 0.15 * g.size && (next - line).abs() < 0.3 * g.size
+        });
+        if !goes_on {
+            ink = None;
+        }
+        if !g.text.trim().is_empty() {
+            let cell = grid.cell(g);
+            if ink.is_some_and(|before| before != cell) {
+                return true;
+            }
+            ink = Some(cell);
+        }
+        prev = Some(g);
+    }
+    false
 }
 
 /// Whether a grid's rows go on past its rules, as a table ruled round only some of its columns does: text beside it, in no
@@ -6575,6 +6611,18 @@ Manual	No. 1234";
         ops += &(shown(178., 408., "for other duties.") + &shown(72., 450., "where it goes on to its end under the figure and the table."));
         let texts = texts_of(&ops);
         assert!(texts.iter().any(|t| t == "Results of the test"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_table_with_text_across_its_rules_stays_text() {
+        let name = shown(78., 226., "spark.dynamicAllocation.enabled") + &shown(250., 226., "false");
+        // Over its empty neighbour, with the rule in a space; past the last rule; and a mark laid over the table.
+        let over = shown(78., 226., "Installation of the server") + &shown(78., 260., "One") + &shown(250., 260., "Two");
+        let past = shown(78., 226., "Name") + &shown(250., 226., "spark.dynamicAllocation.enabled");
+        let mark = shown(78., 226., "Name") + &shown(250., 226., "Value") + &sized(60., 244., 48., "CONFIDENTIAL");
+        for cells in [name, over, past, mark] {
+            no_table(&(ruled(&[72., 170., 320.], &[200., 235., 270.], "strokes") + &shown(78., 214., "Setting") + &shown(250., 214., "Default") + &cells));
+        }
     }
 
     #[test]
