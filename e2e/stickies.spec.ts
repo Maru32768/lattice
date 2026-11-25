@@ -994,6 +994,27 @@ test("a question opened at the end of an article moves no text as the cards befo
   expect(await at()).toEqual(before);
 });
 
+test("closing a question on a paragraph that starts above the view, at the end of a long column, gives the view back", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell, 12);
+  await askMany(shell, LONG_ID, paraId(79), 8);
+  for (const px of [10, 60, 120]) {
+    await scrollTo(shell, paraBlock(79), "start");
+    await doc(shell).evaluate((el, px) => (el.scrollTop += px), px);
+    await frames(shell);
+    const top = await scrollTop(shell);
+    const p = await boxOf(shell.locator(`${paraBlock(79)} p`));
+    await dragTo(shell, [p.x + 4, p.y + p.height - 12], [p.x + 80, p.y + p.height - 12]);
+    await bar(shell).getByRole("button", { name: "質問" }).click();
+    await expect(field(shell)).toBeFocused();
+    await frames(shell);
+    await shell.keyboard.press("Escape");
+    await expect(cards(shell)).toHaveCount(8);
+    await frames(shell);
+    expect(await scrollTop(shell), `${px}`).toBe(top);
+  }
+});
+
 test("the line being read by the column's end stays there through other widths, as the opened card has others give way", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell, 6);

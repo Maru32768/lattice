@@ -246,12 +246,18 @@ export function StickyColumn({
     card?.scrollIntoView({ block: "nearest" });
     moved.current = { from, to: scroller.scrollTop };
   }, [opened]);
-  /** The view goes back from the card opened last, unless the reader has scrolled on. */
-  const goBack = () => {
+  /** The view goes back from the card opened last as that closes, unless the reader has scrolled on. */
+  const goBack = (close: () => void) => {
     const scroller = root.current!.parentElement!;
-    if (scroller.scrollTop === moved.current.to) {
-      scroller.scrollTop = moved.current.from;
+    if (scroller.scrollTop !== moved.current.to) {
+      close();
+      return;
     }
+    scroller.scrollTop = moved.current.from;
+    // A column whose cards give way to the opened one may end above the view there was.
+    const short = moved.current.from - scroller.scrollTop;
+    flushSync(close);
+    scroller.scrollTop += short;
   };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
@@ -363,7 +369,7 @@ function SavedCard({ sticky, opened, blocks, onSource }: { sticky: Sticky; opene
 }
 
 /** A card without an answer: the question being written, the wait, or what went wrong. */
-function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask; opened: boolean; onCancel: () => void }) {
+function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask; opened: boolean; onCancel: (close: () => void) => void }) {
   const t = useT();
   const sendKey = useSendKey();
   const label = t(`stickies.${ask.kind}`);
@@ -378,10 +384,12 @@ function AskCard({ article, ask, opened, onCancel }: { article: number; ask: Ask
   };
   const cancel = (from: HTMLElement) => {
     leave(from);
+    const close = () => dropAsk(article, ask.key);
     if (opened) {
-      onCancel();
+      onCancel(close);
+    } else {
+      close();
     }
-    dropAsk(article, ask.key);
   };
   return (
     <section className="sticky" aria-label={label} data-block={ask.blockId} data-opened={opened || undefined}>
