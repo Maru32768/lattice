@@ -1177,7 +1177,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 | Word meanings | The word and the sentence you saved it with |
 | LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |
 | Chat | Your question, the text of the articles in scope, the last three exchanges, **About you** and your chat instructions |
-| Stickies | The text you selected, your question, the sticky's earlier questions and answers (for a sticky made from an answer, also the selected text, the questions and the answers of the stickies that it comes from), and the article's title and text (only the part of the text around the selection when all of this together is longer than **Context per question**) |
+| Stickies | The text you selected, your question, the sticky's earlier questions and answers (for a sticky made from an answer, also the selected text, the questions and the answers of the stickies that it comes from), and the article's title and text (only the part of the text around the selection, or for a sticky made from an answer around the first sticky's selection, when all of this together is longer than **Context per question**) |
 
 Semantic search, reading aloud and text extraction run only on your computer. The Claude CLI and Codex CLI providers use the accounts you signed in to those CLIs with.
 
