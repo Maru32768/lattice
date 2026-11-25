@@ -1175,6 +1175,46 @@ test("a question opened at the end of an article moves no text as the cards befo
   expect(await at()).toEqual(before);
 });
 
+for (const [from, to] of [
+  [1200, 1900],
+  [1900, 1200],
+]) {
+  test(`closing a question gives the view back in a pane of another width, unless the reader has gone on (${from} to ${to})`, async ({ shell }) => {
+    await shell.setViewportSize({ width: from, height: 800 });
+    await startLong(shell, 12);
+    // The paragraph at the top of the view, and how much of it is above.
+    const place = () =>
+      doc(shell).evaluate((el) => {
+        const y = el.getBoundingClientRect().top;
+        const blocks = [...el.querySelectorAll(".blk")].map((b) => b.getBoundingClientRect());
+        const i = blocks.findIndex((b) => b.bottom > y);
+        return i + Math.max(0, (y - blocks[i].top) / blocks[i].height);
+      });
+    for (const px of [0, 40]) {
+      await shell.setViewportSize({ width: from, height: 800 });
+      await scrollTo(shell, paraBlock(30), from < 1500 ? "end" : "start");
+      await doc(shell).evaluate((el, px) => (el.scrollTop += px), from < 1500 ? 20 : 100);
+      await frames(shell);
+      const before = await place();
+      const p = await boxOf(shell.locator(`${paraBlock(30)} p`));
+      await dragTo(shell, [p.x + 4, p.y + p.height - 12], [p.x + 80, p.y + p.height - 12]);
+      await bar(shell).getByRole("button", { name: "質問" }).click();
+      await expect(field(shell)).toBeFocused();
+      await frames(shell);
+      expect(Math.abs((await place()) - before)).toBeGreaterThan(0.3);
+      await shell.setViewportSize({ width: to, height: 800 });
+      await frames(shell);
+      await doc(shell).evaluate((el, px) => (el.scrollTop += px), px);
+      await frames(shell);
+      const now = await place();
+      await field(shell).press("Escape");
+      await expect(cards(shell)).toHaveCount(0);
+      await frames(shell);
+      expect(await place(), `${px}`).toBeCloseTo(px ? now : before, 1);
+    }
+  });
+}
+
 test("closing a question on a paragraph that starts above the view, at the end of a long column, gives the view back", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell, 12);

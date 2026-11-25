@@ -189,8 +189,8 @@ export function StickyColumn({
   const t = useT();
   const root = useRef<HTMLElement>(null);
   const kept = useRef<Kept | null>(null);
-  /** The scrollTop before the last card opened, and with it. */
-  const moved = useRef({ from: 0, to: 0 });
+  /** The line before the last card opened, and with it. */
+  const moved = useRef<{ from: Kept | null; to: Line | undefined }>(null);
   const { saved, asks, answers, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
   // On each render, as any may add a card or move a block.
@@ -245,25 +245,32 @@ export function StickyColumn({
   }, []);
   useLayoutEffect(() => {
     const scroller = root.current!.parentElement!;
-    const from = scroller.scrollTop;
+    const from = kept.current;
     const card = opened == null ? null : root.current!.querySelector("[data-opened]");
     // Focus by itself would scroll the card to the middle of the view.
     card?.querySelector("textarea")?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: "nearest" });
-    moved.current = { from, to: scroller.scrollTop };
+    if (from && scroller.scrollTop !== from.top) {
+      kept.current = keep(scroller);
+    }
+    moved.current = { from, to: kept.current?.line };
   }, [opened]);
   /** The view goes back from the card opened last as that closes, unless the reader has scrolled on. */
   const goBack = (close: () => void) => {
     const scroller = root.current!.parentElement!;
-    if (scroller.scrollTop !== moved.current.to) {
+    const { from, to } = moved.current ?? {};
+    // The column keeps the same line through other widths, and another as the reader goes on.
+    if (!from?.line.block.isConnected || kept.current?.line !== to) {
       close();
       return;
     }
-    scroller.scrollTop = moved.current.from;
-    // A column whose cards give way to the opened one may end above the view there was.
-    const short = moved.current.from - scroller.scrollTop;
+    const back = () => {
+      scroller.scrollTop += offsetOf(from.line, scroller) - from.offset;
+    };
+    back();
     flushSync(close);
-    scroller.scrollTop += short;
+    // A column whose cards give way to the opened one may have ended above the view there was.
+    back();
   };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
