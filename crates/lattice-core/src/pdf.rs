@@ -1926,14 +1926,15 @@ fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
     for mut l in lines {
         let table = l.table.map(|t| page.tables[t].at);
         if let (Some(t), Some([x0, _, x1, _])) = (l.table, table) {
-            (l.x0, l.x1) = (x0, x1);
             if two {
                 l.side = Side::of(x0, x1, page.width);
             }
-            tables[t].push(l.clone());
-            if tables[t].len() > 1 {
+            if !tables[t].is_empty() {
+                tables[t].push(l);
                 continue;
             }
+            (l.x0, l.x1) = (x0, x1);
+            tables[t].push(l.clone());
         }
         match l.side {
             Side::Left => left.push(l),
@@ -2266,7 +2267,6 @@ fn flows(prev: &Line, l: &Line, pitch: f64) -> bool {
 
 /// Line spacing as a multiple of the font size, from consecutive lines of body text.
 fn pitch(lines: &[Line], body: f64) -> f64 {
-    let lines: Vec<&Line> = lines.iter().filter(|l| l.table.is_none()).collect();
     let mut r: Vec<f64> = lines
         .windows(2)
         .filter(|w| w[0].page == w[1].page && w[0].side == w[1].side && (w[0].size - body).abs() < 0.5 && (w[1].size - body).abs() < 0.5)
@@ -6161,6 +6161,19 @@ pub(crate) mod tests {
         let cells = shown(78., 226., "Model") + &shown(178., 226., "Accuracy") + &shown(78., 252., "A pre-") + &shown(78., 264., "trained one");
         let texts = texts_of(&(body + &ruled(&WIDE, &[200., 240., 280.], "strokes") + &cells + &shown(178., 256., "High")));
         assert_eq!(texts[1], "Model\tAccuracy\nA pre-trained one\tHigh");
+    }
+
+    #[test]
+    fn fields_over_a_table_that_holds_most_of_the_text_are_not_one_paragraph() {
+        let fields = ["Product: the machine, model 42", "Serial number: 1234 5678", "Delivered on the first of May to the works"];
+        let mut ops: String = (0..3).map(|i| shown(72., 80. + 22. * i as f64, fields[i])).collect();
+        let ys: Vec<f64> = (0..=8).map(|i| 170. + 48. * i as f64).collect();
+        ops += &ruled(&WIDE, &ys, "strokes");
+        for y in &ys[..8] {
+            ops += &(shown(78., y + 15., "Part") + &shown(178., y + 15., "It is checked before it leaves the works and once more"));
+            ops += &(shown(178., y + 27., "when it is there, by the one who sets it up and who then") + &shown(178., y + 39., "signs for it."));
+        }
+        assert_eq!(texts_of(&ops)[..3], fields);
     }
 
     #[test]
