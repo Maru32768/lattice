@@ -1147,6 +1147,9 @@ test("a press on a sticky takes the bar away, and the selection that stays does 
     },
     () => card(app, "詳しく").locator(".cite").click(),
   ]) {
+    // A tooltip of the paragraph above would cover it.
+    await app.locator(".art-title").hover();
+    await expect(app.locator(".pop")).toBeHidden();
     await drag(app, "#b-103", "#b-103");
     await expect(bar(app)).toBeVisible();
     await press();
