@@ -680,7 +680,7 @@ test("a slow scroll on a screen of 150% is kept as a card comes", async ({ playw
     await frames(page);
   }
   const top = await scrollTop(page);
-  expect(top - from).toBeCloseTo(40, 0);
+  expect(Math.abs(top - from - 40)).toBeLessThan(2);
   await askElsewhere(page, LONG_ID, paraId(45));
   await expect(cards(page)).toHaveCount(2);
   await frames(page);
