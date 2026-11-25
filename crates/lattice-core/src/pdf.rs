@@ -3681,13 +3681,14 @@ Saw	It cuts. It sings. It rests."]
         assert_eq!(texts_of(&grouped(&[72., 180., 244.], &[160., 180., 212.], lines)), ["Model\tNote\nRecommendation\tEasy to put in place"]);
     }
 
+    fn wide(text: &str) -> f64 {
+        let (_, pages) = glyphs(&pages_of(&[shown(72., 100., text)]), true).unwrap();
+        pages[0].glyphs.last().map_or(0., |g| g.end - 72.)
+    }
+
     /// Columns as wide as their widest text and 6pt at each side of it, as LaTeX sets `|l|l|`.
     fn fitted(rows: &[&[&str]]) -> Vec<f64> {
-        let wide = |text: &&str| {
-            let (_, pages) = glyphs(&pages_of(&[shown(72., 100., text)]), true).unwrap();
-            pages[0].glyphs.last().map_or(0., |g| g.end - 72.)
-        };
-        let widest = |column: usize| rows.iter().map(|cells| wide(&cells[column])).fold(0., f64::max);
+        let widest = |column: usize| rows.iter().map(|cells| wide(cells[column])).fold(0., f64::max);
         (0..rows[0].len()).fold(vec![72.], |mut xs, column| {
             xs.push(xs[column] + 12. + widest(column));
             xs
@@ -3755,6 +3756,114 @@ Saw	It cuts. It sings. It rests."]
         let lines: &[(f64, &[&str])] =
             &[(172., &["", "Latency", "Size"]), (178., &["Name", "", ""]), (184., &["", "\\(ms\\)", "\\(GB\\)"]), (202., &["One", "12", "0.8"])];
         assert_eq!(texts_of(&grouped(&[72., 222., 382., 540.], &[160., 190., 206.], lines)), ["Name\tLatency (ms)\tSize (GB)\nOne\t12\t0.8"]);
+    }
+
+    #[test]
+    fn a_cells_padding_is_kept_at_both_its_sides() {
+        let (name, goes_on) = ("A tree kept as", "references to it");
+        let (text, rest) = ("Easy to insert, but", "hard to query");
+        // The word under it would fit in the padding at one side.
+        let middle = 84. + wide(goes_on);
+        let right = middle + 6. + wide(text) + 6. * wide(rest) / rest.len() as f64 + 3.;
+        let ops = groups(&[72., middle, right], 14., &[&[&["Design", "Queries"]], &[&[name, text], &[goes_on, rest]]]);
+        let table = format!("Design\tQueries\n{name} {goes_on}\t{text} {rest}");
+        assert_eq!(texts_of(&ops), [&table[..]]);
+        // As Word ends a cell: with a space in the padding.
+        assert_eq!(texts_of(&(ops + &shown(right - 3.28, 183.8, " "))), [table]);
+    }
+
+    #[test]
+    fn the_head_tells_the_padding_of_a_column_set_in_its_middle() {
+        let (one, other) = ("Quite fast", "Slow one");
+        // A head as wide as the column's text can be.
+        let w = wide(one) + 6. * wide(other) / other.len() as f64 + 14.;
+        let xs = [72., 222., 222. + w];
+        let mut ops = ruled(&xs, &[196., 212., 244.], "strokes") + &shown(78., 208., "Name of it") + &shown(228., 208., "S");
+        ops += &shown(222. + w - 6. - wide("d"), 208., "d");
+        for (y, name, text) in [(222., "Ours", one), (236., "Theirs", other)] {
+            ops += &(shown(78., y, name) + &shown(222. + (w - wide(text)) / 2., y, text));
+        }
+        let texts = texts_of(&ops);
+        assert!(texts[0].ends_with("Ours\tQuite fast\nTheirs\tSlow one"), "{texts:?}");
+    }
+
+    #[test]
+    fn a_line_in_two_pieces_is_as_wide_as_both() {
+        let widest = "It is there to be read";
+        let mut ops =
+            ruled(&[72., 400., 412. + wide(widest)], &[196., 212., 244.], "strokes") + &shown(78., 208., "From and to") + &shown(406., 208., "What it is for");
+        for (y, [from, to, text]) in
+            [(222., ["From the start of it", "to the very end", widest]), (236., ["and from the end", "to the very start", "more than once"])]
+        {
+            ops += &(shown(78., y, from) + &shown(394. - wide(to), y, to) + &shown(406., y, text));
+        }
+        let texts = texts_of(&ops);
+        assert!(texts.len() == 1 && texts[0].contains('\t'), "{texts:?}");
+    }
+
+    #[test]
+    fn a_number_under_words_is_the_last_of_them() {
+        let rows: &[&[&str]] = &[&["Cost", "Queries"], &["It costs about", "Easy to insert, but"], &["300", "hard to query"]];
+        let texts = texts_of(&groups(&fitted(rows), 14., &[&rows[..1], &rows[1..]]));
+        assert_eq!(texts, ["Cost\tQueries\nIt costs about 300\tEasy to insert, but hard to query"]);
+    }
+
+    #[test]
+    fn a_name_alone_on_its_line_starts_a_row_where_the_one_over_it_has_room() {
+        let left = |_: usize, _: &str| 6.;
+        let rows: &[&[&str]] = &[&["Name", "Colour", "Weight"], &["Apple", "red", "1.2"], &["Vegetables", "", ""], &["Kale", "green", "0.8"]];
+        assert_eq!(texts_of(&banded(&[72., 222., 382., 540.], &left, rows)), [as_table(rows)]);
+        // And goes on with it where it has none.
+        let lines: &[&[&str]] =
+            &[&["Design", "Use"], &["List", "Easy to read"], &["Nested sets kept", "Hard to write"], &["in order", ""], &["Table", "Easy again"]];
+        let w = wide("Nested sets kept");
+        let texts = texts_of(&banded(&[72., 84. + w, 300. + w], &left, lines));
+        assert_eq!(texts, ["Design\tUse\nList\tEasy to read\nNested sets kept in order\tHard to write\nTable\tEasy again"]);
+    }
+
+    #[test]
+    fn addresses_beside_one_line_stay_text() {
+        let rows: &[&[&str]] =
+            &[&["Bill to", "Ship to", "Sum"], &["Ann Author", "Bob Baker", "$26.00"], &["1 Main St", "2 Side St", ""], &["Town", "City", ""]];
+        no_table(&banded(&[72., 222., 372., 540.], &|_, _| 6., rows));
+    }
+
+    #[test]
+    fn numbers_broken_after_a_comma_are_of_one_cell() {
+        let lines: &[(f64, &[&str])] =
+            &[(174., &["In", "Event"]), (194., &["3.1,", "The first public"]), (206., &["3.2", "release"]), (224., &["4.0", "The last"])];
+        assert_eq!(texts_of(&grouped(&[72., 108., 200.], &[160., 180., 210., 230.], lines)), ["In\tEvent\n3.1, 3.2\tThe first public release\n4.0\tThe last"]);
+    }
+
+    #[test]
+    fn rows_no_rule_parts_with_text_in_less_than_half_their_cells_stay_text() {
+        let full = ["One", "1", "1", "1", "1", "1"];
+        let bare = ["Two", "", "", "", "", ""];
+        let rows: Vec<&[&str]> = [&["Name", "A", "B", "C", "D", "E"][..], &full].into_iter().chain([&bare[..]; 6]).chain([&full[..]]).collect();
+        no_table(&banded(&[72., 160., 220., 280., 340., 400., 460.], &|_, _| 6., &rows));
+    }
+
+    #[test]
+    fn letters_on_their_side_do_not_tell_rows() {
+        // Latin turned down a cell of a table set down, its lines at the same places as the next cell's.
+        let latin = |x: f64, y: f64, text: &str| format!("BT /F1 10 Tf 0 -1 1 0 {x} {} Tm ({text}) Tj ET\n", 792. - y);
+        let columns: String = (0..4).map(|i| set_down(560. - 12. * i as f64, 100., &TEN_DOWN.repeat(3))).collect();
+        let cells = latin(430., 106., "Strong") + &latin(410., 106., "Lasting") + &latin(430., 206., "Costly") + &latin(410., 206., "Easy");
+        let heads = latin(480., 106., "Pros") + &latin(480., 206., "Cons");
+        let ops = columns + &ruled(&[400., 460., 500.], &[100., 200., 300.], "strokes") + &heads + &cells;
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
+        assert_eq!(ir.blocks.iter().find_map(|b| b.attrs.rows.clone()).map(|rows| rows.len()), Some(2), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn katakana_dots_list_the_lines_of_a_cell() {
+        let dot = (1..9000).find(|&c| crate::pdf_japan1::utf16(c) == Some(&[0x30, 0xFB][..])).unwrap();
+        let at = |x: f64, y: f64, cids: &str| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, cids.replace("027E", &format!("{dot:04X}")));
+        let heads = at(78., 114., "034B034D") + &at(206., 114., "034F0351");
+        let cells = at(78., 136., "027E034B") + &at(206., 136., "027E034D") + &at(78., 152., "027E034F") + &at(206., 152., "027E0351");
+        let ops = ruled(&[72., 200., 328.], &[100., 120., 160.], "strokes") + &format!("BT /F3 10 Tf {heads}{cells}ET\n");
+        let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(2), "{:?}", kinds(&ir));
     }
 
     #[test]
@@ -6570,7 +6679,7 @@ Manual	No. 1234";
     }
 
     #[test]
-    fn a_superscript_in_a_row_no_rule_parts_stays_in_its_row() {
+    fn a_superscript_in_a_row_no_rule_parts_stays_in_its_cell() {
         // As TeX sets it: 7pt raised 3.6pt.
         let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
         ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert"));
@@ -6579,7 +6688,7 @@ Manual	No. 1234";
         ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
         let texts = texts_of(&ops);
         let rows: Vec<&str> = texts[0].split('\n').collect();
-        assert!(rows.len() == 4 && rows[1] == "Adjacency List\tEasy" && rows[2].contains('a') && rows[2].starts_with("Nested Sets"), "{texts:?}");
+        assert!(rows.len() == 4 && rows[1] == "Adjacency List\tEasy" && rows[2].starts_with("Nested Sets") && rows[2].ends_with("a\tHard"), "{texts:?}");
     }
 
     #[test]
