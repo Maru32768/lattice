@@ -419,9 +419,9 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) -> Vec<Table> {
         for g in &mut set {
             g.table = grids.iter().position(|grid| grid.cell(g).is_some());
         }
-        // Less the lines of a table across the middle: its rows part at a gap there.
-        let part = |l: &&Line| l.table.is_none_or(|t| Side::of(grids[t].at[0], grids[t].at[2], p.width) != Side::Full);
-        in_two_columns(page_lines(0, &set.iter().collect::<Vec<_>>(), p.width).iter().filter(part), p.width)
+        // Less the lines of a table across the middle, which can hold most of the text of a page in two columns.
+        let in_half = |l: &&Line| l.table.is_none_or(|t| Side::of(grids[t].at[0], grids[t].at[2], p.width) != Side::Full);
+        in_two_columns(page_lines(0, &set.iter().collect::<Vec<_>>(), p.width).iter().filter(in_half), p.width)
     };
     for grid in &grids {
         let cell = |g: &Glyph| grid.cell(g).filter(|_| g.table.is_none() && (turns || !g.turned));
@@ -1856,7 +1856,9 @@ fn in_two_columns<'a>(lines: impl Iterator<Item = &'a Line>, width: f64) -> bool
 fn order(mut lines: Vec<Line>, page: &Page) -> Vec<Line> {
     // A table set across on a turned page tells nothing of its columns.
     let guides = |l: &&Line| l.table.is_none() || !page.vertical;
-    let two = in_two_columns(lines.iter().filter(guides), page.width);
+    // A table across the middle has rows that part at a gap there, as if in two columns.
+    let in_half = |l: &&Line| l.table.is_none_or(|t| Side::of(page.tables[t].at[0], page.tables[t].at[2], page.width) != Side::Full);
+    let two = in_two_columns(lines.iter().filter(guides), page.width) && in_two_columns(lines.iter().filter(guides).filter(in_half), page.width);
     if two {
         for l in &mut lines {
             l.side = Side::of(l.x0, l.x1, page.width);
@@ -6009,6 +6011,16 @@ pub(crate) mod tests {
         assert_eq!(ir.meta.title.as_deref(), Some("Electrical data"));
         let kinds: Vec<&str> = kinds(&ir).into_iter().map(|k| k.0).collect();
         assert_eq!(kinds, ["table", "heading", "table", "heading", "table"]);
+    }
+
+    #[test]
+    fn a_heading_by_a_table_whose_rows_part_in_the_middle_stays_a_heading() {
+        let (xs, ys) = ([72., 306., 540.], [100., 120., 140., 160., 180.]);
+        let cell = |x: f64, i: usize| shown(x, ys[i] + 14., &format!("Cell {i} of the table here"));
+        let cells: String = (0..4).map(|i| cell(76., i) + &cell(310., i)).collect();
+        let ops = ruled(&xs, &ys, "strokes") + &cells + &sized(72., 220., 14., "Current State of the Compliance") + &across(250., "A line is read");
+        let ir = to_ir(&with_contents(&pdf(&[vec![], vec![]], None), &[(1, &ops)]), None).unwrap();
+        assert_eq!(kinds(&ir).into_iter().map(|k| k.0).collect::<Vec<_>>(), ["table", "heading", "paragraph"]);
     }
 
     #[test]
