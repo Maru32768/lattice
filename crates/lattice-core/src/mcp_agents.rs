@@ -16,7 +16,7 @@ use regex::Regex;
 use serde_json::{Map, Value, json};
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use toml_edit::{Decor, DocumentMut, InlineTable, Item, TableLike};
+use toml_edit::{Decor, DocumentMut, InlineTable, Item, Table, TableLike};
 
 use crate::mcp::{CLIENT_NAME, Target, registrations, url};
 use crate::msg;
@@ -506,6 +506,15 @@ fn within(item: &mut Item, change: impl FnOnce(&mut dyn TableLike)) -> Option<()
     Some(())
 }
 
+fn tables_within(table: &Table) -> Vec<&Table> {
+    let own = table.iter().flat_map(|(_, item)| match item {
+        Item::Table(table) => vec![table],
+        Item::ArrayOfTables(tables) => tables.iter().collect(),
+        Item::None | Item::Value(_) => vec![],
+    });
+    own.flat_map(|table| std::iter::once(table).chain(tables_within(table))).collect()
+}
+
 /// The comments above the entry stay: they may be about the whole file.
 fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
     let servers = doc.get_mut(SERVERS)?;
@@ -516,6 +525,13 @@ fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
     let (mut key, item) = servers.as_table_mut()?.get_key_value_mut(CLIENT_NAME)?;
     match item {
         Item::Table(table) if !table.is_dotted() => {
+            // A comment above one that stands after another table may be about that one.
+            let within = tables_within(table);
+            let places: Vec<isize> = std::iter::once(&*table).chain(within.iter().copied()).filter_map(Table::position).collect();
+            let apart = places.iter().max()? - places.iter().min()? >= places.len() as isize;
+            if apart && within.iter().any(|t| t.decor().prefix().and_then(|above| above.as_str()).is_none_or(|above| above.contains('#'))) {
+                return None;
+            }
             table.clear();
             table.decor_mut().set_suffix(MARK);
         }
@@ -1069,6 +1085,10 @@ http_headers = {
         let s = Sandbox::new("codex-kept");
         let r = s.register(Target::Codex);
         s.delete(&r);
+        let apart = "[mcp_servers.lattice-dev.http_headers]\nAuthorization = \"Bearer old\"\n";
+        let split = format!("[mcp_servers.lattice-dev]\n{AT}\n[tui]\na = 1\n");
+        assert!(codex_file(&format!("{split}# b = 2\n\n{apart}"), true).await.unwrap_err().contains(CANNOT_KEEP), "that is [tui]'s");
+        assert_eq!(codex_file(&format!("{split}\n{apart}"), true).await.unwrap(), "[tui]\na = 1\n");
         let commented = format!("mcp_servers = {{\n  a = {{ command = \"a\" }}, # a\n  # ours\n  lattice-dev = {{ {AT} }}, # l\n}} # all\n");
         assert!(codex_file(&commented, true).await.unwrap_err().contains(CANNOT_KEEP));
         for before in [other, "mcp_servers = \"none\"\n", "a.x = 1\nb = 2\na.y = 3\n"] {
