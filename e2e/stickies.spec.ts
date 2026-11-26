@@ -3489,6 +3489,51 @@ test("beside the text a card that gave way to the one opened last unfolds where 
   expect(await text()).toBeCloseTo(before, 0);
 });
 
+test("a sticky folded before an ask on the text opens stays folded as that closes unsent", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askMany(shell, LONG_ID, paraId(10), 2);
+  await cards(shell).first().getByRole("button", { name: "付箋をたたむ" }).click();
+  await askAbout(shell, "質問", paraBlock(12));
+  expect(await foldedOnes(shell)).toEqual([true, true, false]);
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell)).toEqual([true, false]);
+});
+
+test("an answer that waits as an ask on the text opens and closes unsent comes unfolded", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(1);
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく").locator(".answer")).toBeVisible();
+  expect(await foldedOnes(shell)).toEqual([false]);
+});
+
+test("after a fold of the reader's an answer comes folded, and an ask on the text closed unsent gives nothing back", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "用語", paraBlock(8));
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "用語").locator(".answer")).toBeVisible();
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await unfold(card(shell, "用語"));
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく")).toHaveAttribute("data-folded");
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell)).toEqual([false, true]);
+});
+
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
