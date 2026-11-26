@@ -887,9 +887,10 @@ mod tests {
         let kept = [Some("別の説明。".to_string()), Some("まれ。".to_string()), None];
         assert_eq!(explanations(&s), kept, "the newer one, of its own sentence only, and none for a blank one");
 
-        capture(&s, &with(&"あ".repeat(MAX_EXPLANATION + 1), "More skew again.")).unwrap();
-        let long = explanations(&s)[3].clone().unwrap();
-        assert_eq!(long, format!("{}…", "あ".repeat(MAX_EXPLANATION)), "cut to the bound");
+        capture(&s, &with(&"あ".repeat(2_000), "Write skew at the bound.")).unwrap();
+        capture(&s, &with(&"い".repeat(2_001), "More skew again.")).unwrap();
+        let long = &explanations(&s)[3..];
+        assert_eq!(long, [Some("あ".repeat(2_000)), Some(format!("{}…", "い".repeat(2_000)))], "2,000 characters kept whole, and cut there");
     }
 
     #[test]
