@@ -564,6 +564,8 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
     for (lines, &room) in columns.iter().zip(widths) {
         let mut tells = false;
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
+            let shared = baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1;
+            tells |= shared;
             if is_bullet(&after.text) || after.text.starts_with('・') {
                 continue;
             }
@@ -587,10 +589,7 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
             } else {
                 0
             };
-            if baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1 {
-                tells = true;
-                parted |= fits;
-            }
+            parted |= shared && fits;
         }
         tellers += usize::from(tells);
     }
@@ -3697,6 +3696,17 @@ pub(crate) mod tests {
         let features: &[&[&str]] = &[&["Feature", "Details"], &["Search", "\\267 fast"], &["", "\\267 fuzzy"], &["Export", "\\267 PDF"], &["", "\\267 CSV"]];
         for rows in [named, listed, features] {
             no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..], &rows[1..2]]));
+        }
+        // A list beside a value on each item's line, as the rows of a group set them.
+        let priced: &[&[&str]] = &[
+            &["Kind", "Item", "Price"],
+            &["Fruit", "\\267 Apples", "1.00"],
+            &["", "\\267 Pears", "2.00"],
+            &["Greens", "\\267 Leeks", "0.80"],
+            &["", "\\267 Kale", "1.20"],
+        ];
+        for xs in [fitted(priced), roomy(priced)] {
+            no_table(&groups(&xs, 14., &[&priced[..1], &priced[1..3], &priced[3..]]));
         }
     }
 
