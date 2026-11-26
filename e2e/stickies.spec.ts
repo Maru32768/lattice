@@ -3312,9 +3312,10 @@ test("in a narrow pane the column's end takes no press on the text's first pixel
     const r = document.createRange();
     r.selectNodeContents(p);
     const line = r.getClientRects()[0];
-    return document.elementFromPoint(line.left + 0.5, line.top + line.height / 2) === p;
+    const end = document.querySelector(".stickies")!.getBoundingClientRect().left;
+    return { over: Math.abs(end - line.left) < 1, under: document.elementFromPoint(line.left + 0.5, line.top + line.height / 2) === p };
   });
-  expect(under).toBe(true);
+  expect(under).toEqual({ over: true, under: true });
 });
 
 for (const narrow of [true, false]) {
