@@ -881,12 +881,14 @@ mod tests {
         let explanations = |s: &Store| list(s).unwrap()[0].contexts.iter().map(|c| c.explanation.clone()).collect::<Vec<_>>();
         assert_eq!(explanations(&s), [Some("書き込みの偏り。".to_string())], "trimmed, and kept by a capture without one");
 
+        capture(&s, &with("まれ。", "Write skew is rare.")).unwrap();
         capture(&s, &with("別の説明。", "Snapshot isolation permits write skew.")).unwrap();
-        capture(&s, &with("  ", "Write skew is rare.")).unwrap();
-        assert_eq!(explanations(&s), [Some("別の説明。".to_string()), None], "the newer one, and none for a blank one");
+        capture(&s, &with("  ", "Write skew again.")).unwrap();
+        let kept = [Some("別の説明。".to_string()), Some("まれ。".to_string()), None];
+        assert_eq!(explanations(&s), kept, "the newer one, of its own sentence only, and none for a blank one");
 
         capture(&s, &with(&"あ".repeat(MAX_EXPLANATION + 1), "More skew again.")).unwrap();
-        let long = explanations(&s)[2].clone().unwrap();
+        let long = explanations(&s)[3].clone().unwrap();
         assert_eq!(long, format!("{}…", "あ".repeat(MAX_EXPLANATION)), "cut to the bound");
     }
 
