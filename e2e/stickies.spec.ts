@@ -739,6 +739,8 @@ test("in a narrow pane a card that opens at the bottom of the view moves the tex
   await expect(field(shell)).toBeInViewport({ ratio: 1 });
   const opened = await scrollTop(shell);
   await doc(shell).evaluate((el) => (el.scrollTop += 30));
+  // The scroll event comes with the next frame, as it does before a reader's next key.
+  await frames(shell);
   await field(shell).press("Escape");
   await expect(cards(shell)).toHaveCount(0);
   expect(await scrollTop(shell)).toBe(opened + 30);
