@@ -3661,6 +3661,9 @@ pub(crate) mod tests {
         let lines: &[(f64, &[&str])] =
             &[(172., &["", "Latency", "Size"]), (178., &["Name", "", ""]), (184., &["", "\\(ms\\)", "\\(GB\\)"]), (202., &["One", "12", "0.8"])];
         assert_eq!(texts_of(&grouped(&[72., 222., 382., 540.], &[160., 190., 206.], lines)), ["Name\tLatency (ms)\tSize (GB)\nOne\t12\t0.8"]);
+        // A head whose cell is broken by hand into three lines, none on another column's baseline.
+        let lines: &[(f64, &[&str])] = &[(172., &["Item", "Price"]), (184., &["", "per unit"]), (196., &["", "in dollars"]), (214., &["Widget", "12.00"])];
+        assert_eq!(texts_of(&grouped(&[72., 222., 382.], &[160., 202., 220.], lines)), ["Item\tPrice per unit in dollars\nWidget\t12.00"]);
     }
 
     #[test]
