@@ -3907,6 +3907,34 @@ test("メモに下書き: a Vim memo open shows the text, a blank line before it
   await expect.poll(() => lastMemo(shell), "typing on keeps it").toEqual({ id: SNAPSHOT_ID, body: `2PL\n\n${draft}!` });
 });
 
+test("メモに下書き: text added from a sticky is saved after the memo's save before it, and before the next", async ({ shell }) => {
+  await hold(shell, "set_article_note");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  const bodies = async () => (await callsOf(shell, "set_article_note")).map((c) => (c as { body: string }).body);
+  await memoButton(shell).click();
+  await memoField(shell).fill("2PL");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await frames(shell);
+  expect(await bodies(), "the add waits for the save before it").toEqual(["2PL"]);
+  await memoField(shell).press("Control+End");
+  await memoField(shell).pressSequentially("!");
+  await memoField(shell).blur();
+  await shell.evaluate(() => window.__e2e.release("set_article_note", 1));
+  await expect.poll(bodies).toEqual(["2PL", `2PL\n\n${draft}`]);
+  await frames(shell);
+  expect(await bodies(), "the next save waits for the add").toHaveLength(2);
+  await shell.evaluate(() => window.__e2e.release("set_article_note", 1));
+  await expect.poll(bodies).toEqual(["2PL", `2PL\n\n${draft}`, `2PL\n\n${draft}!`]);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+});
+
 test("メモに下書き: a failed draft is asked again, Esc and キャンセル leave the memo alone, and one added marks メモ", async ({ shell }) => {
   await shell.addInitScript(() => void (window.__e2eFail = ["sticky_note_draft"]));
   await shell.goto("/");
