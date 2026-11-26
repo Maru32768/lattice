@@ -563,17 +563,19 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
         return false;
     }
     // `parted`: whether a line on a baseline with another column's comes after a line with room for it. `tellers`: the
-    // columns with lines on such baselines. `evidence`: over 0 that the lines wrapped. `listed`: every line under another
-    // starts an item of a list. `wrapped`: none leaves room.
-    let (mut parted, mut tellers, mut evidence, mut listed, mut wrapped) = (false, 0, 0, true, true);
+    // columns with lines on such baselines, less those whose only such lines start items of a list (`listing`).
+    // `evidence`: over 0 that the lines wrapped. `listed`: every line under another starts an item of a list. `wrapped`:
+    // none leaves room.
+    let (mut parted, mut tellers, mut listing, mut evidence, mut listed, mut wrapped) = (false, 0, 0, 0, true, true);
     for (lines, &room) in columns.iter().zip(widths) {
-        let mut tells = false;
+        let (mut tells, mut lists) = (false, false);
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
             let shared = baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1;
-            tells |= shared;
             if is_bullet(&after.text) || after.text.starts_with('・') {
+                lists |= shared;
                 continue;
             }
+            tells |= shared;
             listed = false;
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
             let japanese = after.text.starts_with(joins_without_space);
@@ -597,6 +599,12 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
             parted |= shared && fits;
         }
         tellers += usize::from(tells);
+        listing += usize::from(lists && !tells);
+    }
+    // A list's items share their baselines with the lines of a group's other cells, or by chance with those of a cell
+    // whose lines wrapped.
+    if evidence <= 0 {
+        tellers += listing;
     }
     let filled = columns.iter().filter(|lines| !lines.is_empty()).count();
     // The first band is the head, one row: its cells may each set a unit under their name, which breaks as rows do. It
@@ -3708,6 +3716,17 @@ pub(crate) mod tests {
         let heads = at(78., 114., "034B034D") + &at(206., 114., "034F0351");
         let cells = at(78., 136., "027E034B") + &at(206., 136., "027E034D") + &at(78., 152., "027E034F") + &at(206., 152., "027E0351");
         let ops = ruled(&[72., 200., 328.], &[100., 120., 160., 180.], "strokes") + &format!("BT /F3 10 Tf {heads}{cells}{}ET\n", at(78., 174., "034B"));
+        let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3), "{:?}", kinds(&ir));
+        // Items beside a description whose first line comes to the end of its column, the second item on its second line.
+        let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(6)[..4 * n]);
+        let item = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{dot:04X}{}> Tj ", 792. - y, &"034B034D034F".repeat(2)[..4 * n]);
+        let mut text = set(78., 114., 2) + &set(178., 114., 2) + &set(298., 114., 2);
+        for top in [120., 170.] {
+            text += &(set(78., top + 14., 2) + &item(178., top + 14., 3) + &item(178., top + 30., 4));
+            text += &(set(298., top + 14., 16) + &set(298., top + 30., 5));
+        }
+        let ops = ruled(&[72., 172., 292., 472.], &[100., 120., 170., 220.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
         let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
         assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3), "{:?}", kinds(&ir));
     }
