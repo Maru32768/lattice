@@ -3203,6 +3203,19 @@ test("a passage over two paragraphs is marked over both, and the text's DOM is a
   expect(await html()).toBe(before);
 });
 
+test("each Reader of an article marks its passages", async ({ shell }) => {
+  await makeLong(shell);
+  await shell.setViewportSize({ width: 1900, height: 900 });
+  const root = { kind: "split", id: 90, dir: "row", children: [longPane(1), longPane(3)], sizes: [0.5, 0.5] };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify({ root, focused: 3 }));
+  await shell.goto("/");
+  await expect(doc(shell).first().locator(paraBlock(10))).toBeAttached({ timeout: 30_000 });
+  await askElsewhere(shell, LONG_ID, paraId(10), para(10));
+  await expect(cards(shell)).toHaveCount(2);
+  await frames(shell);
+  expect(await marked(shell)).toEqual([para(10), para(10)]);
+});
+
 test("a child whose parent is folded is marked nowhere and has no line, though its words are in the text too", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
