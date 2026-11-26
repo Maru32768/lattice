@@ -3546,8 +3546,11 @@ pub(crate) mod tests {
         no_table(&table(&xs, &names, Some(194.)));
         no_table(&table(&xs, &[(186., name), (198., "PDF files that"), (210., "you sign")], Some(198.)));
         no_table(&table(&xs, &names, None));
-        // Marks between the name's lines in one column and on its first line in the next.
+        // Marks between the name's lines in one column and on its first line in the next; and marks in another size, as
+        // a group's first row or last row sets them, a little off the name's first line or its last.
         no_table(&(table(&xs, &names, None) + &shown(xs[1] + 26., 200., "x") + &shown(xs[2] + 26., 194., "x")));
+        no_table(&(table(&xs, &names, None) + &sized(xs[1] + 26., 195.8, 12., "x") + &sized(xs[2] + 26., 195.8, 12., "x")));
+        no_table(&(table(&xs, &names, None) + &sized(xs[1] + 26., 204.2, 8., "x") + &sized(xs[2] + 26., 204.2, 8., "x")));
         // Lines with room for the first word under them and two letters more may each be a row's.
         let names = [(194., "Paint the door"), (206., "Paint the gate")];
         let x1 = 84. + wide(names[0].1) + 8. * wide(names[1].1) / 14.;
@@ -3587,6 +3590,16 @@ pub(crate) mod tests {
         let first: &[&[&str]] = &[&["", "Baseline", "98.1"], &["MNIST", "Ours", "99.0"], &["", "Ours, large", "99.3"]];
         let second: &[&[&str]] = &[&["", "Baseline", "88.1"], &["CIFAR", "Ours", "89.0"], &["", "Ours, large", "91.3"]];
         no_table(&groups(&[72., 122., 188., 228.], 12., &[head, first, second]));
+        // The scores set larger at the top of each row, their baselines 1.5pt under the methods'.
+        let xs = [72., 122., 188., 238.];
+        let row = |y: f64, cells: [&str; 3]| shown(xs[0] + 6., y, cells[0]) + &shown(xs[1] + 6., y, cells[1]) + &sized(xs[2] + 6., y + 1.5, 12., cells[2]);
+        let mut ops = ruled(&xs, &[160., 172., 208., 244.], "strokes") + &row(168.4, ["Set", "Method", "Score"]);
+        for (top, set) in [(172., "MNIST"), (208., "CIFAR")] {
+            for (i, (method, score)) in [("Baseline", "98.1"), ("Ours", "99.0"), ("Ours, large", "99.3")].into_iter().enumerate() {
+                ops += &row(top + 12. * i as f64 + 8.4, [["", set, ""][i], method, score]);
+            }
+        }
+        no_table(&ops);
     }
 
     #[test]
