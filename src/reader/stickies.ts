@@ -90,7 +90,6 @@ export function findPassage(texts: string[], own: number, quote: string): [[numb
   const want = quote.replace(/\s+/g, "");
   const at: [number, number][] = [];
   let text = "";
-  let ownEnd = 0;
   texts.forEach((t, i) => {
     for (let j = 0; j < t.length; j++) {
       if (!/\s/.test(t[j]!)) {
@@ -98,12 +97,9 @@ export function findPassage(texts: string[], own: number, quote: string): [[numb
         at.push([i, j]);
       }
     }
-    if (i < own) {
-      ownEnd = text.length;
-    }
   });
   const i = want ? text.indexOf(want) : -1;
-  if (i < 0 || i >= ownEnd) {
+  if (i < 0 || at[i]![0] >= own) {
     return null;
   }
   const [node, offset] = at[i + want.length - 1]!;

@@ -215,24 +215,23 @@ const NOT_SELECTED = "button, textarea, .blk-label, .pop";
 function passageIn(from: Element, within: Element, quote: string) {
   const want = quote.replace(/\s+/g, "").length;
   const nodes: Text[] = [];
-  let own = -1;
+  let own = 0;
   let after = 0;
   const walk = document.createTreeWalker(within, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => (n instanceof Element ? (n.matches(NOT_SELECTED) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP) : NodeFilter.FILTER_ACCEPT),
   });
   walk.currentNode = from;
   for (let n = walk.nextNode() as Text | null; n && after < want; n = walk.nextNode() as Text | null) {
-    if (own < 0 && !from.contains(n)) {
-      own = nodes.length;
-    }
-    if (own >= 0) {
+    if (from.contains(n)) {
+      own++;
+    } else {
       after += n.data.replace(/\s+/g, "").length;
     }
     nodes.push(n);
   }
   const found = findPassage(
     nodes.map((n) => n.data),
-    own < 0 ? nodes.length : own,
+    own,
     quote,
   );
   if (!found) {
