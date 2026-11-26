@@ -1103,13 +1103,16 @@ mod tests {
 
     #[tokio::test]
     async fn what_waits_for_its_turn_is_sent_the_article_as_it_was_asked_on() {
+        // Over the budget, so that what is sent is the window around the passage's block.
+        let texts: Vec<String> = (0..100).map(|i| format!("P{i}. {}END{i}.", "word ".repeat(400))).collect();
+        let blocks: Vec<(BlockKind, &str)> = texts.iter().map(|t| (Paragraph, t.as_str())).collect();
         for case in ["follow-up", "child"] {
             let s = Store::open_in_memory().unwrap();
-            let text = "A paragraph of the same article on both URLs. ".repeat(20);
-            let stays = add(&s, "https://a.dev/post", "WAL", &[(Paragraph, text.as_str())]);
-            let mirror = add(&s, "https://mirror.dev/post", "WAL", &[(Paragraph, text.as_str())]);
+            chat::set_budget(&s, Budget::Small).unwrap();
+            let stays = add(&s, "https://a.dev/post", "WAL", &blocks);
+            let mirror = add(&s, "https://mirror.dev/post", "WAL", &blocks);
             let llm = Fake::new(ANSWER);
-            let on_mirror = ask(&s, &llm, mirror, Some(block(&s, mirror, "A")), StickyKind::Detail, "both", "").await.unwrap();
+            let on_mirror = ask(&s, &llm, mirror, Some(block(&s, mirror, "P70.")), StickyKind::Detail, "word", "").await.unwrap();
             let turn = Semaphore::new(1);
             let held = turn.acquire().await.unwrap();
             let sent = async {
@@ -1130,11 +1133,13 @@ mod tests {
             };
             let meanwhile = async {
                 tokio::task::yield_now().await;
-                merge(&s, mirror, stays, &[(Paragraph, text.as_str())]);
+                merge(&s, mirror, stays, &blocks);
                 drop(held);
             };
             let (sent, ()) = tokio::join!(sent, meanwhile);
             assert_eq!(sent.map(|x| x.article_id), Ok(stays), "{case}: merged while it waits, as while the model answers");
+            let sent = |i: usize| llm.input().contains(&format!("P{i}. ")) && llm.input().contains(&format!(" END{i}."));
+            assert!((65..=75).all(sent) && !sent(0), "{case}: around the block it was asked on");
         }
         for case in ["follow-up", "child", "root"] {
             let s = Store::open_in_memory().unwrap();
