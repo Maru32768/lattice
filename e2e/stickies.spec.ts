@@ -3974,6 +3974,9 @@ test("メモに下書き: the draft of a sticky deleted meanwhile goes to no oth
   await sticky.getByRole("button", { name: "メモに下書き" }).click();
   expect(await callsOf(shell, "sticky_note_draft"), "the new sticky has the deleted one's id").toEqual([{ id: 1 }, { id: 1 }]);
   await shell.evaluate(() => window.__e2e.release("sticky_note_draft", 1));
+  await frames(shell);
+  await expect(sticky.getByRole("status"), "the deleted one's lands nowhere").toHaveText("下書きを作成中…");
+  await expect(draftField(sticky)).toHaveCount(0);
   await shell.evaluate(() => window.__e2e.release("sticky_note_draft"));
   await expect(draftField(sticky)).toHaveValue(/^「PostgreSQL implements it with multi-version concurrency control\.」の下書き。/);
 });
