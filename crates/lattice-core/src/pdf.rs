@@ -802,18 +802,20 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
             "W" | "W*" => clipping = true,
             // The path ends here, and a clip it was marked for starts. pdf.js clips nothing for an empty path.
             "n" | "f" | "F" | "f*" | "S" | "s" | "B" | "B*" | "b" | "b*" => {
-                if clipping && path != NOTHING {
-                    clip = Some(clip.map_or(path, |c| intersect(c, path)));
-                }
                 let paint = op.operator.as_str();
                 if matches!(paint, "s" | "b" | "b*") {
                     sides.push(bounds(&ctm, &[at, start]));
                 }
+                // A rule is only where the clip shows it.
+                let seen = |rule: &Bounds| clip.map_or(Some(*rule), |c| Some(intersect(*rule, c)).filter(|[x0, y0, x1, y1]| x0 <= x1 && y0 <= y1));
                 if matches!(paint, "S" | "s" | "B" | "B*" | "b" | "b*") {
-                    rules.extend(sides.iter().filter(|side| thickness(side) <= RULE_SLACK));
+                    rules.extend(sides.iter().filter(|side| thickness(side) <= RULE_SLACK).filter_map(seen));
                 } else if paint != "n" {
                     // Not a shaded cell.
-                    rules.extend(boxes.iter().filter(|bar| thickness(bar) <= BAR));
+                    rules.extend(boxes.iter().filter(|bar| thickness(bar) <= BAR).filter_map(seen));
+                }
+                if clipping && path != NOTHING {
+                    clip = Some(clip.map_or(path, |c| intersect(c, path)));
                 }
                 (path, clipping) = (NOTHING, false);
                 sides.clear();
@@ -4301,7 +4303,8 @@ pub(crate) mod tests {
         let clipped = each(&|(x0, x1), (y0, y1)| format!("q {x0} {} {} {} re W n Q\n", 792. - y1, x1 - x0, y1 - y0));
         let filled = each(&|(x0, x1), (y0, y1)| format!("{x0} {} {} {} re f\n", 792. - y1, x1 - x0, y1 - y0));
         let shaded = outlined(&[72., 172., 540.], &[110., 160., 200.], &|x, y| (x, 792. - y), "h f");
-        for (shape, cells) in [("clipped", clipped), ("filled boxes", filled), ("shaded paths", shaded)] {
+        let hidden = format!("q 0 0 10 10 re W n\n{}Q\n", ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes"));
+        for (shape, cells) in [("clipped", clipped), ("filled boxes", filled), ("shaded paths", shaded), ("stroked where a clip hides them", hidden)] {
             assert_eq!(read(&(cells + rule + &text)), plain, "{shape}");
         }
     }
