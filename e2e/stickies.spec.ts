@@ -3070,7 +3070,7 @@ const quotes = async (page: Page) => (await asked(page)).map((c) => c.quote.repl
 const lines = (page: Page) =>
   page.locator(".sticky-lines").evaluate((svg) => {
     const o = svg.getBoundingClientRect();
-    const n = "(-?[\\d.e]+)";
+    const n = "(-?[\\d.]+(?:e-?\\d+)?)";
     const each = new RegExp(`M${n} ${n}C${n} ${n} ${n} ${n} ${n} ${n}`, "g");
     return [...(svg.querySelector("path")!.getAttribute("d") ?? "").matchAll(each)].map((m) => ({
       from: { x: o.left + Number(m[1]), y: o.top + Number(m[2]) },
