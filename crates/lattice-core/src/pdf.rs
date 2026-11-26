@@ -520,14 +520,13 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 }
 
 /// Whether the lines of a band, which lies between two rules across, are those of one row: on one baseline, set down a
-/// page that `turns`, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one
-/// line set between its lines, or Japanese lines that each come to the end of their column, as a cell's do where it
-/// wraps. A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns
+/// page that `turns`, in the head, or Japanese lines that come to the end of their column, as a cell's do where it wraps.
+/// A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns
 /// (`alone`) or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A
 /// line wraps where it leaves no room for the first word under it, in the `widths` the columns' text has.
-// shortcut: Latin cells that wrap in two columns of a row, or in a name beside a cell on one of its lines, tell of
-// nothing, as the lines of the rows of a group start in either case and end in a hyphen too, and a group's cells sit on
-// its rows' lines, so their table stays text. Tell them apart if such tables turn up.
+// shortcut: Latin lines that wrap tell of nothing, as the lines of the rows of a group start in either case and end in a
+// hyphen too; nor do lists, a set-down label or one line set between a cell's, as a group's cells sit on its rows' lines.
+// A table with such a band under its head stays text. Tell them apart if such tables turn up.
 fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, width: f64, turns: bool, alone: bool) -> bool {
     let down = |g: &&Glyph| g.vertical || g.turned;
     if turns && band.iter().flatten().any(down) {
@@ -563,20 +562,17 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
         return false;
     }
     // `parted`: whether a line on a baseline with another column's comes after a line with room for it. `tellers`: the
-    // columns with lines on such baselines, less those whose only such lines start items of a list (`listing`).
-    // `evidence`: over 0 that the lines wrapped. `listed`: every line under another starts an item of a list. `wrapped`:
-    // none leaves room.
-    let (mut parted, mut tellers, mut listing, mut evidence, mut listed, mut wrapped) = (false, 0, 0, 0, true, true);
+    // columns with lines on such baselines. `evidence`: over 0 that the lines wrapped.
+    let (mut parted, mut tellers, mut evidence) = (false, 0, 0);
     for (lines, &room) in columns.iter().zip(widths) {
-        let (mut tells, mut lists) = (false, false);
+        let mut tells = false;
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
             let shared = baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1;
+            tells |= shared;
+            // An item of a list starts a line whatever room the line before it leaves.
             if is_bullet(&after.text) || after.text.starts_with('・') {
-                lists |= shared;
                 continue;
             }
-            tells |= shared;
-            listed = false;
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
             let japanese = after.text.starts_with(joins_without_space);
             let word = if japanese {
@@ -586,7 +582,6 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
             };
             let left = room - (before.x1 - before.x0);
             let fits = (word as f64 + 2.) * letter <= left;
-            wrapped &= !fits;
             // Japanese breaks anywhere, so a line of it that goes on is as long as its column. One that leaves room, in any
             // script, ends a row or a line broken by hand.
             evidence += if japanese && left < 3. * letter {
@@ -599,12 +594,6 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
             parted |= shared && fits;
         }
         tellers += usize::from(tells);
-        listing += usize::from(lists && !tells);
-    }
-    // A list's items share their baselines with the lines of a group's other cells, or by chance with those of a cell
-    // whose lines wrapped.
-    if evidence <= 0 {
-        tellers += listing;
     }
     let filled = columns.iter().filter(|lines| !lines.is_empty()).count();
     // The first band is the head, one row: its cells may each set a unit under their name, which breaks as rows do. It
@@ -612,19 +601,10 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
     // column.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
-    // The first column with text names the row; a name set down it is one line.
-    let name = band.iter().zip(&columns).find(|(glyphs, _)| glyphs.iter().any(|g| !g.text.trim().is_empty()));
-    let one_name = tellers < 2 && name.is_some_and(|(_, lines)| lines.len() <= 1);
-    // The cells of the rows of a group are on their rows' baselines, so lines of one set between the lines of a cell that
-    // wraps are that row's.
-    let single: Vec<&Vec<Line>> = columns.iter().filter(|lines| lines.len() == 1).collect();
-    let wraps: Vec<&Vec<Line>> = columns.iter().filter(|lines| lines.len() > 1).collect();
-    let between = |l: &Line| {
-        let lines = wraps[0];
-        lines[0].y < l.y && l.y < lines[lines.len() - 1].y && lines.iter().all(|w| (w.y - l.y).abs() >= 0.3 * w.size)
-    };
-    let centred = wrapped && wraps.len() == 1 && !single.is_empty() && single.iter().all(|lines| between(&lines[0]));
-    head && !threes || one_name || listed || centred || evidence >= enough
+    // The first column with lines names the row. Beside a name of one line, less evidence is enough where no two columns
+    // share a baseline, as those of the rows of a group do.
+    let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
+    head && !threes || one_name && evidence > 0 || evidence >= enough
 }
 
 /// A number: digits, and marks among them. A mark alone, as a dash for no value or a unit in brackets, is none.
@@ -3516,18 +3496,18 @@ pub(crate) mod tests {
     const SCORES: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", "72.3"], &["Ours (large)", "78.1", "75.6"]];
 
     #[test]
-    fn a_name_in_the_middle_of_its_row_beside_three_lines_leaves_it_a_table() {
+    fn a_name_in_the_middle_of_its_row_beside_three_latin_lines_stays_text() {
         let ops =
             ruled(&WIDE, &[200., 220., 270., 290.], "strokes") + &shown(78., 214., "Name") + &shown(178., 214., "What it does") + &shown(78., 248., "Saw");
         let lines = shown(178., 236., "It cuts.") + &shown(178., 248., "It sings.") + &shown(178., 260., "It rests.");
         let foot = shown(78., 284., "Axe") + &shown(178., 284., "It chops.");
-        assert_eq!(texts_of(&(ops + &lines + &foot)), ["Name\tWhat it does\nSaw\tIt cuts. It sings. It rests.\nAxe\tIt chops."]);
+        no_table(&(ops + &lines + &foot));
     }
 
     #[test]
-    fn a_name_that_wraps_beside_marks_set_in_the_middle_of_its_row_is_one_row() {
+    fn a_latin_name_that_wraps_beside_marks_stays_text() {
         // As a comparison of products ticks each feature: the head, a name over `names` with marks on the line at `marks`,
-        // and a row of one line.
+        // and a row of one line. Between the name's lines, the marks may be those of a group's row whose name wrapped.
         let table = |xs: &[f64], names: &[(f64, &str)], marks: Option<f64>| {
             let mut ops = ruled(xs, &[160., 180., 216., 236.], "strokes") + &shown(78., 174., "Feature");
             ops += &(shown(xs[1] + 6., 174., "Free") + &shown(xs[2] + 6., 174., "Pro"));
@@ -3540,7 +3520,7 @@ pub(crate) mod tests {
         let name = "Create and edit";
         let xs = [72., 84. + wide(name), 144. + wide(name), 204. + wide(name)];
         let names = [(194., name), (206., "PDF files")];
-        assert_eq!(texts_of(&table(&xs, &names, Some(200.))), ["Feature\tFree\tPro\nCreate and edit PDF files\tx\tx\nSign\tx\tx"]);
+        no_table(&table(&xs, &names, Some(200.)));
         // On one of the name's lines, the marks may be those of a group's row alone, as on the middle one of three; with none,
         // the name's lines may each be a row's.
         no_table(&table(&xs, &names, Some(194.)));
@@ -3604,6 +3584,17 @@ pub(crate) mod tests {
         let first: &[&[&str]] = &[&["", "Baseline", "98.1"], &["MNIST", "Ours", "99.0"], &["", "Ours, large", "99.3"]];
         let second: &[&[&str]] = &[&["", "Baseline", "88.1"], &["CIFAR", "Ours", "89.0"], &["", "Ours, large", "91.3"]];
         no_table(&groups(&[72., 122., 188., 228.], 12., &[head, first, second]));
+        // The best score alone, and a note on one row of each group beside names of one line.
+        let first: &[&[&str]] = &[&["", "Baseline", ""], &["MNIST", "Ours", "99.0"], &["", "Ours, large", ""]];
+        let second: &[&[&str]] = &[&["", "Baseline", ""], &["CIFAR", "Ours", ""], &["", "Ours, large", "91.3"]];
+        no_table(&groups(&[72., 122., 188., 228.], 12., &[head, first, second]));
+        let head: &[&[&str]] = &[&["Kind", "Item", "Note"]];
+        let fruit: &[&[&str]] = &[&["Fruit", "Apples", "from Kent"], &["", "Pears", ""], &["", "Plums", ""]];
+        let greens: &[&[&str]] = &[&["Greens", "Leeks", ""], &["", "Kale", "frozen"]];
+        let all = [head, fruit, greens].concat();
+        for xs in [fitted(&all), roomy(&all)] {
+            no_table(&groups(&xs, 14., &[head, fruit, greens]));
+        }
         // The scores set larger at the top of each row, their baselines 1.5pt under the methods'.
         let xs = [72., 122., 188., 238.];
         let row = |y: f64, cells: [&str; 3]| shown(xs[0] + 6., y, cells[0]) + &shown(xs[1] + 6., y, cells[1]) + &sized(xs[2] + 6., y + 1.5, 12., cells[2]);
@@ -3679,10 +3670,10 @@ pub(crate) mod tests {
         let long: &[&[&str]] = &[&["Model", "It is in"], &["trees", "the park"]];
         let said: &[&[&str]] = &[&["Model", "It is in"], &["", "the park"]];
         let xs = roomy(&[head, short, long].concat());
-        // Latin lines beside each other in two columns may be the rows of a group, however another band's lines wrap.
+        // Latin lines may be the rows of a group, however another band's lines wrap, and beside a name of one line too.
         no_table(&groups(&xs, 12., &[head, short, long]));
         no_table(&groups(&xs, 12., &[head, said, short]));
-        assert_eq!(texts_of(&groups(&xs, 12., &[head, said, said])), ["Name\tKind\nModel\tIt is in the park\nModel\tIt is in the park"]);
+        no_table(&groups(&xs, 12., &[head, said, said]));
         // A group whose last column has text on its first line only, beside a band whose sentence wrapped.
         let long = "The structure keeps each node with its";
         let xs = [72., 200., 214. + wide(long), 300. + wide(long)];
@@ -3737,14 +3728,15 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn katakana_dots_list_the_lines_of_a_cell() {
+    fn items_after_katakana_dots_leave_their_table_text() {
         let dot = (1..9000).find(|&c| crate::pdf_japan1::utf16(c) == Some(&[0x30, 0xFB][..])).unwrap();
+        let rows = |ops: &str| to_ir(&japanese(&[vec![]], "Identity-H", ops), None).unwrap().blocks[0].attrs.rows.clone();
+        // Lists side by side, as the rows of a group may set their cells.
         let at = |x: f64, y: f64, cids: &str| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, cids.replace("027E", &format!("{dot:04X}")));
         let heads = at(78., 114., "034B034D") + &at(206., 114., "034F0351");
         let cells = at(78., 136., "027E034B") + &at(206., 136., "027E034D") + &at(78., 152., "027E034F") + &at(206., 152., "027E0351");
         let ops = ruled(&[72., 200., 328.], &[100., 120., 160., 180.], "strokes") + &format!("BT /F3 10 Tf {heads}{cells}{}ET\n", at(78., 174., "034B"));
-        let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
-        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3), "{:?}", kinds(&ir));
+        assert_eq!(rows(&ops), None);
         // Items beside a description whose first line comes to the end of its column, the second item on its second line.
         let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(6)[..4 * n]);
         let item = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{dot:04X}{}> Tj ", 792. - y, &"034B034D034F".repeat(2)[..4 * n]);
@@ -3753,17 +3745,30 @@ pub(crate) mod tests {
             text += &(set(78., top + 14., 2) + &item(178., top + 14., 3) + &item(178., top + 30., 4));
             text += &(set(298., top + 14., 16) + &set(298., top + 30., 5));
         }
-        let ops = ruled(&[72., 172., 292., 472.], &[100., 120., 170., 220.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
-        let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
-        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3), "{:?}", kinds(&ir));
+        assert_eq!(rows(&(ruled(&[72., 172., 292., 472.], &[100., 120., 170., 220.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n"))), None);
+        // A value on each item's line, the first as long as its column.
+        for (xs, values) in
+            [([72., 172., 292., 364.], [[6, 3], [6, 4]]), ([72., 172., 292., 364.], [[4, 6], [4, 5]]), ([72., 172., 292., 384.], [[7, 4], [6, 5]])]
+        {
+            let (mut text, mut ys) = (set(78., 114., 2) + &set(178., 114., 2) + &set(298., 114., 2), vec![100., 120.]);
+            for group in values {
+                let top = ys[ys.len() - 1];
+                text += &set(78., top + 14., 2);
+                for (i, n) in group.into_iter().enumerate() {
+                    text += &(item(178., top + 14. + 16. * i as f64, 3 + i % 2) + &set(298., top + 14. + 16. * i as f64, n));
+                }
+                ys.push(top + 40.);
+            }
+            assert_eq!(rows(&(ruled(&xs, &ys, "strokes") + &format!("BT /F3 10 Tf {text}ET\n"))), None, "{values:?}");
+        }
     }
 
     #[test]
-    fn lists_in_the_cells_of_one_row_stay_in_their_cells() {
+    fn lists_in_the_cells_of_a_band_leave_their_table_text() {
+        // Lists side by side, as the rows of a group may set their cells.
         let rows: &[&[&str]] = &[&["Pros", "Cons"], &["\\267 Strong", "\\267 Costly"], &["\\267 Lasting", "\\267 Heavy"]];
         let foot: &[&[&str]] = &[&["\\267 Cheap", "\\267 Slow"]];
-        let texts = texts_of(&groups(&WIDE, 12., &[&rows[..1], &rows[1..], foot]));
-        assert_eq!(texts, ["Pros\tCons\n• Strong • Lasting\t• Costly • Heavy\n• Cheap\t• Slow"]);
+        no_table(&groups(&WIDE, 12., &[&rows[..1], &rows[1..], foot]));
         // Rows with a bullet each, and names beside lists.
         let named: &[&[&str]] = &[&["Name", "What"], &["Ada", "\\267 Oak"], &["Bob", "\\267 Elm"]];
         let listed: &[&[&str]] = &[&["What", "Who"], &["\\267 Oak", "Ada"], &["\\267 Elm", "Bob"]];
@@ -6050,20 +6055,25 @@ pub(crate) mod tests {
         assert_eq!(read(&(few + &prose + &set_down(560., 200., label))), read(&(prose + &set_down(560., 200., label))));
         let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &set_down(560., 200., label)));
         assert!(blocks.contains(&"table: Strong\tLasting\nCostly\tEasy".to_string()), "{blocks:?}");
-        // A label set down beside each group of rows that no rule parts.
-        let mut groups = ruled(&[72., 110., 260., 400.], &[150., 170., 230., 290.], "strokes") + &shown(116., 164., "Month") + &shown(266., 164., "Sales");
-        for (top, months) in [(170., ["April", "May", "June"]), (230., ["October", "November", "December"])] {
-            groups += &set_down(91., top + 15., "034B034D");
-            for (i, month) in months.iter().enumerate() {
-                groups += &(shown(116., top + 16. + 16. * i as f64, month) + &shown(266., top + 16. + 16. * i as f64, "100"));
+        // A label set down beside each group of rows that no rule parts, with sales on each row, or on its first or its last.
+        for sold in [&[0, 1, 2][..], &[0], &[2]] {
+            let mut groups = ruled(&[72., 110., 260., 400.], &[150., 170., 230., 290.], "strokes") + &shown(116., 164., "Month") + &shown(266., 164., "Sales");
+            for (top, months) in [(170., ["April", "May", "June"]), (230., ["October", "November", "December"])] {
+                groups += &set_down(91., top + 15., "034B034D");
+                for (i, month) in months.iter().enumerate() {
+                    groups += &shown(116., top + 16. + 16. * i as f64, month);
+                    if sold.contains(&i) {
+                        groups += &shown(266., top + 16. + 16. * i as f64, "100");
+                    }
+                }
             }
+            let (blocks, _) = read(&groups);
+            assert!(blocks.iter().all(|b| !b.starts_with("table: ")), "{sold:?} {blocks:?}");
         }
-        let (blocks, _) = read(&groups);
-        assert!(blocks.iter().all(|b| !b.starts_with("table: ")), "{blocks:?}");
-        // A row head set down names a value of two lines, as one set across would.
+        // A row head set down beside a value of two lines tells no more than such a label.
         let (blocks, _) =
             read(&form().replace(&shown(178., 280., "42 Main Street"), &(shown(178., 274., "42 Main Street") + &shown(178., 286., "Springfield"))));
-        assert!(blocks.iter().any(|b| b.starts_with("table: ") && b.contains("\t42 Main Street Springfield\n")), "{blocks:?}");
+        assert!(blocks.iter().all(|b| !b.starts_with("table: ")), "{blocks:?}");
     }
 
     #[test]
@@ -6639,7 +6649,8 @@ Manual	No. 1234";
         let set = |x: f64, y: f64, cids: &str| format!("BT /F3 10 Tf {x} {} Td <{cids}> Tj ET\n", 792. - y);
         let cells = shown(78., 124., "repre-") + &shown(78., 136., "sentation") + &shown(178., 130., "Easy") + &set(78., 180., "034B034D034F");
         let cells = cells + &set(178., 174., TEN_DOWN) + &set(178., 186., "0351") + &shown(78., 214., "Oak") + &shown(178., 214., "Tall");
-        let ops = ruled(&[72., 172., 540.], &[110., 160., 200., 220.], "strokes") + &cells;
+        // The second column as wide as the ten kana and 6pt at each side, so that their line wraps.
+        let ops = ruled(&[72., 172., 284.], &[110., 160., 200., 220.], "strokes") + &cells;
         let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
         assert_eq!(kinds(&ir), [("table", "representation\tEasy\nあいう\tあいうえおかきくぐけえ\nOak\tTall")]);
     }
@@ -6757,10 +6768,11 @@ Manual	No. 1234";
     #[test]
     fn a_hyphen_the_body_writes_is_kept_in_a_cell() {
         let body = shown(72., 100., "A sentence of prose takes a pre-trained model and goes on with it to the end.");
-        let cells = shown(78., 226., "Accuracy") + &shown(178., 226., "Model") + &shown(78., 256., "High") + &shown(178., 252., "A pre-");
-        let cells = cells + &shown(178., 264., "trained one") + &shown(78., 294., "Low") + &shown(178., 294., "A base one");
+        // In the head, whose cells may wrap whatever the script.
+        let cells = shown(78., 226., "Accuracy") + &shown(178., 220., "A pre-") + &shown(178., 232., "trained one") + &shown(78., 256., "High");
+        let cells = cells + &shown(178., 256., "Yes") + &shown(78., 294., "Low") + &shown(178., 294., "No");
         let texts = texts_of(&(body + &ruled(&WIDE, &[200., 240., 280., 300.], "strokes") + &cells));
-        assert_eq!(texts[1], "Accuracy\tModel\nHigh\tA pre-trained one\nLow\tA base one");
+        assert_eq!(texts[1], "Accuracy\tA pre-trained one\nHigh\tYes\nLow\tNo");
     }
 
     #[test]
