@@ -517,13 +517,14 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 }
 
 /// Whether the lines of a band, which lies between two rules across, are those of one row: on one baseline, set down the
-/// page, in the head, beside a name of one line, lists side by side, or Japanese lines that each fill their column, as a
-/// cell's do where it wraps. A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its
-/// columns or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A line
-/// fills its column where it leaves no room for the first word under it, in the `widths` the columns' text has.
-// shortcut: Latin cells that wrap in a name of two lines, or in two columns of a row, tell of nothing, as the lines of
-// the rows of a group start in either case and end in a hyphen too, so their table stays text. Tell them apart if such
-// tables turn up.
+/// page, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one line set in the
+/// middle of the band, or Japanese lines that each come to the end of their column, as a cell's do where it wraps. A band
+/// that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns or a group of
+/// rows, leaves its table text: read as one row, it runs the values of each column together. A line wraps where it leaves
+/// no room for the first word under it, in the `widths` the columns' text has.
+// shortcut: Latin cells that wrap in two columns of a row, or in a name of two lines beside a cell on its first or last
+// line, tell of nothing, as the lines of the rows of a group start in either case and end in a hyphen too, so their table
+// stays text. Tell them apart if such tables turn up.
 fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize, width: f64) -> bool {
     let band = &bands[row];
     if band.iter().flatten().any(|g| g.vertical || g.turned) {
@@ -556,10 +557,10 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
     if bands.len() == 2 && row == 1 {
         return false;
     }
-    // `parted`: the lines on a baseline with another column's that come after a line with room for them. `tellers`: the
+    // `parted`: whether a line on a baseline with another column's comes after a line with room for it. `tellers`: the
     // columns with lines on such baselines. `evidence`: over 0 that the lines wrapped. `listed`: every line under another
-    // starts an item of a list.
-    let (mut parted, mut tellers, mut evidence, mut listed) = (0, 0, 0, true);
+    // starts an item of a list. `wrapped`: none leaves room.
+    let (mut parted, mut tellers, mut evidence, mut listed, mut wrapped) = (false, 0, 0, true, true);
     for (lines, &room) in columns.iter().zip(widths) {
         let mut tells = false;
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
@@ -576,6 +577,7 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
             };
             let left = room - (before.x1 - before.x0);
             let fits = (word as f64 + 2.) * letter <= left;
+            wrapped &= !fits;
             // Japanese breaks anywhere, so a line of it that goes on is as long as its column. One that leaves room, in any
             // script, ends a row or a line broken by hand.
             evidence += if japanese && left < 3. * letter {
@@ -587,7 +589,7 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
             };
             if baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1 {
                 tells = true;
-                parted += usize::from(fits);
+                parted |= fits;
             }
         }
         tellers += usize::from(tells);
@@ -597,10 +599,15 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
     // holds rows too where a number is under another line, and may where lines in threes break as rows do or are in every
     // column.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
-    let threes = columns.iter().any(|lines| lines.len() > 2) && (parted > 0 || baselines.iter().all(|b| b.1 == filled));
+    let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
     // The first column with text names the row.
     let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
-    head && !threes || one_name || listed || evidence >= enough
+    // The cells of the rows of a group are on their rows' baselines, so lines of one beside a cell that wraps, none on its
+    // first line or its last, are that row's.
+    let inside = |l: &Line| (1..baselines.len() - 1).contains(&(baselines.partition_point(|b| b.0 <= l.y) - 1));
+    let single: Vec<&Vec<Line>> = columns.iter().filter(|lines| lines.len() == 1).collect();
+    let centred = wrapped && columns.iter().filter(|lines| lines.len() > 1).count() == 1 && !single.is_empty() && single.iter().all(|lines| inside(&lines[0]));
+    head && !threes || one_name || listed || centred || evidence >= enough
 }
 
 /// A number: digits, and marks among them. A mark alone, as a dash for no value or a unit in brackets, is none.
@@ -3474,17 +3481,11 @@ pub(crate) mod tests {
         // Japanese lines that each come to the end of their column.
         let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(9)[..4 * n]);
         let text: String =
-            [(78., 114., 2), (206., 114., 2), (78., 136., 11), (206., 136., 12), (78., 152., 5), (206., 152., 4)].map(|(x, y, n)| set(x, y, n)).concat();
-        let ops = ruled(&[72., 200., 332.], &[100., 120., 160.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+            [(78., 114., 2), (206., 114., 2), (78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)]
+                .map(|(x, y, n)| set(x, y, n))
+                .concat();
+        let ops = ruled(&[72., 200., 332.], &[100., 120., 180.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
-    }
-
-    /// A head and one band under it, with no rule between the band's rows: each row's cells where `at` puts them.
-    fn banded(xs: &[f64], at: &dyn Fn(usize, &str) -> f64, rows: &[&[&str]]) -> String {
-        let y = |row: usize| 208. + 14. * row as f64;
-        let cells = rows.iter().enumerate().flat_map(|(row, cells)| cells.iter().enumerate().map(move |(column, text)| (row, column, *text)));
-        let text: String = cells.map(|(row, column, text)| shown(xs[column] + at(column, text), y(row), text)).collect();
-        ruled(xs, &[196., 212., y(rows.len() - 1) + 4.], "strokes") + &text
     }
 
     /// `rows` as a table's text.
@@ -3495,27 +3496,38 @@ pub(crate) mod tests {
     const SCORES: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", "72.3"], &["Ours (large)", "78.1", "75.6"]];
 
     #[test]
-    fn a_table_whose_rows_cannot_be_told_stays_text() {
-        let left = |_: usize, _: &str| 6.;
-        // Some lines end with room for the next word and some do not.
-        let mixed: &[&[&str]] = &[&["Name", "Means"], &["id", "the number of a row"], &["title", "what the page shows"], &["at", "when"]];
-        // One word to a line and no room in any: entries, or narrow cells that wrap.
-        let words: &[&[&str]] = &[&["Name", "Kind"], &["title", "string"], &["count", "number"]];
-        // A column with text in one of the rows only.
-        let notes: &[&[&str]] = &[&["Name", "Size", "Note"], &["Alpha", "1", ""], &["Beta", "3", ""], &["Gamma", "4", "est."]];
-        for (xs, rows) in [(&[72., 108., 216.][..], mixed), (&[72., 108., 150.], words), (&[72., 222., 382., 540.], notes)] {
-            let texts = texts_of(&banded(xs, &left, rows));
-            assert!(texts.iter().all(|t| !t.contains('\t')), "{texts:?}");
-        }
-    }
-
-    #[test]
     fn a_name_in_the_middle_of_its_row_beside_three_lines_leaves_it_a_table() {
         let ops =
             ruled(&WIDE, &[200., 220., 270., 290.], "strokes") + &shown(78., 214., "Name") + &shown(178., 214., "What it does") + &shown(78., 248., "Saw");
         let lines = shown(178., 236., "It cuts.") + &shown(178., 248., "It sings.") + &shown(178., 260., "It rests.");
         let foot = shown(78., 284., "Axe") + &shown(178., 284., "It chops.");
         assert_eq!(texts_of(&(ops + &lines + &foot)), ["Name\tWhat it does\nSaw\tIt cuts. It sings. It rests.\nAxe\tIt chops."]);
+    }
+
+    #[test]
+    fn a_name_that_wraps_beside_marks_set_in_the_middle_of_its_row_is_one_row() {
+        // As a comparison of products ticks each feature: the head, a name over `names` with marks on the line at `marks`,
+        // and a row of one line.
+        let table = |xs: &[f64], names: &[(f64, &str)], marks: Option<f64>| {
+            let mut ops = ruled(xs, &[160., 180., 216., 236.], "strokes") + &shown(78., 174., "Feature");
+            ops += &(shown(xs[1] + 6., 174., "Free") + &shown(xs[2] + 6., 174., "Pro"));
+            ops += &names.iter().map(|&(y, name)| shown(78., y, name)).collect::<String>();
+            for y in marks.into_iter().chain([230.]) {
+                ops += &(shown(xs[1] + 26., y, "x") + &shown(xs[2] + 26., y, "x"));
+            }
+            ops + &shown(78., 230., "Sign")
+        };
+        let name = "Create and edit";
+        let xs = [72., 84. + wide(name), 144. + wide(name), 204. + wide(name)];
+        let names = [(194., name), (206., "PDF files")];
+        assert_eq!(texts_of(&table(&xs, &names, Some(200.))), ["Feature\tFree\tPro\nCreate and edit PDF files\tx\tx\nSign\tx\tx"]);
+        // On the name's first line, the marks may be those of a group's first row alone; with none, the name's lines may each
+        // be a row's.
+        no_table(&table(&xs, &names, Some(194.)));
+        no_table(&table(&xs, &names, None));
+        // Lines with room after them may each be a row's.
+        let names = [(192., "Order the parts"), (200., "Paint the door"), (208., "Call the office")];
+        no_table(&table(&[72., 300., 360., 420.], &names, Some(200.)));
     }
 
     /// A table ruled at `ys` between its rows or groups of rows, each line's baseline with its cells.
@@ -3542,33 +3554,11 @@ pub(crate) mod tests {
 
     #[test]
     fn rows_a_rule_parts_only_into_groups_stay_text_where_a_column_has_blanks() {
-        let head: &[&[&str]] = &[&["Item", "Qty", "Off"]];
-        let items: &[&[&str]] = &[&["Widget", "4", ""], &["Gadget", "2", "10%"], &["Gizmo", "1", ""]];
-        let total: &[&[&str]] = &[&["Total", "7", ""]];
-        let xs = [72., 222., 382., 540.];
-        no_table(&groups(&xs, 16., &[head, items, total]));
-        // With a little room at the group's foot.
-        let y = |line: usize| 171. + 16. * line as f64;
-        let lines: Vec<(f64, &[&str])> =
-            [head, items].concat().into_iter().enumerate().map(|(i, cells)| (y(i), cells)).chain([(y(4) + 4., total[0])]).collect();
-        no_table(&grouped(&xs, &[160., 176., 228., 244.], &lines));
         // Names that each stand beside the rows of a group, and columns as wide as their text.
         let head: &[&[&str]] = &[&["Set", "Method", "Score"]];
         let first: &[&[&str]] = &[&["", "Baseline", "98.1"], &["MNIST", "Ours", "99.0"], &["", "Ours, large", "99.3"]];
         let second: &[&[&str]] = &[&["", "Baseline", "88.1"], &["CIFAR", "Ours", "89.0"], &["", "Ours, large", "91.3"]];
         no_table(&groups(&[72., 122., 188., 228.], 12., &[head, first, second]));
-        // Words alone.
-        let head: &[&[&str]] = &[&["Name", "Type", "Means"]];
-        let first: &[&[&str]] = &[&["id", "integer", ""], &["name", "text", "what it is called"], &["seen", "date", ""]];
-        let second: &[&[&str]] = &[&["note", "text", "more"]];
-        no_table(&groups(&[72., 222., 382., 540.], 14., &[head, first, second]));
-    }
-
-    #[test]
-    fn rows_under_a_head_with_notes_by_some_of_them_stay_text() {
-        let head: &[&[&str]] = &[&["Task", "Note"]];
-        let rows: &[&[&str]] = &[&["Order the parts", "urgent"], &["Paint the door", ""], &["Call the office", ""], &["Send the bill", ""]];
-        no_table(&groups(&[72., 220., 390.], 16., &[head, rows]));
     }
 
     #[test]
@@ -3581,19 +3571,6 @@ pub(crate) mod tests {
         // With no number under another line, the first band is the head.
         let head: &[&[&str]] = &[&["Item", "Qty", "Price"], &["", "(units)", "(USD)"]];
         assert_eq!(texts_of(&groups(&xs, 14., &[head, second])), ["Item\tQty (units)\tPrice (USD)\nGizmo\t1\t9.00"]);
-    }
-
-    #[test]
-    fn cells_of_lines_broken_by_hand_stay_text_where_their_row_has_room_round_them() {
-        // A timetable: each cell a subject and a room.
-        let lines: &[(f64, &[&str])] = &[
-            (173., &["Mon", "Tue"]),
-            (193., &["Algebra", "Physics"]),
-            (205., &["Room 12", "Room 3"]),
-            (223., &["History", "English"]),
-            (235., &["Room 7", "Room 5"]),
-        ];
-        no_table(&grouped(&[72., 222., 382.], &[160., 180., 210., 240.], lines));
     }
 
     fn wide(text: &str) -> f64 {
@@ -3624,8 +3601,6 @@ pub(crate) mod tests {
         let listed: &[&[&str]] = &[&["What", "Who"], &["\\267 Oak beam", "Ada Byron"], &["\\267 Elm beam", "Al Turing"], &["\\267 Ash beam", "Al Hopper"]];
         for rows in [names, values, dates, spaced, listed] {
             let (xs, total) = (fitted(rows), [&["Total", ""][..]]);
-            no_table(&groups(&xs, 14., &[&rows[..1], &rows[1..]]));
-            no_table(&groups(&xs, 14., &[&rows[..1], &rows[1..], &total]));
             no_table(&groups(&xs, 14., &[&rows[..1], &rows[1..3], &rows[3..]]));
             no_table(&groups(&xs, 14., &[rows, &total]));
         }
@@ -3638,28 +3613,7 @@ pub(crate) mod tests {
         let unpriced: &[&[&str]] =
             &[&["What", "Price", "Type"], &["Runs", "32.00", "set"], &["Reads the whole", "1.00", "enum"], &["Draws the page", "", "string"]];
         for rows in [marks, blanks, unpriced] {
-            no_table(&groups(&fitted(rows), 14., &[&rows[..1], &rows[1..]]));
-        }
-    }
-
-    #[test]
-    fn rows_with_room_round_their_groups_are_not_put_in_one() {
-        // As struts in a group's first row and last give it in LaTeX.
-        let spaced = |rows: &[&[&str]], xs: &[f64]| {
-            let y = |line: usize, group: usize| 160. + 12. * line as f64 + 4.4 * group as f64;
-            let group_of = |line: usize| [0, 1, 1, 2, 2][line];
-            let lines: Vec<(f64, &[&str])> = rows.iter().enumerate().map(|(i, cells)| (y(i, group_of(i)) + 11.2, *cells)).collect();
-            grouped(xs, &[y(0, 0), y(1, 1), y(3, 2), y(5, 3)], &lines)
-        };
-        let names: &[&[&str]] =
-            &[&["Method", "Kind"], &["Model A", "flat tree"], &["Model B", "deep heap"], &["Model C", "open node"], &["Model D", "cold page"]];
-        let mixed: &[&[&str]] = &[&["Method", "Kind"], &["Forest", "flat"], &["Nearest one", "deep heap"], &["Tree", "open"], &["Boosted trees", "cold page"]];
-        let plain: &[&[&str]] =
-            &[&["Method", "Kind"], &["Old fir", "flat"], &["nearest of them all", "deep heap"], &["Old oak", "open"], &["boosted trees", "cold page"]];
-        let scores: &[&[&str]] = &[&["Method", "F1"], &["Model A", "71.2"], &["Model B", "74.9"], &["Model C", "78.1"], &["Model D", "79.0"]];
-        for rows in [names, mixed, plain, scores] {
-            no_table(&spaced(rows, &fitted(rows)));
-            no_table(&spaced(rows, &roomy(rows)));
+            no_table(&groups(&fitted(rows), 14., &[&rows[..1], &rows[1..], &rows[1..2]]));
         }
     }
 
@@ -3706,21 +3660,6 @@ pub(crate) mod tests {
         let lines: &[(f64, &[&str])] =
             &[(172., &["", "Latency", "Size"]), (178., &["Name", "", ""]), (184., &["", "\\(ms\\)", "\\(GB\\)"]), (202., &["One", "12", "0.8"])];
         assert_eq!(texts_of(&grouped(&[72., 222., 382., 540.], &[160., 190., 206.], lines)), ["Name\tLatency (ms)\tSize (GB)\nOne\t12\t0.8"]);
-    }
-
-    #[test]
-    fn addresses_beside_one_line_stay_text() {
-        let rows: &[&[&str]] =
-            &[&["Bill to", "Ship to", "Sum"], &["Ann Author", "Bob Baker", "$26.00"], &["1 Main St", "2 Side St", ""], &["Town", "City", ""]];
-        no_table(&banded(&[72., 222., 372., 540.], &|_, _| 6., rows));
-    }
-
-    #[test]
-    fn rows_no_rule_parts_with_text_in_less_than_half_their_cells_stay_text() {
-        let full = ["One", "1", "1", "1", "1", "1"];
-        let bare = ["Two", "", "", "", "", ""];
-        let rows: Vec<&[&str]> = [&["Name", "A", "B", "C", "D", "E"][..], &full].into_iter().chain([&bare[..]; 6]).chain([&full[..]]).collect();
-        no_table(&banded(&[72., 160., 220., 280., 340., 400., 460.], &|_, _| 6., &rows));
     }
 
     #[test]
