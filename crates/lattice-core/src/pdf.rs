@@ -810,8 +810,13 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> Walke
                 if matches!(paint, "s" | "b" | "b*") {
                     sides.push(bounds(&ctm, &[at, start]));
                 }
-                // A rule is only where the clip shows it.
-                let seen = |rule: &Bounds| clip.map_or(Some(*rule), |c| Some(intersect(*rule, c)).filter(|[x0, y0, x1, y1]| x0 <= x1 && y0 <= y1));
+                // A rule is only where the clip shows it. Reals are read as f32, so one on the clip's edge may lie a few
+                // hundred-thousandths of a point outside it.
+                let seen = |rule: &Bounds| {
+                    clip.map_or(Some(*rule), |[x0, y0, x1, y1]: Bounds| {
+                        Some(intersect(*rule, [x0 - 0.01, y0 - 0.01, x1 + 0.01, y1 + 0.01])).filter(|[x0, y0, x1, y1]| x0 <= x1 && y0 <= y1)
+                    })
+                };
                 if matches!(paint, "S" | "s" | "B" | "B*" | "b" | "b*") {
                     rules.extend(sides.iter().filter(|side| thickness(side) <= RULE_SLACK).filter_map(seen));
                 } else if paint != "n" {
@@ -4316,6 +4321,35 @@ pub(crate) mod tests {
         let hidden = format!("q 0 0 10 10 re W n\n{}Q\n", ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes"));
         for (shape, cells) in [("clipped", clipped), ("filled boxes", filled), ("shaded paths", shaded), ("stroked where a clip hides them", hidden)] {
             assert_eq!(read(&(cells + rule + &text)), plain, "{shape}");
+        }
+    }
+
+    #[test]
+    fn a_table_clipped_to_its_own_box_keeps_its_outer_rules() {
+        // Edges written with two decimals, as a layout program writes them. Read as f32, the clip's top, y + h, falls a
+        // little under the top rule in the first, and its right, x + w, a little left of the right rule in the second.
+        let up = |y: f64| 792. - y;
+        let words = [["Name", "Kind", "Notes"], ["Apple", "Fruit", "Red"], ["Leek", "Vegetable", "Long"], ["Salt", "Mineral", "White"]];
+        for (xs, ys) in [
+            ([70.87, 170.87, 300.87, 524.41], [110.3, 140.3, 170.3, 200.3, 230.7]),
+            ([72.35, 172.35, 300.35, 539.65], [120.15, 150.15, 180.15, 210.15, 240.35]),
+        ] {
+            let (top, bottom) = (ys[0], ys[4]);
+            let mut ops = format!("q {:.2} {:.2} {:.2} {:.2} re W n\n", xs[0], up(bottom), xs[3] - xs[0], bottom - top);
+            for y in ys {
+                ops += &format!("{:.2} {:.2} m {:.2} {:.2} l S\n", xs[0], up(y), xs[3], up(y));
+            }
+            for x in xs {
+                ops += &format!("{x:.2} {:.2} m {x:.2} {:.2} l S\n", up(top), up(bottom));
+            }
+            ops += "Q\n";
+            for (row, words) in words.iter().enumerate() {
+                for (column, word) in words.iter().enumerate() {
+                    ops += &shown(xs[column] + 6., (ys[row] + ys[row + 1]) / 2. + 3., word);
+                }
+            }
+            let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
+            assert_eq!(ir.blocks.iter().find_map(|b| b.attrs.rows.as_ref().map(Vec::len)), Some(4), "{xs:?}");
         }
     }
 
