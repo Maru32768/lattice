@@ -3715,10 +3715,16 @@ test.describe("in English", () => {
       await expect(cards(shell)).toHaveCount(i + 1);
       parent = Number(await cards(shell).nth(i).locator(".answer").getAttribute("data-message"));
     }
+    const cut = () =>
+      cards(shell)
+        .locator(".sticky-kind")
+        .evaluateAll((els) => els.map((el) => el.scrollWidth > el.clientWidth));
+    expect(await cut(), "open, a label is whole").toEqual([false, false, false, false]);
     for (let i = 3; i >= 0; i--) {
       await cards(shell).nth(i).getByRole("button", { name: "Fold the sticky" }).click();
     }
     await frames(shell);
+    expect(await cut(), "those of answers are long for it").toEqual([false, true, true, true]);
     const sizes = await cards(shell).evaluateAll((els) =>
       els.map((el) => ({ card: Math.round(el.getBoundingClientRect().height), quote: el.querySelector(".sticky-quote")!.getBoundingClientRect().width > 30 })),
     );
