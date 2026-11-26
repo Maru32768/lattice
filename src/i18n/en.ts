@@ -1601,7 +1601,7 @@ export const en = {
   "be.mcp.targetTaken": "{agent} already has the registration “{name}”",
   "be.mcp.agentMissing": "Could not change {agent}'s settings: “{program}” was not found.",
   "be.mcp.agentFailed": "Could not change {agent}'s settings: {error}",
-  "be.mcp.agentLost": "Could not change {agent}'s settings, and the earlier registration is gone from {agent}: {error}",
+  "be.mcp.agentLost": "Could not change {agent}'s settings, and the earlier registration is gone from them: {error}",
   "be.mcp.agentOther":
     "{agent}'s settings already have a registration named “{name}” that is not Lattice's, so it was left as it is. Remove or rename it to add this one.",
 } satisfies Messages;
