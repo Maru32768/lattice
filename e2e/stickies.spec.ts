@@ -3932,6 +3932,26 @@ test("メモに下書き: a memo that cannot be saved says so in the sticky, and
   expect(await lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED) });
 });
 
+test("メモに下書き: the draft of a sticky deleted meanwhile goes to no other, though a new one has its id", async ({ shell }) => {
+  // Answered as it is asked, as the backend reads the sticky then, and delivered at its release.
+  await shell.addInitScript(() => void (window.__e2eLate = ["sticky_note_draft"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const deleted = card(shell, "詳しく");
+  await deleted.getByRole("button", { name: "メモに下書き" }).click();
+  await deleted.getByRole("button", { name: "付箋を削除" }).click();
+  await shell.getByRole("alertdialog").getByRole("button", { name: "削除" }).click();
+  await expect(deleted).toHaveCount(0);
+  await askAbout(shell, "用語", "#b-103");
+  const sticky = card(shell, "用語");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  expect(await callsOf(shell, "sticky_note_draft"), "the new sticky has the deleted one's id").toEqual([{ id: 1 }, { id: 1 }]);
+  await shell.evaluate(() => window.__e2e.release("sticky_note_draft", 1));
+  await shell.evaluate(() => window.__e2e.release("sticky_note_draft"));
+  await expect(draftField(sticky)).toHaveValue(/^「PostgreSQL implements it with multi-version concurrency control\.」の下書き。/);
+});
+
 test("単語を登録 on a 用語 sticky saves its word in its sentence with what the sticky says, which the word list shows", async ({ app }) => {
   await openSnapshot(app);
   await selectWord(app, 106, "snapshot");

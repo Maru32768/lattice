@@ -171,13 +171,14 @@ function putDraft(article: number, sticky: number, draft: Draft | null) {
 
 /** Has the model write a memo draft of the sticky, or write it again after it failed. */
 export async function draftNote(article: number, sticky: number) {
-  putDraft(article, sticky, { step: "pending" });
+  const pending: Draft = { step: "pending" };
+  putDraft(article, sticky, pending);
   const draft = await api.stickyNoteDraft(sticky).then(
     (text): Draft => ({ step: "ready", text }),
     (e: unknown): Draft => ({ step: "failed", error: String(e) }),
   );
-  // Not on a sticky deleted meanwhile.
-  if (of(article).drafts.get(sticky)?.step === "pending") {
+  // Not on a sticky deleted meanwhile, nor on a new one that SQLite gave its id again.
+  if (of(article).drafts.get(sticky) === pending) {
     putDraft(article, sticky, draft);
   }
 }
