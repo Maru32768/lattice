@@ -520,10 +520,11 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 /// line wraps where it leaves no room for the first word under it, in the `widths` the columns' text has. Where every
 /// column is as wide as its widest line (`fitted`), the widest value of a group's column comes to its end too.
 // shortcut: Latin lines that wrap tell of nothing, as the lines of the rows of a group start in either case and end in a
-// hyphen too; nor do lists, a set-down label or one line set between a cell's, as a group's cells sit on its rows' lines.
-// A table with such a band under its head stays text. Japanese rows of a group whose values come to the end of their
-// column, as the first of two beside a name of one line, read as a cell that wrapped. Tell them apart if such tables
-// turn up.
+// hyphen too; nor do lists, a set-down label or one line set between a cell's, as a group's cells sit on its rows' lines,
+// nor Japanese that wraps onto a number or a Latin word, as a group's value may end in Japanese before the next one's
+// number. A table with such a band under its head stays text. Japanese rows of a group whose values come to the end of
+// their column, as the first of two beside a name of one line, read as a cell that wrapped. Tell them apart if such
+// tables turn up.
 fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width: f64, turns: bool, alone: bool) -> bool {
     let down = |g: &&Glyph| g.vertical || g.turned;
     if turns && band.iter().flatten().any(down) {
@@ -567,8 +568,7 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
             let shared = baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1;
             tells |= shared;
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
-            // A line of Japanese may wrap onto a number or a Latin word.
-            let japanese = after.text.starts_with(joins_without_space) || before.text.ends_with(joins_without_space);
+            let japanese = after.text.starts_with(joins_without_space);
             let word = if japanese {
                 after.text.chars().take(4).count()
             } else {
@@ -3557,6 +3557,14 @@ pub(crate) mod tests {
         }
         let ops = ruled(&[72., 104., 196., 228.], &[100., 120., 156., 192.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
+        // With room beside the names, the second items starting with a Latin word, which Japanese does not wrap onto.
+        let mut ops = ruled(&[72., 114., 206., 238.], &[100., 120., 156., 192.], "strokes");
+        ops += &format!("BT /F3 10 Tf {}{}{}ET\n", kana(78., 114., 2), kana(120., 114., 2), kana(212., 114., 2));
+        for (top, latin) in [(120., "USB"), (156., "A4")] {
+            ops += &format!("BT /F3 10 Tf {}{}{}ET\n", kana(78., top + 14., 2), kana(120., top + 14., 8), kana(212., top + 14., 2));
+            ops += &(shown(120., top + 30., latin) + &format!("BT /F3 10 Tf {}ET\n", kana(120. + wide(latin), top + 30., 3)));
+        }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
         // The scores set larger at the top of each row, their baselines 1.5pt under the methods'.
         let xs = [72., 122., 188., 238.];
         let row = |y: f64, cells: [&str; 3]| shown(xs[0] + 6., y, cells[0]) + &shown(xs[1] + 6., y, cells[1]) + &sized(xs[2] + 6., y + 1.5, 12., cells[2]);
@@ -3755,19 +3763,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_japanese_line_beside_a_name_of_one_line_may_wrap_onto_a_number_or_a_latin_word() {
+    fn a_band_beside_a_name_of_one_line_is_one_row_by_japanese_that_wraps_once() {
         let kana = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{}> Tj ET\n", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
-        let table = |xs: [f64; 4], second: &str| {
+        let table = |xs: [f64; 4]| {
             let mut ops = ruled(&xs, &[100., 120., 156., 176.], "strokes") + &kana(78., 114., 2) + &kana(xs[1] + 6., 114., 2) + &kana(xs[2] + 6., 114., 2);
-            ops += &(kana(78., 134., 2) + &kana(xs[1] + 6., 134., 12) + &kana(xs[2] + 6., 134., 2));
-            ops += &(shown(xs[1] + 6., 150., second) + &kana(xs[1] + 6. + wide(second), 150., 3));
+            ops += &(kana(78., 134., 2) + &kana(xs[1] + 6., 134., 12) + &kana(xs[1] + 6., 150., 3) + &kana(xs[2] + 6., 134., 2));
             ops += &(kana(78., 170., 2) + &kana(xs[1] + 6., 170., 5) + &kana(xs[2] + 6., 170., 2));
             to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len)
         };
         // The description as wide as its column, the name and the price with room.
-        for second in ["100", "API", "\\("] {
-            assert_eq!(table([72., 114., 246., 288.], second), Some(3), "{second}");
-        }
+        assert_eq!(table([72., 114., 246., 288.]), Some(3));
         // A name set in the middle of its cell, on the second of the three lines beside it.
         let mut ops = ruled(&[72., 112., 189.], &[100., 120., 170., 220.], "strokes") + &kana(78., 114., 2) + &kana(118., 114., 2);
         for top in [120., 170.] {
@@ -3787,7 +3792,7 @@ pub(crate) mod tests {
             assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None, "{size}");
         }
         // With every column as wide as its widest line, a group's widest value comes to the end of its column too.
-        assert_eq!(table([72., 104., 236., 268.], "100"), None);
+        assert_eq!(table([72., 104., 236., 268.]), None);
     }
 
     #[test]
