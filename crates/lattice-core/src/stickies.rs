@@ -208,7 +208,8 @@ pub async fn follow_up<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore,
 }
 
 const NOTE_RULES: &str = "You help a Japanese software engineer who keeps a memo of plain text on an article they read. \
-<passage> holds text they selected in the article, <excerpt> text they selected in one of your answers about it, and each <conversation> what they asked about the text right above it and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
+<passage> holds the text they selected: the article's own text, the Japanese or English translation of it that they were shown, or an answer of yours on a note that is gone by now. \
+<excerpt> holds text they selected in one of your answers about it, and each <conversation> what they asked about the text right above it and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
 Write in Japanese, as plain text (no Markdown, no HTML), a short note for that memo of what they learned there, in a few lines, as they would write it for themselves. \
 Keep established technical terms and identifiers (e.g. MVCC, WAL, fsync) as they are. \
 Leave out the markers like [3] in the answers: they name parts of the article, which the memo does not have.\n\n\
