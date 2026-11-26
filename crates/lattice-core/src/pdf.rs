@@ -444,21 +444,16 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
         let insets: Vec<f64> = margins.clone().map(|margin| margin.into_iter().fold(f64::MAX, f64::min).max(0.)).collect();
         let fitted = margins.zip(&insets).all(|([left, right, _], inset)| left == f64::MAX || left.max(right) < inset + 1.);
         let widths: Vec<f64> = insets.iter().enumerate().map(|(column, inset)| xs[column + 1] - xs[column] - 2. * inset).collect();
-        let bands = (0..cells.len()).map(|row| read_band(&cells, row, ys[row + 1] - ys[row], &widths, p.width));
-        let Some(bands) = bands.collect::<Option<Vec<_>>>() else {
-            continue;
-        };
-        // A row whose lines wrapped shows that the rules part the rows, so the bands tell of each other's. Columns that are each
-        // as wide as their widest line are more likely to hold rows no rule parts than lines that wrapped.
+        // Columns that are each as wide as their widest line are more likely to hold the rows of a group than lines that wrapped.
         let enough = if fitted {
             12
         } else {
             3
         };
-        if bands.iter().any(|band| band.doubt) && bands.iter().map(|band| band.evidence).sum::<isize>() < enough {
+        if !(0..cells.len()).all(|row| one_row(&cells, row, &widths, enough, p.width)) {
             continue;
         }
-        let rows: Vec<Vec<Vec<Line>>> = cells.iter().zip(&bands).flat_map(|(cells, band)| band_rows(cells, &band.breaks, p.width)).collect();
+        let rows: Vec<Vec<Vec<Line>>> = cells.iter().map(|band| band.iter().map(|glyphs| cell_lines(glyphs, p.width)).collect()).collect();
         let filled = rows.iter().flatten().filter(|lines| !lines.is_empty()).count();
         if filled * 2 >= (xs.len() - 1) * rows.len() {
             for g in p.glyphs.iter_mut().filter(|g| cell(g).is_some()) {
@@ -521,33 +516,18 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
     p.glyphs.iter().any(|g| across(g) && beside(g) && on_a_baseline(g) && !grids.iter().any(|other| other.cell(g).is_some()))
 }
 
-/// What the lines of a band, which lies between two rules across, tell of its rows.
-struct Band {
-    /// The baselines that start a further row: none in the head, in a band of one line, or beside a name of one line.
-    breaks: Vec<f64>,
-    /// Whether the lines may be rows in columns as wide as their text as well as those of one row, which wrapped.
-    doubt: bool,
-    /// What the lines tell of that: over 0 that they wrapped, under 0 that they are rows. A line of Latin that goes on counts
-    /// as three of Japanese, which are as long as their column more often by chance, and one that starts a row against three.
-    evidence: isize,
-}
-
-impl Band {
-    fn rows(breaks: Vec<f64>) -> Self {
-        Band { breaks, doubt: false, evidence: 0 }
-    }
-}
-
-/// Reads a band, which may hold rows no rule parts, as a table ruled only round its columns does. Those are told from the
-/// lines of one row by how the cells' lines end: one that wraps leaves no room for the first word under it, in the `widths`
-/// the columns' text has. Fails where the lines tell of both, as rows read as one run the values of each column together.
-// shortcut: cells that each break their text at the same baselines read as rows where no room round them shows otherwise,
-// so a row of cells holding addresses is cut up; and cells that wrap in title case, or in a script without case, tell of
-// rows or of nothing, so their table stays text. Tell them apart if such tables turn up.
-fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64], width: f64) -> Option<Band> {
+/// Whether the lines of a band, which lies between two rules across, are those of one row: on one baseline, set down the
+/// page, in the head, beside a name of one line, lists side by side, or Japanese lines that each fill their column, as a
+/// cell's do where it wraps. A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its
+/// columns or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A line
+/// fills its column where it leaves no room for the first word under it, in the `widths` the columns' text has.
+// shortcut: Latin cells that wrap in a name of two lines, or in two columns of a row, tell of nothing, as the lines of
+// the rows of a group start in either case and end in a hyphen too, so their table stays text. Tell them apart if such
+// tables turn up.
+fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize, width: f64) -> bool {
     let band = &bands[row];
     if band.iter().flatten().any(|g| g.vertical || g.turned) {
-        return Some(Band::rows(Vec::new()));
+        return true;
     }
     let mut columns: Vec<Vec<Line>> = band.iter().map(|glyphs| page_lines(0, glyphs, width)).collect();
     for lines in &mut columns {
@@ -562,28 +542,31 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
     }
     let mut lines: Vec<&Line> = columns.iter().flatten().collect();
     lines.sort_by(|a, b| a.y.total_cmp(&b.y));
-    // Each baseline, how many columns have text on it, and whether a line there starts a row.
-    let mut baselines: Vec<(f64, usize, bool)> = Vec::new();
+    // Each baseline, and how many columns have text on it.
+    let mut baselines: Vec<(f64, usize)> = Vec::new();
     for l in lines {
         match baselines.last_mut() {
-            Some((y, columns, _)) if l.y - *y < 0.3 * l.size => *columns += 1,
-            _ => baselines.push((l.y, 1, false)),
+            Some((y, columns)) if l.y - *y < 0.3 * l.size => *columns += 1,
+            _ => baselines.push((l.y, 1)),
         }
     }
-    let &[(first, across, _), .., (last, ..)] = &baselines[..] else {
-        return Some(Band::rows(Vec::new()));
-    };
-    // Of the lines on a baseline with another column's: those after a line with room for them, those after one with none,
-    // and those of numbers, which say nothing by their room.
-    let (mut parted, mut wrapped, mut figures) = (0, 0, 0);
-    // `loose`: the first column with text, which names the rows, has a line with room after it.
-    let (mut tellers, mut numbers, mut loose, mut evidence) = (0, false, false, 0);
-    let name = columns.iter().position(|lines| !lines.is_empty());
-    let bullet = |l: &&Line| is_bullet(&l.text) || l.text.starts_with('・');
-    let names = name.map_or(0, |column| columns[column].iter().filter(|l| !bullet(l)).count());
-    for (column, (lines, &room)) in columns.iter().zip(widths).enumerate() {
+    if baselines.len() < 2 {
+        return true;
+    }
+    if bands.len() == 2 && row == 1 {
+        return false;
+    }
+    // `parted`: the lines on a baseline with another column's that come after a line with room for them. `tellers`: the
+    // columns with lines on such baselines. `evidence`: over 0 that the lines wrapped. `listed`: every line under another
+    // starts an item of a list.
+    let (mut parted, mut tellers, mut evidence, mut listed) = (0, 0, 0, true);
+    for (lines, &room) in columns.iter().zip(widths) {
         let mut tells = false;
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
+            if is_bullet(&after.text) || after.text.starts_with('・') {
+                continue;
+            }
+            listed = false;
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
             let japanese = after.text.starts_with(joins_without_space);
             let word = if japanese {
@@ -591,56 +574,23 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
             } else {
                 after.text.split(' ').next().unwrap_or_default().chars().count()
             };
-            let figure = is_number(&before.text) && is_number(&after.text);
-            let (lower, upper) = (after.text.starts_with(char::is_lowercase), after.text.starts_with(char::is_uppercase));
-            // A hyphen breaks a word, so the line wrapped whatever room it left.
-            let broken = lower && goes_on_after(&before.text, &['-']);
             let left = room - (before.x1 - before.x0);
-            let fits = !broken && (word as f64 + 2.) * letter <= left;
-            let at = baselines.partition_point(|b| b.0 <= after.y) - 1;
-            let (_, columns, starts) = &mut baselines[at];
-            *starts |= figure || fits;
-            if bullet(&after) {
-                // A list in a row has more of them than the row has names, or is beside another list.
-                evidence += if Some(column) != name && lines.len() > names {
-                    12
-                } else {
-                    0
-                };
-                continue;
-            }
-            if !figure && !fits {
-                evidence += if japanese {
-                    // It breaks anywhere, so a line that goes on is as long as its column.
-                    if left < 3. * letter {
-                        isize::from(room >= 6. * letter)
-                    } else {
-                        -9
-                    }
-                } else if row == 0 {
-                    0
-                } else if upper {
-                    -9
-                } else if broken || lower && before.text.contains(' ') && lines[0].text.starts_with(char::is_uppercase) {
-                    3
-                } else {
-                    0
-                };
-            }
-            loose |= (figure || fits) && Some(column) == name;
-            if *columns > 1 {
+            let fits = (word as f64 + 2.) * letter <= left;
+            // Japanese breaks anywhere, so a line of it that goes on is as long as its column. One that leaves room, in any
+            // script, ends a row or a line broken by hand.
+            evidence += if japanese && left < 3. * letter {
+                isize::from(room >= 6. * letter)
+            } else if japanese || fits {
+                -9
+            } else {
+                0
+            };
+            if baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1 {
                 tells = true;
-                *(if figure {
-                    &mut figures
-                } else if fits {
-                    &mut parted
-                } else {
-                    &mut wrapped
-                }) += 1;
+                parted += usize::from(fits);
             }
         }
         tellers += usize::from(tells);
-        numbers |= tells && lines.iter().all(|l| is_number(&l.text));
     }
     let filled = columns.iter().filter(|lines| !lines.is_empty()).count();
     // The first band is the head, one row: its cells may each set a unit under their name, which breaks as rows do. It
@@ -648,48 +598,14 @@ fn read_band(bands: &[Vec<Vec<&Glyph>>], row: usize, height: f64, widths: &[f64]
     // column.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted > 0 || baselines.iter().all(|b| b.1 == filled));
-    if head && !threes {
-        return Some(Band::rows(Vec::new()));
-    }
-    let wraps = if tellers < 2 {
-        !loose
-    } else {
-        parted + figures == 0
-    };
-    // Rows each have their cells' padding, and the lines of one row have it once, round them all. But so may a group of rows.
-    let lead = (last - first) / (baselines.len() - 1) as f64;
-    let (padding, size) = (height - (last - first) - lead, columns.iter().flatten().map(|l| l.size).fold(0., f64::max));
-    let padded = bands.len() > 2 && padding > 0.15 * size;
-    if !head && !wraps && across == filled && tellers == filled && (wrapped == 0 || numbers && parted > 0) {
-        let starts = |b: &&(f64, usize, bool)| b.2 || b.1 == filled;
-        // More than another line would take is a band left empty at its foot.
-        let told = (!padded || padding >= lead) && baselines.iter().skip(1).all(|b| starts(&b) || b.1 == 1);
-        return told.then(|| Band::rows(baselines.iter().skip(1).filter(starts).map(|b| b.0).collect()));
-    }
-    let one = wraps || padded && (figures == 0 || parted == 0 && wrapped > 0);
-    let one_name = tellers < 2 && name.is_some_and(|column| columns[column].len() == 1);
-    one.then_some(Band { breaks: Vec::new(), doubt: !one_name, evidence })
+    // The first column with text names the row.
+    let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
+    head && !threes || one_name || listed || evidence >= enough
 }
 
-/// A number, or a mark among numbers, with nothing after it to go on with.
+/// A number: digits, and marks among them. A mark alone, as a dash for no value or a unit in brackets, is none.
 fn is_number(t: &str) -> bool {
-    !t.contains(|c: char| c.is_alphabetic() || c.is_whitespace()) && !goes_on_after(t, &['-', ','])
-}
-
-/// Whether a line ends in one of `marks` after a word or a number, not in one alone, as a dash stands for no value.
-fn goes_on_after(t: &str, marks: &[char]) -> bool {
-    t.strip_suffix(marks).is_some_and(|t| t.ends_with(char::is_alphanumeric))
-}
-
-/// The rows of a band, each a cell per column, cut where `breaks` starts one.
-fn band_rows(band: &[Vec<&Glyph>], breaks: &[f64], width: f64) -> Vec<Vec<Vec<Line>>> {
-    let mut rows = vec![vec![Vec::new(); band.len()]; breaks.len() + 1];
-    for (column, glyphs) in band.iter().enumerate() {
-        for &g in glyphs {
-            rows[breaks.partition_point(|&y| g.y > y - 0.6 * g.size)][column].push(g);
-        }
-    }
-    rows.iter().map(|row| row.iter().map(|glyphs| cell_lines(glyphs, width)).collect()).collect()
+    t.contains(char::is_numeric) && !t.contains(|c: char| c.is_alphabetic() || c.is_whitespace())
 }
 
 /// A cell's lines, one set down the page read as a turned page is. Only their text is read, so their page is left 0.
@@ -3380,7 +3296,8 @@ pub(crate) mod tests {
     }
 
     /// Two tables, each under its caption, drawn as the book that set them does: both captions first, then each table's
-    /// rules, drawn by `rules` from its column and row edges, and the text of its cells, one of which runs over two lines.
+    /// rules, drawn by `rules` from its column and row edges, and the text of its cells, of which one in the first row runs
+    /// over two lines.
     fn tables_page(rules: &dyn Fn(&[f64], &[f64]) -> String) -> Vec<u8> {
         let xs = [72., 172., 540.];
         let mut ops = shown(72., 100., "Pros of passion") + &shown(72., 300., "Cons of passion");
@@ -3388,8 +3305,8 @@ pub(crate) mod tests {
         ops += &(shown(78., 130., "Strong") + &shown(178., 128., "You care a lot about it") + &shown(178., 140., "and keep at it."));
         ops += &(shown(78., 182., "Lasting") + &shown(178., 182., "It holds over the years."));
         ops += &rules(&xs, &[310., 350., 390.]);
-        ops += &(shown(78., 330., "Costly") + &shown(178., 330., "It takes time from other duties."));
-        ops += &(shown(78., 372., "Easy") + &shown(178., 366., "You stay where it") + &shown(178., 378., "comes easily."));
+        ops += &(shown(78., 330., "Costly") + &shown(178., 324., "It takes time from") + &shown(178., 336., "other duties."));
+        ops += &(shown(78., 372., "Easy") + &shown(178., 372., "You stay where it comes easily."));
         with_contents(&pdf(&[vec![]], None), &[(0, &ops)])
     }
 
@@ -3534,7 +3451,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rows_no_rule_parts_are_read_by_their_lines() {
+    fn a_table_ruled_only_round_its_columns_stays_text() {
         // Ruled round the box, under the header and between the columns only. The second table's cells wrap.
         let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
         ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert"));
@@ -3545,11 +3462,21 @@ pub(crate) mod tests {
         ops += &(shown(78., 314., "Design") + &shown(166., 314., "Queries"));
         ops += &(shown(78., 336., "A tree kept as") + &shown(166., 336., "Easy to insert, but"));
         ops += &(shown(78., 348., "references") + &shown(166., 348., "hard to query"));
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-        let rows = |rows: &[[&str; 2]]| Some(rows.iter().map(|r| r.map(String::from).to_vec()).collect::<Vec<_>>());
-        let unruled = [["Design", "Insert"], ["Adjacency List", "Easy"], ["Nested Sets", "Hard"], ["Closure Table", "Easy"]];
-        let wrapped = [["Design", "Queries"], ["A tree kept as references", "Easy to insert, but hard to query"]];
-        assert_eq!(ir.blocks.iter().map(|b| b.attrs.rows.clone()).collect::<Vec<_>>(), [rows(&unruled), rows(&wrapped)]);
+        no_table(&ops);
+        // Numbers, words that end in a hyphen, a name beside lists, and names that start in either case.
+        let prefixes: &[&[&str]] = &[&["Prefix", "Meaning", "Example"], &["un-", "not", "unhappy"], &["re-", "again", "redo"], &["sub-", "under", "subway"]];
+        let names: &[&[&str]] = &[&["Name", "Role"], &["Ada Byron", "analyst"], &["von Neumann", "developer"], &["de Gaulle", "general"]];
+        let features: &[&[&str]] = &[&["Feature", "Details"], &["Search", "\\267 fast"], &["", "\\267 fuzzy"]];
+        for rows in [SCORES, prefixes, names, features] {
+            no_table(&groups(&fitted(rows), 12., &[&rows[..1], &rows[1..]]));
+            no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..]]));
+        }
+        // Japanese lines that each come to the end of their column.
+        let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(9)[..4 * n]);
+        let text: String =
+            [(78., 114., 2), (206., 114., 2), (78., 136., 11), (206., 136., 12), (78., 152., 5), (206., 152., 4)].map(|(x, y, n)| set(x, y, n)).concat();
+        let ops = ruled(&[72., 200., 332.], &[100., 120., 160.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
     }
 
     /// A head and one band under it, with no rule between the band's rows: each row's cells where `at` puts them.
@@ -3568,37 +3495,6 @@ pub(crate) mod tests {
     const SCORES: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", "72.3"], &["Ours (large)", "78.1", "75.6"]];
 
     #[test]
-    fn rows_no_rule_parts_are_read_by_their_numbers_in_columns_as_wide_as_their_text() {
-        // As LaTeX sets `|l|c|c|`: no line has room for a word after it.
-        let letters = |t: &str| 5.6 * t.len() as f64;
-        let xs = [72., 152., 206., 244.];
-        let in_the_middle = |column: usize, text: &str| {
-            if column == 0 {
-                6.
-            } else {
-                (xs[column + 1] - xs[column] - letters(text)) / 2.
-            }
-        };
-        assert_eq!(texts_of(&banded(&xs, &in_the_middle, SCORES)), [as_table(SCORES)]);
-        // A cell with nothing in it, and a name that wraps.
-        let blank: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", ""], &["Ours (large)", "78.1", "75.6"]];
-        assert_eq!(texts_of(&banded(&xs, &in_the_middle, blank)), [as_table(blank)]);
-        let wrapped: &[&[&str]] = &[SCORES[0], SCORES[1], &["Ours, much", "74.9", "72.3"], &["larger", "", ""], SCORES[3]];
-        let read: &[&[&str]] = &[SCORES[0], SCORES[1], &["Ours, much larger", "74.9", "72.3"], SCORES[3]];
-        assert_eq!(texts_of(&banded(&xs, &in_the_middle, wrapped)), [as_table(read)]);
-    }
-
-    #[test]
-    fn rows_no_rule_parts_are_read_by_their_lines_in_the_middle_or_at_the_right_of_wide_columns() {
-        let xs = [72., 222., 382., 540.];
-        let words: &[&[&str]] = &[&["Method", "Speed", "Kind"], &["Baseline", "slow", "old"], &["Ours", "fast", "new"], &["Ours (large)", "faster", "new"]];
-        let in_the_middle = |column: usize, text: &str| (xs[column + 1] - xs[column] - 5.6 * text.len() as f64) / 2.;
-        let at_the_right = |column: usize, text: &str| xs[column + 1] - xs[column] - 6. - 5.6 * text.len() as f64;
-        assert_eq!(texts_of(&banded(&xs, &in_the_middle, words)), [as_table(words)]);
-        assert_eq!(texts_of(&banded(&xs, &at_the_right, words)), [as_table(words)]);
-    }
-
-    #[test]
     fn a_table_whose_rows_cannot_be_told_stays_text() {
         let left = |_: usize, _: &str| 6.;
         // Some lines end with room for the next word and some do not.
@@ -3615,13 +3511,11 @@ pub(crate) mod tests {
 
     #[test]
     fn a_name_in_the_middle_of_its_row_beside_three_lines_leaves_it_a_table() {
-        let ops = ruled(&WIDE, &[200., 220., 270.], "strokes") + &shown(78., 214., "Name") + &shown(178., 214., "What it does") + &shown(78., 248., "Saw");
+        let ops =
+            ruled(&WIDE, &[200., 220., 270., 290.], "strokes") + &shown(78., 214., "Name") + &shown(178., 214., "What it does") + &shown(78., 248., "Saw");
         let lines = shown(178., 236., "It cuts.") + &shown(178., 248., "It sings.") + &shown(178., 260., "It rests.");
-        assert_eq!(
-            texts_of(&(ops + &lines)),
-            ["Name	What it does
-Saw	It cuts. It sings. It rests."]
-        );
+        let foot = shown(78., 284., "Axe") + &shown(178., 284., "It chops.");
+        assert_eq!(texts_of(&(ops + &lines + &foot)), ["Name\tWhat it does\nSaw\tIt cuts. It sings. It rests.\nAxe\tIt chops."]);
     }
 
     /// A table ruled at `ys` between its rows or groups of rows, each line's baseline with its cells.
@@ -3644,22 +3538,6 @@ Saw	It cuts. It sings. It rests."]
     fn no_table(ops: &str) {
         let texts = texts_of(ops);
         assert!(texts.iter().all(|t| !t.contains('\t')), "{texts:?}");
-    }
-
-    #[test]
-    fn numbers_under_numbers_in_cells_that_wrap_are_of_their_row() {
-        let lines: &[(f64, &[&str])] = &[
-            (174., &["Item", "2023", "2024"]),
-            (194., &["Revenue from", "1,234", "1,100"]),
-            (206., &["operations", "(56.1%)", "(50.2%)"]),
-            (224., &["Cost of goods", "234", "100"]),
-            (236., &["purchased", "(6.1%)", "(5.2%)"]),
-        ];
-        let xs = [72., 170., 260., 350.];
-        let table = "Item\t2023\t2024\nRevenue from operations\t1,234 (56.1%)\t1,100 (50.2%)\nCost of goods purchased\t234 (6.1%)\t100 (5.2%)";
-        assert_eq!(texts_of(&grouped(&xs, &[160., 180., 210., 240.], lines)), [table]);
-        // With no more room in the bands than rows would take, they could be rows.
-        no_table(&grouped(&xs, &[160., 185., 209., 239.], lines));
     }
 
     #[test]
@@ -3687,16 +3565,6 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
-    fn rows_over_an_empty_foot_of_their_group_are_rows() {
-        let rows: &[&[&str]] = &[&["Item", "Qty", "Price"], &["Widget", "4", "12.00"], &["Gadget", "2", "30.00"], &["Gizmo", "1", "9.00"]];
-        let y = |line: usize| 171. + 16. * line as f64;
-        let mut lines: Vec<(f64, &[&str])> = rows.iter().enumerate().map(|(i, cells)| (y(i), *cells)).collect();
-        lines.push((y(4) + 60., &["Total", "7", "51.00"]));
-        let table = as_table(rows) + "\nTotal\t7\t51.00";
-        assert_eq!(texts_of(&grouped(&[72., 222., 382., 540.], &[160., 176., 284., 300.], &lines)), [table]);
-    }
-
-    #[test]
     fn rows_under_a_head_with_notes_by_some_of_them_stay_text() {
         let head: &[&[&str]] = &[&["Task", "Note"]];
         let rows: &[&[&str]] = &[&["Order the parts", "urgent"], &["Paint the door", ""], &["Call the office", ""], &["Send the bill", ""]];
@@ -3704,14 +3572,14 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
-    fn rows_over_the_first_rule_are_rows_where_they_hold_numbers() {
+    fn rows_over_the_first_rule_stay_text_where_they_hold_numbers() {
         let xs = [72., 270., 340., 440.];
-        let first: &[&[&str]] = &[&["Apples", "4", "12.00"], &["Pears", "2", "30.00"], &["Plums", "1", "9.00"]];
-        let second: &[&[&str]] = &[&["Leeks", "5", "2.00"], &["Onions", "9", "1.00"]];
-        assert_eq!(texts_of(&groups(&xs, 14., &[first, second])), [as_table(&[first, second].concat())]);
         let first: &[&[&str]] = &[&["Item", "Qty", "Price"], &["Widget", "4", "12.00"], &["Gadget", "2", "30.00"]];
         let second: &[&[&str]] = &[&["Gizmo", "1", "9.00"]];
-        assert_eq!(texts_of(&groups(&xs, 14., &[first, second])), [as_table(&[first, second].concat())]);
+        no_table(&groups(&xs, 14., &[first, second]));
+        // With no number under another line, the first band is the head.
+        let head: &[&[&str]] = &[&["Item", "Qty", "Price"], &["", "(units)", "(USD)"]];
+        assert_eq!(texts_of(&groups(&xs, 14., &[head, second])), ["Item\tQty (units)\tPrice (USD)\nGizmo\t1\t9.00"]);
     }
 
     #[test]
@@ -3725,12 +3593,6 @@ Saw	It cuts. It sings. It rests."]
             (235., &["Room 7", "Room 5"]),
         ];
         no_table(&grouped(&[72., 222., 382.], &[160., 180., 210., 240.], lines));
-    }
-
-    #[test]
-    fn a_word_its_cell_breaks_with_a_hyphen_is_whole_in_its_row() {
-        let lines: &[(f64, &[&str])] = &[(174., &["Model", "Note"]), (194., &["Recom-", "Easy to put"]), (206., &["mendation", "in place"])];
-        assert_eq!(texts_of(&grouped(&[72., 180., 244.], &[160., 180., 212.], lines)), ["Model\tNote\nRecommendation\tEasy to put in place"]);
     }
 
     fn wide(text: &str) -> f64 {
@@ -3780,16 +3642,6 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
-    fn a_dash_in_a_cell_with_no_value_or_after_a_grade_breaks_no_word() {
-        let grades: &[&[&str]] = &[&["Name", "Grade"], &["Ada", "A-"], &["Bob", "B"], &["Cy", "A-"], &["Di", "C"]];
-        assert_eq!(texts_of(&groups(&[72., 200., 300.], 14., &[&grades[..1], &grades[1..]])), [as_table(grades)]);
-        let marks: &[&[&str]] = &[&["Model", "B"], &["Model A", "-"], &["Model B", "x"], &["Model C", "-"]];
-        no_table(&groups(&fitted(marks), 14., &[&marks[..1], &marks[1..]]));
-        let scores: &[&[&str]] = &[&["Model", "F1"], &["Base", "12.3"], &["Ours", "-"], &["Ours (large)", "14.5"]];
-        assert_eq!(texts_of(&groups(&fitted(scores), 14., &[&scores[..1], &scores[1..]])), [as_table(scores)]);
-    }
-
-    #[test]
     fn rows_with_room_round_their_groups_are_not_put_in_one() {
         // As struts in a group's first row and last give it in LaTeX.
         let spaced = |rows: &[&[&str]], xs: &[f64]| {
@@ -3811,51 +3663,33 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
-    fn a_row_whose_lines_wrapped_tells_that_the_rules_part_the_rows() {
+    fn a_band_is_one_row_only_by_its_own_lines() {
         let head: &[&[&str]] = &[&["Name", "Kind"]];
         let short: &[&[&str]] = &[&["Random", "Open"], &["forest", "source"]];
-        let (long, named): (&[&[&str]], &[&[&str]]) = (&[&["Model", "It is in"], &["trees", "the park"]], &[&["Model", "It is in"], &["", "The park"]]);
-        let xs = roomy(&[head, short, long].concat());
-        no_table(&groups(&xs, 12., &[head, short]));
-        assert_eq!(texts_of(&groups(&xs, 12., &[head, short, long])), ["Name\tKind\nRandom forest\tOpen source\nModel trees\tIt is in the park"]);
-        // A capital tells of a row as much as three lines that go on without one tell against it.
-        let words: &[&[&str]] = &[&["Random", "Open"], &["forest", "Shut"]];
-        no_table(&groups(&xs, 12., &[head, words, long, long, long]));
-        assert_eq!(texts_of(&groups(&xs, 12., &[head, words, long, long, long, long])).len(), 1);
-        // A row of lines under one name is one, but these could be of a group of rows it names.
-        no_table(&groups(&xs, 12., &[head, short, named]));
+        let long: &[&[&str]] = &[&["Model", "It is in"], &["trees", "the park"]];
         let said: &[&[&str]] = &[&["Model", "It is in"], &["", "the park"]];
-        assert_eq!(texts_of(&groups(&xs, 12., &[head, short, said])), ["Name\tKind\nRandom forest\tOpen source\nModel\tIt is in the park"]);
-        // Under one name, but in columns whose lines are beside each other as those of rows are.
-        let rows: &[&[&str]] = &[&["Name", "Kind", "Place"], &["Model", "Ash", "Rome"], &["", "Oak", "Bonn"]];
-        no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..]]));
-    }
-
-    #[test]
-    fn lines_that_go_on_without_a_capital_after_one_wrapped() {
-        let head: &[&[&str]] = &[&["Name", "Kind"]];
-        let row: &[&[&str]] = &[&["It is in", "Of all of"], &["the park", "the trees"]];
-        let read = |xs: &[f64], rows: &[&[&[&str]]]| texts_of(&groups(xs, 12., &[&[head], rows].concat()))[0].lines().count();
-        // One line tells where the columns are wider than their text, and two in each of two rows where they are not.
-        let one: &[&[&str]] = &[&["It is in", "100"], &["the park", ""]];
-        assert_eq!(read(&roomy(&[head, one].concat()), &[one]), 2);
-        no_table(&groups(&fitted(row), 12., &[head, row]));
-        assert_eq!(read(&fitted(row), &[row, row]), 3);
-        let [first, last] = [fitted(row)[1], fitted(row)[2]];
-        assert_eq!(read(&[72., first, last + 8.], &[row]), 2);
-        let three: &[&[&str]] = &[&["It is in", "Of all of"], &["the park", "the trees"], &["by a lake", "in that park"]];
-        assert_eq!(read(&fitted(three), &[three]), 2);
-        // A column with no text is no wider than it.
-        let empty: &[&[&str]] = &[&["It is in", "Of all of", ""], &["the park", "the trees", ""]];
-        no_table(&groups(&[72., first, last, last + 60.], 12., &[&[&["Name", "Kind", ""]], empty]));
-        // Names of one word each, rows that all start without a capital, and a name that does after one that has it.
-        let words: &[&[&str]] = &[&["String", "Field"], &["int", "count"], &["char", "letter"]];
-        let lower: &[&[&str]] = &[&["it is in", "of all of"], &["the park", "the trees"]];
-        let named: &[&[&str]] = &[&["Ada Byron", "The first"], &["von Neumann", "Of the rest"]];
-        let priced: &[&[&str]] = &[&["Ada Byron", "12.5"], &["von Neumann", "14.0"]];
-        for rows in [words, lower, named, priced] {
-            no_table(&groups(&roomy(rows), 12., &[head, rows]));
-        }
+        let xs = roomy(&[head, short, long].concat());
+        // Latin lines beside each other in two columns may be the rows of a group, however another band's lines wrap.
+        no_table(&groups(&xs, 12., &[head, short, long]));
+        no_table(&groups(&xs, 12., &[head, said, short]));
+        assert_eq!(texts_of(&groups(&xs, 12., &[head, said, said])), ["Name\tKind\nModel\tIt is in the park\nModel\tIt is in the park"]);
+        // A group whose last column has text on its first line only, beside a band whose sentence wrapped.
+        let long = "The structure keeps each node with its";
+        let xs = [72., 200., 214. + wide(long), 300. + wide(long)];
+        let lines: &[(f64, &[&str])] = &[
+            (174., &["Method", "Kind", "Note"]),
+            (193., &["Model A", "flat tree", "kept"]),
+            (205., &["Model B", "deep heap", ""]),
+            (224., &["Model C", long, ""]),
+            (236., &["", "parent and children", ""]),
+        ];
+        no_table(&grouped(&xs, &[160., 180., 212., 242.], lines));
+        // Rows of a group that start in either case, or end in a hyphen.
+        let names: &[&[&str]] = &[&["Name", "Role"], &["Ada Byron", "analyst"], &["von Neumann", "developer"], &["de Gaulle", "general"]];
+        no_table(&groups(&roomy(names), 12., &[&names[..1], &names[1..3], &names[3..]]));
+        let prefixes: &[&[&str]] =
+            &[&["Prefix", "Meaning", "Example"], &["un-", "not", "unhappy"], &["re-", "again", "redo"], &["dis-", "opposite", "disagree"]];
+        no_table(&groups(&fitted(prefixes), 12., &[&prefixes[..1], &prefixes[1..3], &prefixes[3..]]));
     }
 
     #[test]
@@ -3874,102 +3708,10 @@ Saw	It cuts. It sings. It rests."]
     }
 
     #[test]
-    fn a_cells_padding_is_kept_at_both_its_sides() {
-        let (name, goes_on) = ("A tree kept as", "references to it");
-        let (text, rest) = ("Easy to insert, but", "hard to query");
-        // The word under it would fit in the padding at one side.
-        let middle = 84. + wide(goes_on);
-        let right = middle + 6. + wide(text) + 6. * wide(rest) / rest.len() as f64 + 3.;
-        let ops = groups(&[72., middle, right], 14., &[&[&["Design", "Queries"]], &[&[name, text], &[goes_on, rest]]]);
-        let table = format!("Design\tQueries\n{name} {goes_on}\t{text} {rest}");
-        assert_eq!(texts_of(&ops), [&table[..]]);
-        // As Word ends a cell: with a space in the padding.
-        assert_eq!(texts_of(&(ops + &shown(right - 3.28, 183.8, " "))), [table]);
-    }
-
-    #[test]
-    fn a_column_set_to_its_right_has_its_padding_at_the_right() {
-        // Its lines end 3pt short of the rule, further than an em from the left one.
-        let at = |y: f64, text: &str| shown(241. - wide(text), y, text);
-        let ops = ruled(&[72., 172., 244.], &[100., 120., 150.], "strokes")
-            + &shown(78., 114., "Name")
-            + &at(114., "What")
-            + &shown(78., 134., "Oak")
-            + &at(134., "Old tree")
-            + &shown(78., 146., "Elm")
-            + &at(146., "Tall one");
-        assert_eq!(
-            texts_of(&ops),
-            ["Name	What
-Oak	Old tree
-Elm	Tall one"]
-        );
-    }
-
-    #[test]
-    fn the_head_tells_the_padding_of_a_column_set_in_its_middle() {
-        let (one, other) = ("Quite fast", "Slow one");
-        // A head as wide as the column's text can be.
-        let w = wide(one) + 6. * wide(other) / other.len() as f64 + 14.;
-        let xs = [72., 222., 222. + w];
-        let mut ops = ruled(&xs, &[196., 212., 244.], "strokes") + &shown(78., 208., "Name of it") + &shown(228., 208., "S");
-        ops += &shown(222. + w - 6. - wide("d"), 208., "d");
-        for (y, name, text) in [(222., "Ours", one), (236., "Theirs", other)] {
-            ops += &(shown(78., y, name) + &shown(222. + (w - wide(text)) / 2., y, text));
-        }
-        let texts = texts_of(&ops);
-        assert!(texts[0].ends_with("Ours\tQuite fast\nTheirs\tSlow one"), "{texts:?}");
-    }
-
-    #[test]
-    fn a_line_in_two_pieces_is_as_wide_as_both() {
-        let widest = "It is there to be read";
-        let mut ops =
-            ruled(&[72., 400., 415. + wide(widest)], &[196., 212., 244.], "strokes") + &shown(78., 208., "From and to") + &shown(406., 208., "What it is for");
-        for (y, [from, to, text]) in
-            [(222., ["From the start of it", "to the very end", widest]), (236., ["and from the end", "to the very start", "more than once"])]
-        {
-            ops += &(shown(78., y, from) + &shown(394. - wide(to), y, to) + &shown(406., y, text));
-        }
-        let texts = texts_of(&ops);
-        assert!(texts.len() == 1 && texts[0].contains('\t'), "{texts:?}");
-    }
-
-    #[test]
-    fn a_number_under_words_is_the_last_of_them() {
-        let rows: &[&[&str]] = &[&["Cost", "Queries"], &["It costs about", "Easy to insert, but"], &["300", "hard to query"]];
-        let texts = texts_of(&groups(&roomy(rows), 14., &[&rows[..1], &rows[1..]]));
-        assert_eq!(texts, ["Cost\tQueries\nIt costs about 300\tEasy to insert, but hard to query"]);
-        // Nor does it make its column one of numbers.
-        let rows: &[&[&str]] = &[&["Cost", "Queries"], &["It costs about", "Easy"], &["300", "and quick"]];
-        no_table(&groups(&[72., fitted(rows)[1], 300.], 14., &[&rows[..1], &rows[1..]]));
-    }
-
-    #[test]
-    fn a_name_alone_on_its_line_starts_a_row_where_the_one_over_it_has_room() {
-        let left = |_: usize, _: &str| 6.;
-        let rows: &[&[&str]] = &[&["Name", "Colour", "Weight"], &["Apple", "red", "1.2"], &["Vegetables", "", ""], &["Kale", "green", "0.8"]];
-        assert_eq!(texts_of(&banded(&[72., 222., 382., 540.], &left, rows)), [as_table(rows)]);
-        // And goes on with it where it has none.
-        let lines: &[&[&str]] =
-            &[&["Design", "Use"], &["List", "Easy to read"], &["Nested sets kept", "Hard to write"], &["in order", ""], &["Table", "Easy again"]];
-        let w = wide("Nested sets kept");
-        let texts = texts_of(&banded(&[72., 84. + w, 300. + w], &left, lines));
-        assert_eq!(texts, ["Design\tUse\nList\tEasy to read\nNested sets kept in order\tHard to write\nTable\tEasy again"]);
-    }
-
-    #[test]
     fn addresses_beside_one_line_stay_text() {
         let rows: &[&[&str]] =
             &[&["Bill to", "Ship to", "Sum"], &["Ann Author", "Bob Baker", "$26.00"], &["1 Main St", "2 Side St", ""], &["Town", "City", ""]];
         no_table(&banded(&[72., 222., 372., 540.], &|_, _| 6., rows));
-    }
-
-    #[test]
-    fn numbers_broken_after_a_comma_are_of_one_cell() {
-        let rows: &[&[&str]] = &[&["In", "Event"], &["3.1,", "The first public"], &["3.2", "release"], &["4.0", "The last"]];
-        let texts = texts_of(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..3], &rows[3..]]));
-        assert_eq!(texts, ["In\tEvent\n3.1, 3.2\tThe first public release\n4.0\tThe last"]);
     }
 
     #[test]
@@ -3998,52 +3740,56 @@ Elm	Tall one"]
         let at = |x: f64, y: f64, cids: &str| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, cids.replace("027E", &format!("{dot:04X}")));
         let heads = at(78., 114., "034B034D") + &at(206., 114., "034F0351");
         let cells = at(78., 136., "027E034B") + &at(206., 136., "027E034D") + &at(78., 152., "027E034F") + &at(206., 152., "027E0351");
-        let ops = ruled(&[72., 200., 328.], &[100., 120., 160.], "strokes") + &format!("BT /F3 10 Tf {heads}{cells}ET\n");
+        let ops = ruled(&[72., 200., 328.], &[100., 120., 160., 180.], "strokes") + &format!("BT /F3 10 Tf {heads}{cells}{}ET\n", at(78., 174., "034B"));
         let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
-        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(2), "{:?}", kinds(&ir));
+        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3), "{:?}", kinds(&ir));
     }
 
     #[test]
     fn lists_in_the_cells_of_one_row_stay_in_their_cells() {
         let rows: &[&[&str]] = &[&["Pros", "Cons"], &["\\267 Strong", "\\267 Costly"], &["\\267 Lasting", "\\267 Heavy"]];
-        let texts = texts_of(&banded(&WIDE, &|_, _| 6., rows));
-        assert_eq!(texts, ["Pros\tCons\n• Strong • Lasting\t• Costly • Heavy"]);
-        // Rows with a bullet each.
+        let foot: &[&[&str]] = &[&["\\267 Cheap", "\\267 Slow"]];
+        let texts = texts_of(&groups(&WIDE, 12., &[&rows[..1], &rows[1..], foot]));
+        assert_eq!(texts, ["Pros\tCons\n• Strong • Lasting\t• Costly • Heavy\n• Cheap\t• Slow"]);
+        // Rows with a bullet each, and names beside lists.
         let named: &[&[&str]] = &[&["Name", "What"], &["Ada", "\\267 Oak"], &["Bob", "\\267 Elm"]];
         let listed: &[&[&str]] = &[&["What", "Who"], &["\\267 Oak", "Ada"], &["\\267 Elm", "Bob"]];
-        for rows in [named, listed] {
-            no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..]]));
+        let features: &[&[&str]] = &[&["Feature", "Details"], &["Search", "\\267 fast"], &["", "\\267 fuzzy"], &["Export", "\\267 PDF"], &["", "\\267 CSV"]];
+        for rows in [named, listed, features] {
+            no_table(&groups(&roomy(rows), 12., &[&rows[..1], &rows[1..], &rows[1..2]]));
         }
     }
 
     #[test]
-    fn japanese_rows_no_rule_parts_are_read_by_their_lines_and_japanese_cells_that_wrap_are_not_rows() {
+    fn japanese_lines_that_each_come_to_the_end_of_their_column_are_one_row() {
         let read = |right: f64, cells: &[(f64, f64, usize)]| {
             let text: String = cells.iter().map(|&(x, y, n)| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(9)[..4 * n])).collect();
-            let ops = ruled(&[72., 200., right], &[100., 120., 180.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+            let ops = ruled(&[72., 200., right], &[100., 120., 180., 200.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
             let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
             ir.blocks[0].attrs.rows.as_ref().map(Vec::len)
         };
-        let head = [(78., 114., 2), (206., 114., 2)];
+        let (head, foot) = ([(78., 114., 2), (206., 114., 2)], [(78., 194., 2), (206., 194., 2)]);
+        // Lines that end short of their column, and a line before the last with room for its first letters, not for all.
         let entries = [(78., 136., 4), (206., 136., 3), (78., 152., 3), (206., 152., 5), (78., 168., 5), (206., 168., 4)];
-        assert_eq!(read(340., &[&head[..], &entries].concat()), Some(4));
-        // The line before has room for the first letters of the last row, not for all of it.
+        assert_eq!(read(340., &[&head[..], &entries, &foot].concat()), None);
         let long = [&entries[..4], &[(78., 168., 9), (206., 168., 10)]].concat();
-        assert_eq!(read(340., &[&head[..], &long].concat()), Some(4));
+        assert_eq!(read(340., &[&head[..], &long, &foot].concat()), None);
         // The second line of the one cell gives up its last letter to the mark that cannot start a line.
         let wrapped = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)];
-        assert_eq!(read(332., &[&head[..], &wrapped].concat()), Some(2));
+        assert_eq!(read(332., &[&head[..], &wrapped, &foot].concat()), Some(3));
     }
 
     #[test]
     fn japanese_rows_in_columns_as_wide_as_their_text_are_not_put_in_one() {
-        // Each of two columns' letters, line by line.
+        // Each of two columns' letters, line by line: a head, a band, and a row of two letters under it.
         let read = |lines: &[[usize; 2]], room: f64| {
             let widest = |column: usize| 12. + room + 10. * lines.iter().map(|l| l[column]).max().unwrap() as f64;
             let xs = [72., 72. + widest(0), 72. + widest(0) + widest(1)];
             let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(9)[..4 * n]);
-            let text: String = lines.iter().enumerate().map(|(i, l)| [0, 1].map(|c| set(xs[c] + 6., 114. + 16. * i as f64, l[c])).concat()).collect();
-            let ops = ruled(&xs, &[100., 118., 118. + 16. * (lines.len() - 1) as f64], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+            let text: String =
+                lines.iter().chain([&[2, 2]]).enumerate().map(|(i, l)| [0, 1].map(|c| set(xs[c] + 6., 114. + 16. * i as f64, l[c])).concat()).collect();
+            let foot = 118. + 16. * (lines.len() - 1) as f64;
+            let ops = ruled(&xs, &[100., 118., foot, foot + 16.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
             let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
             ir.blocks[0].attrs.rows.as_ref().map(Vec::len)
         };
@@ -4055,8 +3801,8 @@ Elm	Tall one"]
         // As many as could be names of one length, in columns no wider than them.
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 0.), None);
         // A cell of each column that wraps, their last lines apart.
-        assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 4.), Some(2));
-        assert_eq!(read(&[[2, 2], [12, 10], [10, 10], [12, 10], [8, 6]], 4.), Some(2));
+        assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 4.), Some(3));
+        assert_eq!(read(&[[2, 2], [12, 10], [10, 10], [12, 10], [8, 6]], 4.), Some(3));
     }
 
     #[test]
@@ -4070,13 +3816,19 @@ Elm	Tall one"]
         let head: &[&[&str]] = &[&["", "2023", "2024"], &["Item", "\\(a\\)", "\\(b\\)"]];
         let body: &[&[&str]] = &[&["Widget", "4", "5"]];
         assert_eq!(texts_of(&groups(&[72., 222., 382., 540.], 14., &[head, body])), ["Item\t2023 (a)\t2024 (b)\nWidget\t4\t5"]);
+        // Units that are marks alone, under some of the columns.
+        let head: &[&[&str]] = &[&["Model", "Accuracy", "Recall"], &["", "(%)", "(%)"]];
+        let body: &[&[&str]] = &[&["Base", "71.2", "68.0"], &["Ours", "74.9", "72.3"]];
+        let each: Vec<&[&[&str]]> = std::iter::once(head).chain(body.iter().map(std::slice::from_ref)).collect();
+        let table = "Model\tAccuracy (%)\tRecall (%)\nBase\t71.2\t68.0\nOurs\t74.9\t72.3";
+        assert_eq!(texts_of(&groups(&[72., 200., 300., 400.], 14., &each)), [table]);
     }
 
     #[test]
-    fn a_band_of_a_thousand_rows_no_rule_parts_is_read_in_seconds() {
-        // Each of the two cells holds a thousand lines of one letter in 1pt type, 0.7pt apart, so each starts a row. With
-        // every glyph's row looked up among all the rows for each row, this took 30 s in a debug build.
-        let mut ops = ruled(&[72., 300., 540.], &[40., 60., 780.], "strokes") + &shown(78., 55., "Head") + &shown(306., 55., "Head");
+    fn a_band_of_a_thousand_lines_is_read_in_seconds() {
+        // Each of the two cells holds a thousand lines of one letter in 1pt type, 0.7pt apart.
+        let mut ops = ruled(&[72., 300., 540.], &[40., 60., 770., 780.], "strokes") + &shown(78., 55., "Head") + &shown(306., 55., "Head");
+        ops += &(shown(78., 778., "Foot") + &shown(306., 778., "Foot"));
         for x in [78., 306.] {
             for i in 0..1000 {
                 ops += &format!("BT /F1 1 Tf {x} {} Td (a) Tj ET\n", 792. - (70. + 0.7 * i as f64));
@@ -4086,7 +3838,7 @@ Elm	Tall one"]
         let started = std::time::Instant::now();
         let ir = to_ir(&bytes, None).unwrap();
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "took {:?}", started.elapsed());
-        assert_eq!(ir.blocks[0].attrs.rows.as_ref().map(Vec::len), Some(1001));
+        assert!(ir.blocks.iter().all(|b| b.attrs.rows.is_none()), "{:?}", kinds(&ir));
     }
 
     /// A page that draws `ops`, then a form that shows `label` at its top.
@@ -4277,18 +4029,6 @@ Elm	Tall one"]
     }
 
     #[test]
-    fn a_cell_set_lower_than_the_one_beside_it_keeps_its_band_one_row() {
-        // The second band's first cell holds three short lines, the other two lines centred lower down. The third band's
-        // last cell wrapped.
-        let mut ops = ruled(&[72., 200., 258.], &[110., 130., 200., 240.], "strokes");
-        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Notes"));
-        ops += &(shown(78., 146., "Short") + &shown(78., 158., "lines") + &shown(78., 170., "here"));
-        ops += &(shown(206., 158., "Centered") + &shown(206., 170., "text") + &shown(78., 214., "Other"));
-        ops += &(shown(206., 214., "It is in") + &shown(206., 226., "the park"));
-        assert_eq!(texts_of(&ops), ["Design\tNotes\nShort lines here\tCentered text\nOther\tIt is in the park"]);
-    }
-
-    #[test]
     fn vertical_writing_by_the_left_rule_of_its_cells_is_not_split_into_rows() {
         // `vertical_writing_in_a_table_goes_to_the_cells_its_columns_are_in` with each cell's column 5pt from its left
         // rule, so a one-glyph line has room after it for the next.
@@ -4298,34 +4038,6 @@ Elm	Tall one"]
         let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
         let ir = to_ir(&japanese(&[vec![]], "Identity-V", &ops), None).unwrap();
         assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう\nあい\tかき")]);
-    }
-
-    #[test]
-    fn rows_no_rule_parts_take_a_cell_set_a_little_higher() {
-        // `rows_no_rule_parts_are_read_by_their_lines` with the second column 1pt higher, as a cell in another font sits.
-        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
-        ops += &(shown(78., 124., "Design") + &shown(206., 123., "Insert"));
-        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 145., "Easy"));
-        ops += &(shown(78., 166., "Nested Sets") + &shown(206., 165., "Hard"));
-        ops += &(shown(78., 186., "Closure Table") + &shown(206., 185., "Easy"));
-        let ir = to_ir(&with_contents(&pdf(&[vec![]], None), &[(0, &ops)]), None).unwrap();
-        assert_eq!(kinds(&ir), [("table", "Design\tInsert\nAdjacency List\tEasy\nNested Sets\tHard\nClosure Table\tEasy")]);
-    }
-
-    #[test]
-    fn a_line_whose_next_word_fits_only_in_the_cells_padding_wrapped() {
-        // The second column's first line ends where the next line's first word would fit before the rule, but not before
-        // the padding the cell keeps on its left (6pt): the line wrapped, so the band is one row. The first column's label
-        // is broken by hand, with room after its first line.
-        let wrapped = shown(166., 336., "Easy to insert, but") + &shown(166., 348., "hard to query");
-        let (_, measured) = glyphs(&with_contents(&pdf(&[vec![]], None), &[(0, &wrapped)]), true).unwrap();
-        let lines = page_lines(0, &measured[0].glyphs.iter().collect::<Vec<_>>(), measured[0].width);
-        let letter = (lines[1].x1 - lines[1].x0) / lines[1].text.chars().count() as f64;
-        let right = lines[0].x1 + 5. * letter + 3.;
-        let mut ops = ruled(&[72., 160., right], &[300., 320., 360., 380.], "strokes");
-        ops += &(shown(78., 314., "Design") + &shown(166., 314., "Queries"));
-        ops += &(shown(78., 336., "Closure") + &shown(78., 348., "Table") + &wrapped + &shown(78., 374., "Sets") + &shown(166., 374., "Hard"));
-        assert_eq!(texts_of(&ops), ["Design\tQueries\nClosure Table\tEasy to insert, but hard to query\nSets\tHard"]);
     }
 
     #[test]
@@ -6327,8 +6039,8 @@ Elm	Tall one"]
     }
 
     #[test]
-    fn rows_no_rule_parts_drawn_from_the_bottom_up_are_rows() {
-        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+    fn rows_drawn_from_the_bottom_up_are_read_from_the_top() {
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 155., 175., 200.], "strokes");
         ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
         ops += &(shown(78., 166., "Nested Sets") + &shown(206., 166., "Hard"));
         ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
@@ -6834,16 +6546,6 @@ Manual	No. 1234";
     }
 
     #[test]
-    fn rows_no_rule_parts_are_rows_beside_an_empty_column() {
-        let mut ops = ruled(&[72., 200., 300., 400.], &[110., 130., 200.], "strokes");
-        ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert") + &shown(306., 124., "Notes"));
-        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
-        ops += &(shown(78., 166., "Nested Sets") + &shown(206., 166., "Hard"));
-        ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
-        assert_eq!(texts_of(&ops), ["Design\tInsert\tNotes\nAdjacency List\tEasy\t\nNested Sets\tHard\t\nClosure Table\tEasy\t"]);
-    }
-
-    #[test]
     fn a_gap_in_the_middle_of_the_page_in_a_cell_is_no_row() {
         // A wide gap there parts a line in two on one baseline.
         let mut ops = ruled(&[72., 440., 540.], &[110., 130., 160.], "strokes") + &shown(78., 124., "Signed by") + &shown(446., 124., "Seen");
@@ -6852,26 +6554,25 @@ Manual	No. 1234";
     }
 
     #[test]
-    fn a_superscript_in_a_row_no_rule_parts_stays_in_its_cell() {
+    fn a_superscript_in_a_row_stays_in_its_cell() {
         // As TeX sets it: 7pt raised 3.6pt.
-        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 200.], "strokes");
+        let mut ops = ruled(&[72., 200., 400.], &[110., 130., 152., 172.], "strokes");
         ops += &(shown(78., 124., "Design") + &shown(206., 124., "Insert"));
-        ops += &(shown(78., 146., "Adjacency List") + &shown(206., 146., "Easy"));
-        ops += &(shown(78., 166., "Nested Sets") + &sized(133., 162.4, 7., "a") + &shown(206., 166., "Hard"));
-        ops += &(shown(78., 186., "Closure Table") + &shown(206., 186., "Easy"));
+        ops += &(shown(78., 146., "Nested Sets") + &sized(133., 142.4, 7., "a") + &shown(206., 146., "Hard"));
+        ops += &(shown(78., 166., "Closure Table") + &shown(206., 166., "Easy"));
         let texts = texts_of(&ops);
         let rows: Vec<&str> = texts[0].split('\n').collect();
-        assert!(rows.len() == 4 && rows[1] == "Adjacency List\tEasy" && rows[2].starts_with("Nested Sets") && rows[2].ends_with("a\tHard"), "{texts:?}");
+        assert!(rows.len() == 3 && rows[1].starts_with("Nested Sets") && rows[1].ends_with("a\tHard"), "{texts:?}");
     }
 
     #[test]
     fn a_cells_japanese_lines_are_joined_without_a_space_and_a_broken_word_whole() {
         let set = |x: f64, y: f64, cids: &str| format!("BT /F3 10 Tf {x} {} Td <{cids}> Tj ET\n", 792. - y);
-        let cells = set(78., 130., "034B034D034F") + &set(178., 124., TEN_DOWN) + &set(178., 136., "0351") + &shown(78., 174., "repre-");
-        let cells = cells + &shown(78., 186., "sentation") + &shown(178., 180., "Easy");
-        let ops = ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes") + &cells;
+        let cells = shown(78., 124., "repre-") + &shown(78., 136., "sentation") + &shown(178., 130., "Easy") + &set(78., 180., "034B034D034F");
+        let cells = cells + &set(178., 174., TEN_DOWN) + &set(178., 186., "0351") + &shown(78., 214., "Oak") + &shown(178., 214., "Tall");
+        let ops = ruled(&[72., 172., 540.], &[110., 160., 200., 220.], "strokes") + &cells;
         let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
-        assert_eq!(kinds(&ir), [("table", "あいう\tあいうえおかきくぐけえ\nrepresentation\tEasy")]);
+        assert_eq!(kinds(&ir), [("table", "representation\tEasy\nあいう\tあいうえおかきくぐけえ\nOak\tTall")]);
     }
 
     #[test]
@@ -6987,9 +6688,10 @@ Manual	No. 1234";
     #[test]
     fn a_hyphen_the_body_writes_is_kept_in_a_cell() {
         let body = shown(72., 100., "A sentence of prose takes a pre-trained model and goes on with it to the end.");
-        let cells = shown(78., 226., "Model") + &shown(178., 226., "Accuracy") + &shown(78., 252., "A pre-") + &shown(78., 264., "trained one");
-        let texts = texts_of(&(body + &ruled(&WIDE, &[200., 240., 280.], "strokes") + &cells + &shown(178., 256., "High")));
-        assert_eq!(texts[1], "Model\tAccuracy\nA pre-trained one\tHigh");
+        let cells = shown(78., 226., "Accuracy") + &shown(178., 226., "Model") + &shown(78., 256., "High") + &shown(178., 252., "A pre-");
+        let cells = cells + &shown(178., 264., "trained one") + &shown(78., 294., "Low") + &shown(178., 294., "A base one");
+        let texts = texts_of(&(body + &ruled(&WIDE, &[200., 240., 280., 300.], "strokes") + &cells));
+        assert_eq!(texts[1], "Accuracy\tModel\nHigh\tA pre-trained one\nLow\tA base one");
     }
 
     #[test]
