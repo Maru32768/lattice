@@ -619,7 +619,7 @@ function SavedCard({
   // At once: the dialog holds the focus while it is there, and leaves it nowhere.
   const close = () => flushSync(() => setDeleting(false));
   const addToNote = async (text: string) => {
-    // The text is in the memo whether or not it is saved: the memo saves it again as it opens.
+    // The text is in the memo whether or not it is saved: the memo panel that comes up next says so and saves it again as it is left.
     dropDraft(article, sticky.id);
     const failed = await onNote(text);
     setSaid(failed ? { error: failed } : { status: t("stickies.addedToNote") });
