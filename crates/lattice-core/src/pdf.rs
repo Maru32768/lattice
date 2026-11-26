@@ -450,7 +450,10 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
         } else {
             3
         };
-        if !(0..cells.len()).all(|row| one_row(&cells, row, &widths, enough, p.width, turns)) {
+        // A rule drawn twice leaves an empty band between its strokes.
+        let texted: Vec<usize> = (0..cells.len()).filter(|&row| cells[row].iter().flatten().any(|g| !g.text.trim().is_empty())).collect();
+        let under_head = (texted.len() == 2).then(|| texted[1]);
+        if !(0..cells.len()).all(|row| one_row(&cells[row], row, &widths, enough, p.width, turns, under_head == Some(row))) {
             continue;
         }
         let rows: Vec<Vec<Vec<Line>>> = cells.iter().map(|band| band.iter().map(|glyphs| cell_lines(glyphs, p.width)).collect()).collect();
@@ -520,13 +523,12 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 /// page that `turns`, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one
 /// line set between its lines, or Japanese lines that each come to the end of their column, as a cell's do where it
 /// wraps. A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns
-/// or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A line wraps
-/// where it leaves no room for the first word under it, in the `widths` the columns' text has.
+/// (`alone`) or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A
+/// line wraps where it leaves no room for the first word under it, in the `widths` the columns' text has.
 // shortcut: Latin cells that wrap in two columns of a row, or in a name beside a cell on one of its lines, tell of
 // nothing, as the lines of the rows of a group start in either case and end in a hyphen too, and a group's cells sit on
 // its rows' lines, so their table stays text. Tell them apart if such tables turn up.
-fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize, width: f64, turns: bool) -> bool {
-    let band = &bands[row];
+fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, width: f64, turns: bool, alone: bool) -> bool {
     let down = |g: &&Glyph| g.vertical || g.turned;
     if turns && band.iter().flatten().any(down) {
         return true;
@@ -557,9 +559,7 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
     if baselines.len() < 2 {
         return true;
     }
-    // A rule drawn twice leaves an empty band between its strokes.
-    let texted = |band: &Vec<Vec<&Glyph>>| band.iter().flatten().any(|g| !g.text.trim().is_empty());
-    if bands.iter().filter(|band| texted(band)).count() == 2 && bands[..row].iter().any(texted) {
+    if alone {
         return false;
     }
     // `parted`: whether a line on a baseline with another column's comes after a line with room for it. `tellers`: the
