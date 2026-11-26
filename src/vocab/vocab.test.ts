@@ -107,3 +107,9 @@ test("wordIn: a whole word in its sentence, first where it has its own case", ()
   assert.deepEqual(wordIn("write\n  skew happens.", "write skew"), { surface: "write skew", sentence: "write skew happens." });
   assert.equal(wordIn(text, "cat"), null);
 });
+
+test("wordIn: Japanese, written with no spaces, ends no word", () => {
+  assert.deepEqual(wordIn("PostgreSQLはこれをMVCCで実装している。", "mvcc"), { surface: "MVCC", sentence: "PostgreSQLはこれをMVCCで実装している。" });
+  assert.deepEqual(wordIn("分離でもwrite\nskewは起こる。", "write skew"), { surface: "write skew", sentence: "分離でもwrite skewは起こる。" });
+  assert.equal(wordIn("MVCCsの実装", "MVCC"), null);
+});

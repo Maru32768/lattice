@@ -4073,6 +4073,28 @@ test("単語を登録 on a 用語 sticky saves its word in its sentence with wha
   await expect(row.locator(".explain")).toHaveText(explanation);
 });
 
+test("単語を登録: a 用語 sticky on a word in a translation saves it in the sentence shown, as the Reader's own does", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(app.locator("#b-103")).toContainText("MVCCで");
+  await selectWord(app, 103, "MVCC");
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  const term = card(app, "用語");
+  await term.getByRole("button", { name: "単語を登録" }).click();
+  await expect(term.getByRole("status")).toHaveText("「MVCC」を単語帳に登録しました");
+  await selectWord(app, 103, "MVCC");
+  await bar(app)
+    .getByRole("button", { name: /単語を登録/ })
+    .click();
+  await expect.poll(async () => (await callsOf(app, "vocab_add")).length).toBe(2);
+  const [sticky, reader] = ((await callsOf(app, "vocab_add")) as { capture: { surface: string; sentence: string } }[]).map(({ capture: c }) => [
+    c.surface,
+    c.sentence,
+  ]);
+  expect(sticky).toEqual(["MVCC", "PostgreSQLはこれをMVCCで実装している。"]);
+  expect(sticky).toEqual(reader);
+});
+
 test("単語を登録: the word list shows the sentence a 用語 sticky explained, not one saved after it", async ({ app }) => {
   await openSnapshot(app);
   await selectWord(app, 106, "snapshot");

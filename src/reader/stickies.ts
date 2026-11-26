@@ -1,5 +1,6 @@
 import type { Sticky, StickyKind } from "../api";
 import { splitCitations } from "../chat/chat.ts";
+import { inWord } from "../vocab/vocab.ts";
 
 /** Mirrors stickies.rs: a longer passage is refused. */
 export const MAX_QUOTE = 2000;
@@ -126,9 +127,6 @@ export function findPassage(texts: string[], own: number, quote: string, apart: 
   const [node, offset] = full[last(i)]!;
   return [full[at[i]!]!, [node, offset + 1]];
 }
-
-/** Japanese is written with no spaces between its words, so there a word's edge cannot be told. */
-const inWord = (c: string | undefined) => c != null && /[\p{L}\p{N}_]/u.test(c) && !/[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u.test(c);
 
 /**
  * Where the cards go in the column, in order: each at its block's height, or below the card before where it would cover that.
