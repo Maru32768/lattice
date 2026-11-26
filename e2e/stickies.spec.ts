@@ -3451,7 +3451,7 @@ test("an answer that waits as an ask opens on the text comes folded, though the 
   // That one folded for the question stays folded: so would the answer have.
   await field(shell).press("Escape");
   await release(shell, "sticky_ask")();
-  await expect(card(shell, "詳しく").locator(".sticky-quote")).toBeVisible();
+  await expect(card(shell, "詳しく").getByRole("button", { name: "付箋を広げる" })).toBeVisible();
   expect(await foldedOnes(shell)).toEqual([false, true]);
 });
 
