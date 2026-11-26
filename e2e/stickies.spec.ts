@@ -3594,6 +3594,26 @@ test("a sticky with a passage of several lines folds to one", async ({ shell }) 
   expect((await boxOf(sticky)).height).toBeLessThan(40);
 });
 
+test("at the column's end a fold of the card taller than the others moves no text", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await askMany(shell, LONG_ID, paraId(79), 4);
+  const tall = cards(shell).last();
+  for (let i = 0; i < 2; i++) {
+    await followUp(tall).click();
+    await followUpField(tall).fill("なぜ？");
+    await shell.keyboard.press("Control+Enter");
+    await expect(tall.locator(".answer")).toHaveCount(i + 2);
+  }
+  await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await frames(shell);
+  const top = await scrollTop(shell);
+  await expect(tall.getByRole("button", { name: "付箋をたたむ" })).toBeInViewport();
+  await tall.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  expect(await scrollTop(shell)).toBe(top);
+});
+
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
