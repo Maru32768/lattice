@@ -570,7 +570,8 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
             let shared = baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1;
             tells |= shared;
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
-            let japanese = after.text.starts_with(joins_without_space);
+            // A line of Japanese may wrap onto a number or a Latin word.
+            let japanese = after.text.starts_with(joins_without_space) || before.text.ends_with(joins_without_space);
             let word = if japanese {
                 after.text.chars().take(4).count()
             } else {
@@ -3738,6 +3739,22 @@ pub(crate) mod tests {
         // As few as are enough: three lines that come to the end of their column.
         let three = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 4), (78., 168., 5)];
         assert_eq!(read(332., &[&head[..], &three, &foot].concat()), Some(3));
+    }
+
+    #[test]
+    fn a_japanese_line_beside_a_name_of_one_line_may_wrap_onto_a_number_or_a_latin_word() {
+        let kana = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{}> Tj ET\n", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
+        let table = |xs: [f64; 4], second: &str| {
+            let mut ops = ruled(&xs, &[100., 120., 156., 176.], "strokes") + &kana(78., 114., 2) + &kana(xs[1] + 6., 114., 2) + &kana(xs[2] + 6., 114., 2);
+            ops += &(kana(78., 134., 2) + &kana(xs[1] + 6., 134., 12) + &kana(xs[2] + 6., 134., 2));
+            ops += &(shown(xs[1] + 6., 150., second) + &kana(xs[1] + 6. + wide(second), 150., 3));
+            ops += &(kana(78., 170., 2) + &kana(xs[1] + 6., 170., 5) + &kana(xs[2] + 6., 170., 2));
+            to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len)
+        };
+        // The description as wide as its column, the name and the price with room.
+        for second in ["100", "API", "\\("] {
+            assert_eq!(table([72., 114., 246., 288.], second), Some(3), "{second}");
+        }
     }
 
     #[test]
