@@ -183,7 +183,7 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
       talls.set(el, s.height);
       return s;
     }
-    return { ...s, height: Math.max(s.height, talls.get(el) ?? 0) };
+    return { ...s, height: talls.get(el) ?? s.height };
   });
   column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(unfolded), unfolded), viewEnd))}px`);
   cards.forEach(({ el }, i) => {
