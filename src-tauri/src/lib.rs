@@ -961,7 +961,7 @@ fn overlay_vocab(app: State<'_, App>, browser: State<'_, Browser>, webview: Webv
     let article_id = browser::page_article(&webview);
     // A saved PDF's address is the viewer's, good for nothing once saved: the article is the source.
     let url = browser::pdf_article(&url).is_none().then(|| url.to_string());
-    let added = vocab::capture(&app.store, &vocab::Capture { surface: selection, sentence, article_id, block_id: None, url })?;
+    let added = vocab::capture(&app.store, &vocab::Capture { surface: selection, sentence, article_id, block_id: None, url, explanation: None })?;
     app.wake_llm.iter().for_each(|w| w.notify_one());
     let _ = webview.app_handle().emit("vocab-changed", ());
     Ok(added)

@@ -24,6 +24,7 @@ pub const JOB_TYPE: &str = "vocab";
 const BATCH: usize = 20;
 pub const MAX_SURFACE: usize = 64;
 pub const MAX_SENTENCE: usize = 600;
+pub const MAX_EXPLANATION: usize = 2_000;
 const MAX_FIELD: usize = 300;
 
 fn err(e: impl ToString) -> String {
@@ -51,6 +52,10 @@ pub struct Capture {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub url: Option<String>,
+    /// What a 用語 sticky on the word says it means there.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub explanation: Option<String>,
 }
 
 fn collapse(s: &str) -> String {
@@ -84,10 +89,11 @@ pub struct Added {
     pub new: bool,
 }
 
-/// Saves a capture. Capturing the same form in the same sentence again changes nothing; a
-/// failed entry captured again is asked for once more.
+/// Saves a capture. Capturing the same form in the same sentence again changes nothing but the
+/// explanation, where it comes with one; a failed entry captured again is asked for once more.
 pub fn capture(store: &Store, c: &Capture) -> Result<Added, String> {
     let (surface, sentence) = validate(&c.surface, &c.sentence)?;
+    let explanation = c.explanation.as_deref().map(str::trim).filter(|e| !e.is_empty()).map(|e| crate::chat::cut(e, MAX_EXPLANATION));
     let mut conn = store.conn();
     let tx = conn.transaction().map_err(err)?;
     let found: Option<i64> = tx
@@ -111,10 +117,13 @@ pub fn capture(store: &Store, c: &Capture) -> Result<Added, String> {
         .map_err(err)?;
     if !seen {
         tx.execute(
-            "INSERT INTO vocab_contexts (entry_id, surface, sentence, article_id, block_id, url) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![entry_id, surface, sentence, c.article_id, c.block_id, c.url],
+            "INSERT INTO vocab_contexts (entry_id, surface, sentence, article_id, block_id, url, explanation) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![entry_id, surface, sentence, c.article_id, c.block_id, c.url, explanation],
         )
         .map_err(err)?;
+    } else if explanation.is_some() {
+        tx.execute("UPDATE vocab_contexts SET explanation = ?3 WHERE entry_id = ?1 AND sentence = ?2", params![entry_id, sentence, explanation])
+            .map_err(err)?;
     }
     tx.execute("UPDATE vocab_entries SET state = 'pending' WHERE id = ?1 AND state = 'failed'", [entry_id]).map_err(err)?;
     let pending: bool = tx.query_row("SELECT state = 'pending' FROM vocab_entries WHERE id = ?1", [entry_id], |r| r.get(0)).map_err(err)?;
@@ -333,11 +342,13 @@ pub struct Context {
     pub block_id: Option<i64>,
     pub url: Option<String>,
     pub title: Option<String>,
+    /// Of one saved from a 用語 sticky.
+    pub explanation: Option<String>,
 }
 
 const CONTEXT_COLS: &str = "x.surface, x.sentence, x.article_id,
     coalesce(x.block_id, (SELECT b.id FROM blocks b WHERE b.article_id = x.article_id AND instr(b.text, x.sentence) > 0 ORDER BY b.ordinal LIMIT 1)),
-    coalesce(x.url, a.original_url), coalesce(a.title, a.original_url)";
+    coalesce(x.url, a.original_url), coalesce(a.title, a.original_url), x.explanation";
 const CONTEXT_FROM: &str = "vocab_contexts x LEFT JOIN articles a ON a.id = x.article_id";
 
 fn context_row(r: &rusqlite::Row, at: usize) -> rusqlite::Result<Context> {
@@ -348,6 +359,7 @@ fn context_row(r: &rusqlite::Row, at: usize) -> rusqlite::Result<Context> {
         block_id: r.get(at + 3)?,
         url: r.get(at + 4)?,
         title: r.get(at + 5)?,
+        explanation: r.get(at + 6)?,
     })
 }
 
@@ -861,6 +873,24 @@ mod tests {
     }
 
     #[test]
+    fn an_explanation_stays_with_its_sentence_and_a_new_one_replaces_it() {
+        let s = Store::open_in_memory().unwrap();
+        let with = |explanation: &str, sentence: &str| Capture { explanation: Some(explanation.into()), ..cap("skew", sentence) };
+        capture(&s, &with(" 書き込みの偏り。 ", "Snapshot isolation permits write skew.")).unwrap();
+        capture(&s, &cap("skew", "Snapshot isolation permits write skew.")).unwrap();
+        let explanations = |s: &Store| list(s).unwrap()[0].contexts.iter().map(|c| c.explanation.clone()).collect::<Vec<_>>();
+        assert_eq!(explanations(&s), [Some("書き込みの偏り。".to_string())], "trimmed, and kept by a capture without one");
+
+        capture(&s, &with("別の説明。", "Snapshot isolation permits write skew.")).unwrap();
+        capture(&s, &with("  ", "Write skew is rare.")).unwrap();
+        assert_eq!(explanations(&s), [Some("別の説明。".to_string()), None], "the newer one, and none for a blank one");
+
+        capture(&s, &with(&"あ".repeat(MAX_EXPLANATION + 1), "More skew again.")).unwrap();
+        let long = explanations(&s)[2].clone().unwrap();
+        assert_eq!(long, format!("{}…", "あ".repeat(MAX_EXPLANATION)), "cut to the bound");
+    }
+
+    #[test]
     fn csv_is_escaped_for_anki_and_backs_like_the_card() {
         let ctx = |sentence: &str, url: Option<&str>| Context {
             surface: "b".into(),
@@ -869,6 +899,7 @@ mod tests {
             block_id: None,
             url: url.map(Into::into),
             title: url.map(|_| "T <1>".into()),
+            explanation: None,
         };
         let e = Entry {
             id: 1,

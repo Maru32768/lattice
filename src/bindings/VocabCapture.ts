@@ -3,4 +3,8 @@
 /**
  * A word or phrase selected in the Reader or a page, with the sentence around it.
  */
-export type VocabCapture = { surface: string, sentence: string, article_id?: number | null, block_id?: number | null, url?: string | null, };
+export type VocabCapture = { surface: string, sentence: string, article_id?: number | null, block_id?: number | null, url?: string | null, 
+/**
+ * What a 用語 sticky on the word says it means there.
+ */
+explanation?: string | null, };

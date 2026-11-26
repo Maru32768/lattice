@@ -252,7 +252,7 @@ fn stored_capture(store: &Store, c: &Capture) -> Result<Capture, String> {
         _ => None,
     };
     let url = c.url.clone().filter(|u| u.len() <= MAX_SOURCE_URL && normalize(u).is_ok());
-    Ok(Capture { surface: c.surface.clone(), sentence: c.sentence.clone(), article_id, block_id, url })
+    Ok(Capture { surface: c.surface.clone(), sentence: c.sentence.clone(), article_id, block_id, url, explanation: None })
 }
 
 fn applied_ops(store: &Store) -> Result<Vec<String>, String> {
@@ -513,7 +513,7 @@ mod tests {
     }
 
     fn capture(article_id: Option<i64>, block_id: Option<i64>, url: Option<&str>) -> OpKind {
-        OpKind::VocabAdd { capture: Capture { surface: "word".into(), sentence: "A word here.".into(), article_id, block_id, url: url.map(Into::into) } }
+        OpKind::VocabAdd { capture: Capture { surface: "word".into(), sentence: "A word here.".into(), article_id, block_id, url: url.map(Into::into), explanation: None } }
     }
 
     #[test]

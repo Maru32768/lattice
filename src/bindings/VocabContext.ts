@@ -4,4 +4,8 @@
  * Where a word was captured. `block_id` falls back to the article's block holding the sentence
  * (a page capture of a saved article); `url` to the article's.
  */
-export type VocabContext = { surface: string, sentence: string, article_id: number | null, block_id: number | null, url: string | null, title: string | null, };
+export type VocabContext = { surface: string, sentence: string, article_id: number | null, block_id: number | null, url: string | null, title: string | null, 
+/**
+ * Of one saved from a 用語 sticky.
+ */
+explanation: string | null, };
