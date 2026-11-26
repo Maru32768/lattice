@@ -569,10 +569,6 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
         for (before, after) in lines.iter().zip(lines.iter().skip(1)) {
             let shared = baselines[baselines.partition_point(|b| b.0 <= after.y) - 1].1 > 1;
             tells |= shared;
-            // An item of a list starts a line whatever room the line before it leaves.
-            if is_bullet(&after.text) || after.text.starts_with('・') {
-                continue;
-            }
             let letter = (after.x1 - after.x0) / after.text.chars().count() as f64;
             let japanese = after.text.starts_with(joins_without_space);
             let word = if japanese {
