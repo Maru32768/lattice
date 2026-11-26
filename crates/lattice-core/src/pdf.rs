@@ -3881,6 +3881,29 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_line_with_room_beside_a_name_of_one_line_ends_a_row() {
+        let kana = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{}> Tj ET\n", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
+        // A head, a band beside a name of one line from 120 to `bottom`, and a foot.
+        let table = |bottom: f64, description: &str| {
+            let mut ops = ruled(&[72., 114., 246., 288.], &[100., 120., bottom, bottom + 20.], "strokes") + &kana(78., 114., 2) + &kana(120., 114., 2);
+            ops += &(kana(252., 114., 2) + &kana(78., 134., 2) + &kana(252., 134., 2) + description);
+            ops += &(kana(78., bottom + 14., 2) + &kana(120., bottom + 14., 5) + &kana(252., bottom + 14., 2));
+            to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len)
+        };
+        // A line 70pt short of the end outweighs eight to the end, with a price beside the line after it or not.
+        for (long, priced) in [(4, false), (8, false), (8, true)] {
+            let lines = std::iter::repeat_n(12, long).chain([5, 12, 3]);
+            let mut description: String = lines.enumerate().map(|(i, n)| kana(120., 134. + 16. * i as f64, n)).collect();
+            if priced {
+                description += &kana(252., 134. + 16. * (long + 1) as f64, 2);
+            }
+            assert_eq!(table(134. + 16. * (long + 2) as f64 + 6., &description), None, "{long} {priced}");
+        }
+        // The room is that of the letters of the line after it, here a Latin word.
+        assert_eq!(table(172., &(kana(120., 134., 12) + &kana(120., 150., 5) + &shown(120., 166., "Python"))), None);
+    }
+
+    #[test]
     fn japanese_rows_in_columns_as_wide_as_their_text_are_not_put_in_one() {
         // Each of two columns' letters, line by line: a head, a band, and a row of two letters under it.
         let read = |lines: &[[usize; 2]], room: f64| {
