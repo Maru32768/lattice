@@ -3537,9 +3537,12 @@ pub(crate) mod tests {
         no_table(&table(&xs, &names, Some(194.)));
         no_table(&table(&xs, &[(186., name), (198., "PDF files that"), (210., "you sign")], Some(198.)));
         no_table(&table(&xs, &names, None));
-        // Lines with room after them may each be a row's.
-        let names = [(192., "Order the parts"), (200., "Paint the door"), (208., "Call the office")];
-        no_table(&table(&[72., 300., 360., 420.], &names, Some(200.)));
+        // Marks between the name's lines in one column and on its first line in the next.
+        no_table(&(table(&xs, &names, None) + &shown(xs[1] + 26., 200., "x") + &shown(xs[2] + 26., 194., "x")));
+        // Lines with room for the first word under them and two letters more may each be a row's.
+        let names = [(194., "Paint the door"), (206., "Paint the gate")];
+        let x1 = 84. + wide(names[0].1) + 8. * wide(names[1].1) / 14.;
+        no_table(&table(&[72., x1, x1 + 60., x1 + 120.], &names, Some(200.)));
     }
 
     /// A table ruled at `ys` between its rows or groups of rows, each line's baseline with its cells.
