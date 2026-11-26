@@ -5845,8 +5845,12 @@ pub(crate) mod tests {
         let cells = column(490., 102., "034B034D034F") + &column(430., 102., "03510353") + &column(490., 162., "03540356") + &column(430., 162., "034B034D");
         let ops = format!("BT /F3 10 Tf {body}ET\n") + &ruled(&[400., 460., 520.], &[100., 160., 220.], "strokes") + &format!("BT /F3 10 Tf {cells}ET\n");
         let number = format!("BT /F1 10 Tf 1 0 0 1 484.4 {} Tm (25) Tj ET\n", 792. - 190.8);
-        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(ops + &number)), None).unwrap();
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(ops.clone() + &number)), None).unwrap();
         assert_eq!(kinds(&ir), [("paragraph", "あいうえおかきくぐけあいうえおかきくぐけ"), ("table", "えお\tあいう\nあい\tかき25")]);
+        // A date: two numbers set across down one cell.
+        let date = format!("BT /F1 10 Tf 1 0 0 1 484.4 {} Tm (12) Tj 1 0 0 1 484.4 {} Tm (31) Tj ET\n", 792. - 190.8, 792. - 210.8);
+        let ir = to_ir(&japanese(&[vec![]], "Identity-V", &(ops + &date)), None).unwrap();
+        assert!(kinds(&ir).iter().any(|(kind, text)| *kind == "table" && text.contains("12") && text.contains("31")), "{:?}", kinds(&ir));
     }
 
     #[test]
