@@ -117,7 +117,7 @@ export function findPassage(texts: string[], own: number, quote: string): [[numb
 }
 
 /** Japanese is written with no spaces between its words, so there a word's edge cannot be told. */
-const inWord = (c: string | undefined) => c != null && /[\p{L}\p{N}_]/u.test(c) && !/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]/u.test(c);
+const inWord = (c: string | undefined) => c != null && /[\p{L}\p{N}_]/u.test(c) && !/[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u.test(c);
 
 /**
  * Where the cards go in the column, in order: each at its block's height, or below the card before where it would cover that.

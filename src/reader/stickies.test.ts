@@ -191,4 +191,12 @@ test("a passage of words is found where it is whole words before where it starts
     ],
     "Japanese, which has no spaces to tell a word's edge by",
   );
+  assert.deepEqual(
+    findPassage(["ユーザーIDを確かめてから、ユーザーに返す。"], 1, "ユーザー"),
+    [
+      [0, 0],
+      [0, 4],
+    ],
+    "nor by a mark that Japanese shares with no one script",
+  );
 });
