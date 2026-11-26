@@ -3651,6 +3651,17 @@ test("beside the text a card folded above the one opened last unfolds where it i
   expect(await text()).toBeCloseTo(before, 0);
 });
 
+test("beside the text a card after another that gave way to the one opened last folds where it is", async ({ shell }) => {
+  await startTall(shell);
+  const second = cards(shell).nth(1);
+  const at = (await boxOf(second)).y;
+  expect(at - (await boxOf(shell.locator(paraBlock(29)))).y, "gave way").toBeLessThan(-20);
+  await second.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  await expect(second).toHaveAttribute("data-folded");
+  expect((await boxOf(second)).y).toBeCloseTo(at, 0);
+});
+
 test("a sticky folded before an ask on the text opens stays folded as that closes unsent", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
