@@ -1098,6 +1098,12 @@ async fn sticky_follow_up(handle: tauri::AppHandle, app: State<'_, App>, id: i64
     Ok(sticky)
 }
 
+/// メモに下書き: a draft for the article's memo of what a sticky says. Nothing is stored.
+#[tauri::command]
+async fn sticky_note_draft(app: State<'_, App>, id: i64) -> Result<String, String> {
+    stickies::note_draft(&app.store, &app.providers.llm, &app.chat_llm, id).await
+}
+
 #[tauri::command(async)]
 fn list_stickies(app: State<'_, App>, article_id: i64) -> Result<Vec<Sticky>, String> {
     stickies::list(&app.store, article_id)
@@ -1834,6 +1840,7 @@ pub fn run() {
             chat_delete_thread,
             sticky_ask,
             sticky_follow_up,
+            sticky_note_draft,
             list_stickies,
             delete_sticky,
             get_chat_budget,

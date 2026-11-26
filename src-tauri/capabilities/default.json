@@ -154,6 +154,7 @@
     "allow-chat-delete-thread",
     "allow-sticky-ask",
     "allow-sticky-follow-up",
+    "allow-sticky-note-draft",
     "allow-list-stickies",
     "allow-delete-sticky",
     "allow-get-chat-budget",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sticky-note-draft"
+description = "Enables the sticky_note_draft command without any pre-configured scope."
+commands.allow = ["sticky_note_draft"]
+
+[[permission]]
+identifier = "deny-sticky-note-draft"
+description = "Denies the sticky_note_draft command without any pre-configured scope."
+commands.deny = ["sticky_note_draft"]
