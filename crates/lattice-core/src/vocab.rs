@@ -24,7 +24,7 @@ pub const JOB_TYPE: &str = "vocab";
 const BATCH: usize = 20;
 pub const MAX_SURFACE: usize = 64;
 pub const MAX_SENTENCE: usize = 600;
-pub const MAX_EXPLANATION: usize = 2_000;
+const MAX_EXPLANATION: usize = 2_000;
 const MAX_FIELD: usize = 300;
 
 fn err(e: impl ToString) -> String {
