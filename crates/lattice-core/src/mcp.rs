@@ -27,10 +27,7 @@ pub enum Role {
 #[serde(rename_all = "snake_case")]
 #[ts(export, rename = "McpTarget")]
 pub enum Target {
-    // The aliases, and the one on `Registration::target`, read registrations stored by Claude Code's scope names.
-    #[serde(alias = "user")]
     ClaudeCode,
-    #[serde(alias = "local")]
     ClaudeCodeProject,
     Codex,
     Other,
@@ -81,7 +78,6 @@ pub struct Registration {
     pub name: String,
     pub role: Role,
     /// Fixed once made: moving it would leave the old agent's settings with a token that still works.
-    #[serde(alias = "scope")]
     pub target: Target,
     /// In the clear: the settings screen copies it again at any time, as the phone's QR code shows its token.
     pub token: String,
@@ -108,12 +104,11 @@ pub fn enabled(store: &Store) -> Result<bool, String> {
     Ok(store.setting(ENABLED).map_err(err)?.is_some_and(|v| v == "1"))
 }
 
-/// In the order they were made.
+/// In the order they were made. A list this version cannot read counts as none, and the user registers again: an error
+/// here would keep the settings screen from opening.
 pub fn registrations(store: &Store) -> Result<Vec<Registration>, String> {
-    match store.setting(REGISTRATIONS).map_err(err)? {
-        Some(list) => serde_json::from_str(&list).map_err(err),
-        None => Ok(Vec::new()),
-    }
+    let list = store.setting(REGISTRATIONS).map_err(err)?;
+    Ok(list.and_then(|list| serde_json::from_str(&list).ok()).unwrap_or_default())
 }
 
 /// Where agents reach the server.
@@ -315,15 +310,13 @@ mod tests {
     }
 
     #[test]
-    fn registrations_stored_by_scope_still_work() {
+    fn a_list_of_registrations_that_cannot_be_read_is_none() {
         let s = store();
-        let stored = r#"[{"id":"r1","name":"All","role":"delete","scope":"user","token":"t1"},
-            {"id":"r2","name":"Research","role":"read","scope":"local","token":"t2"}]"#;
-        s.set_setting(REGISTRATIONS, Some(stored)).unwrap();
-        assert_eq!(authenticate(&s, "t1").unwrap().map(|r| (r.role, r.target)), Some((Role::Delete, Target::ClaudeCode)));
-        assert_eq!(authenticate(&s, "t2").unwrap().map(|r| r.target), Some(Target::ClaudeCodeProject));
-        edit(&s, &Edit::SetRole { id: "r2".into(), role: Role::Edit }).unwrap();
-        assert_eq!(authenticate(&s, "t1").unwrap().map(|r| r.target), Some(Target::ClaudeCode), "written back as it was read");
+        s.set_setting(REGISTRATIONS, Some(r#"[{"id":"r1","name":"All","role":"delete","scope":"user","token":"t1"}]"#)).unwrap();
+        assert!(registrations(&s).unwrap().is_empty());
+        assert!(authenticate(&s, "t1").unwrap().is_none());
+        let made = create_in(&s, "", Role::Read, Target::ClaudeCode);
+        assert_eq!(registrations(&s).unwrap().iter().map(|r| &r.id).collect::<Vec<_>>(), [&made.id]);
     }
 
     #[test]
