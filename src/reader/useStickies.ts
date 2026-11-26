@@ -119,8 +119,7 @@ export function openAsk(article: number, about: (Passage & { kind: StickyKind })
   const ask: Ask = { ...about, key: ++keys, question: "", step: "writing" };
   const { asks, saved, folded, latest } = of(article);
   // The stickies there make room for it at its block's height.
-  const made = [...saved];
-  const room = !isFollowUp(ask) && ask.parent == null ? { folded: made, latest: ask.key, undo: { ask: ask.key, latest, folded, made } } : {};
+  const room = !isFollowUp(ask) && ask.parent == null ? { folded: saved, latest: ask.key, undo: { ask: ask.key, latest, folded, made: saved } } : {};
   put(article, { asks: [...asks, ask], ...room });
   if (!isFollowUp(ask) && ask.kind !== "question") {
     void sendAsk(article, ask);
