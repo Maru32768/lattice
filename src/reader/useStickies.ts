@@ -12,13 +12,20 @@ interface Stickies {
   folded: Sticky[];
   /** The key of the last ask opened on the article's text, which folds the stickies there before it. */
   latest: number;
-  /** As the last of those found them, and what it folded: closed unsent, it unfolds them, unless one has been since. */
-  undo: { ask: number; latest: number; folded: Sticky[]; made: Sticky[] } | null;
+  /** As each of those still open found them, in order, and what it folded: closed unsent, it unfolds them, unless one has been since. */
+  undo: Undo[];
   /** Why the saved ones could not be read. */
   error: string | null;
 }
 
-const NONE: Stickies = { saved: [], asks: [], answers: new Map(), folded: [], latest: 0, undo: null, error: null };
+interface Undo {
+  ask: number;
+  latest: number;
+  folded: Sticky[];
+  made: Sticky[];
+}
+
+const NONE: Stickies = { saved: [], asks: [], answers: new Map(), folded: [], latest: 0, undo: [], error: null };
 // The Reader unmounts when another article, tab or screen is shown: what was asked outlives it here, by article id, and an
 // answer that comes meanwhile is put here too.
 const articles = new Map<number, Stickies>();
@@ -74,9 +81,18 @@ export const changeAsk = (article: number, key: number, change: { question: stri
 
 export function dropAsk(article: number, key: number) {
   const { asks, folded, undo } = of(article);
-  // Unless the reader has folded or unfolded one, it is as if it had not been opened. Else its folding stays, and so it does
-  // for an answer that waited as it opened.
-  const back = undo?.ask !== key ? {} : folded === undo.made ? { latest: undo.latest, undo: null, folded: undo.folded } : { undo: null };
+  const i = undo.findIndex((u) => u.ask === key);
+  const [was, rest] = [undo[i], undo.toSpliced(i, 1)];
+  const next = rest[i];
+  // Unless the reader has folded or unfolded one, it is as if it had not been opened: one opened since then found them as
+  // this one did. Else its folding stays, and so it does for an answer that waited as it opened.
+  const back = !was
+    ? {}
+    : next
+      ? { undo: next.folded === was.made ? rest.with(i, { ...next, latest: was.latest, folded: was.folded }) : rest }
+      : folded === was.made
+        ? { latest: was.latest, undo: rest, folded: was.folded }
+        : { undo: rest };
   put(article, { asks: asks.filter((a) => a.key !== key), ...back });
 }
 
@@ -100,15 +116,20 @@ export async function sendAsk(article: number, ask: Ask) {
     // One that a list read since it was stored has is as new, or has another window's follow-up already: a sticky only gets
     // more messages.
     const newest = saved.find((s) => isSame(s, sticky) && s.messages.length >= sticky.messages.length) ?? sticky;
-    // Had it been here as another was opened on the text, it would have folded then, and unfolds as that closes unsent.
+    // Had it been here as others were opened on the text, it would have folded then, and unfolds once those still open have
+    // closed unsent. A folding the same before is the same after, for the checks of `dropAsk`.
     const late = !isFollowUp(ask) && of(article).latest > latest;
-    const now = late ? [...folded, newest] : folded;
+    const added = new Map<Sticky[], Sticky[]>();
+    const fold = (some: Sticky[]) => added.get(some) ?? added.set(some, [...some, newest]).get(some)!;
+    const since = undo.findIndex((u) => u.ask > latest);
     put(article, {
       saved: [...saved.filter((s) => s.id !== sticky.id), newest].toSorted((a, b) => a.id - b.id),
       asks: asks.filter((a) => a.key !== key),
       answers: new Map(answers).set(key, sticky.id),
-      folded: now,
-      ...(late && undo?.made === folded && { undo: { ...undo, made: now } }),
+      ...(late && {
+        folded: fold(folded),
+        undo: undo.map((u, j) => (since < 0 || j < since ? u : { ...u, made: fold(u.made), folded: j > since ? fold(u.folded) : u.folded })),
+      }),
     });
   } catch (e) {
     changeAsk(article, key, { step: "failed", error: String(e) });
@@ -119,9 +140,9 @@ let keys = 0;
 /** Asks about a passage at once, or opens a card, or in a sticky, to write the question. Returns the ask's key. */
 export function openAsk(article: number, about: (Passage & { kind: StickyKind }) | { sticky: number }): number {
   const ask: Ask = { ...about, key: ++keys, question: "", step: "writing" };
-  const { asks, saved, folded, latest } = of(article);
+  const { asks, saved, folded, latest, undo } = of(article);
   // The stickies there make room for it at its block's height.
-  const room = !isFollowUp(ask) && ask.parent == null ? { folded: saved, latest: ask.key, undo: { ask: ask.key, latest, folded, made: saved } } : {};
+  const room = !isFollowUp(ask) && ask.parent == null ? { folded: saved, latest: ask.key, undo: [...undo, { ask: ask.key, latest, folded, made: saved }] } : {};
   put(article, { asks: [...asks, ask], ...room });
   if (!isFollowUp(ask) && ask.kind !== "question") {
     void sendAsk(article, ask);

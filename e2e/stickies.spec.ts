@@ -3330,6 +3330,42 @@ test("an ask on the text closed unsent unfolds what it folded, unless one has be
   expect(await foldedOnes(shell)).toEqual([false, true]);
 });
 
+test("two asks on the text closed unsent, in either order, unfold what they folded once both have", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askMany(shell, LONG_ID, paraId(10), 2);
+  for (const first of [1, 0]) {
+    await askAbout(shell, "質問", paraBlock(12));
+    await askAbout(shell, "質問", paraBlock(14));
+    await expect(cards(shell)).toHaveCount(4);
+    await field(shell).nth(first).press("Escape");
+    await expect(cards(shell)).toHaveCount(3);
+    expect(await foldedOnes(shell), "folded for the one still open").toEqual([true, true, false]);
+    await field(shell).press("Escape");
+    await expect(cards(shell)).toHaveCount(2);
+    expect(await foldedOnes(shell)).toEqual([false, false]);
+  }
+});
+
+test("an answer that comes as two asks on the text are open stays folded until both have closed unsent", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await askAbout(shell, "質問", paraBlock(14));
+  await release(shell, "sticky_ask")();
+  await expect(cards(shell).first()).toHaveAttribute("data-folded");
+  await field(shell).last().press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell), "folded for the one still open").toEqual([true, false]);
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(1);
+  expect(await foldedOnes(shell)).toEqual([false]);
+});
+
 test("an answer that came folded for an ask on the text unfolds as that closes unsent", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await shell.setViewportSize({ width: 1500, height: 900 });
