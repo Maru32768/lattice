@@ -1420,13 +1420,13 @@ export const en = {
   "settingsView.mobile": "Read on a phone",
   "settingsView.mobileLead": "Read the article list and the original, mixed and translated text in a phone's browser.",
   "settingsView.mcp": "AI agents (MCP)",
-  "settingsView.mcpLead": "AI agents such as Claude Code read and edit this library over MCP.",
+  "settingsView.mcpLead": "AI agents such as Claude Code and Codex read and edit this library over MCP.",
   "mcpSettings.server": "MCP server",
   "mcpSettings.enabled": "Run the MCP server",
   "mcpSettings.enabledDesc": "Only this PC can connect. Other PCs and phones cannot.",
   "mcpSettings.registrations": "Registrations",
   "mcpSettings.registrationsDesc":
-    "Make a registration for each agent, press Copy command, and run the copied Claude Code command in a terminal. Only one registration can be for all of Claude Code, and every project uses it. Run the command of a registration for one project in that project's folder. Claude Code then uses it instead, across the whole repository in a Git repository and in that folder only elsewhere; each repository or folder holds one. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
+    "Make a registration for each agent. Registering turns the MCP server on. For all of Claude Code and for Codex, Lattice adds the registration to that agent's own settings too. Every project uses it, and each takes one registration. For one Claude Code project, press Copy command and run the copied command in that project's folder. Claude Code then uses it instead of the one for all of Claude Code, across the whole repository in a Git repository and in that folder only elsewhere; each repository or folder holds one. For another agent, press Copy settings and paste the copied settings into that agent's MCP settings. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
   "mcpSettings.rolesDesc":
     "Read lets an agent read articles and feeds and ask the AI about them; each question uses AI credits and stays in Chat as a conversation. Edit also lets it save URLs, subscribe to feeds, tag, mark read and favorite, and change titles, collections, genres and feeds. The articles it saves, and those from feeds it subscribes to, use AI credits too, for auto-classification and the like. Delete also lets it delete articles, collections, feeds and folders and merge genres; for each deletion, Lattice asks you first and refuses if you do not answer within 2 minutes.",
   "mcpSettings.none": "No registrations yet",
@@ -1436,24 +1436,38 @@ export const en = {
   "mcpSettings.roleRead": "Read",
   "mcpSettings.roleEdit": "Edit",
   "mcpSettings.roleDelete": "Delete",
-  "mcpSettings.scope": "Scope",
-  "mcpSettings.scopeUser": "All of Claude Code",
-  "mcpSettings.scopeLocal": "One project",
+  "mcpSettings.target": "Register for",
+  "mcpSettings.targetClaudeCode": "All of Claude Code",
+  "mcpSettings.targetClaudeCodeProject": "One Claude Code project",
+  "mcpSettings.targetCodex": "Codex",
+  "mcpSettings.targetOther": "Other",
   "mcpSettings.create": "Register",
-  "mcpSettings.copy": "Copy command",
+  "mcpSettings.connect": "Add to {agent}",
+  "mcpSettings.copyCommand": "Copy command",
+  "mcpSettings.copySettings": "Copy settings",
   "mcpSettings.copied": "Copied",
+  "mcpSettings.writing": "Changing {agent}'s settings…",
+  "mcpSettings.added": "Added to {agent}'s settings. Open sessions can use it once they reconnect.",
+  "mcpSettings.removed": "Also removed from {agent}'s settings.",
+  "mcpSettings.addByHand":
+    "The registration in Lattice is saved. Press Add to {agent} to try again. To add it by hand, remove an earlier one with {remove} if there is one, then use the copied text.",
+  "mcpSettings.removeByHand": "The registration in Lattice is deleted. Remove it from {agent}'s settings with {remove}.",
   "mcpSettings.regenerate": "Regenerate token",
   "mcpSettings.confirmRegenerate": "Regenerate the token of “{name}”?",
-  "mcpSettings.regenerateDescUser":
-    "The current token stops working from the next call, for agents already connected too. In Claude Code, remove the old registration with {remove}, then run the new command.",
-  "mcpSettings.regenerateDescLocal":
+  "mcpSettings.regenerateDescAgent":
+    "The current token stops working from the next call, for agents already connected too. Lattice also puts the new token in {agent}'s settings. Reconnect open sessions.",
+  "mcpSettings.regenerateDescProject":
     "The current token stops working from the next call, for agents already connected too. In that project's folder, remove the old registration with {remove}, then run the new command.",
+  "mcpSettings.regenerateDescOther":
+    "The current token stops working from the next call, for agents already connected too. Copy the new settings and replace the agent's old ones with them.",
   "mcpSettings.regenerateConfirm": "Regenerate",
   "mcpSettings.confirmDelete": "Delete the registration “{name}”?",
-  "mcpSettings.deleteDescUser":
-    "Its token stops working from the next call, for agents already connected too. In Claude Code, also remove the registration with {remove}.",
-  "mcpSettings.deleteDescLocal":
+  "mcpSettings.deleteDescAgent":
+    "Its token stops working from the next call, for agents already connected too. Lattice also removes the registration from {agent}'s settings.",
+  "mcpSettings.deleteDescProject":
     "Its token stops working from the next call, for agents already connected too. In that project's folder, also remove the registration with {remove}. After that, the project uses the registration for all of Claude Code, if there is one.",
+  "mcpSettings.deleteDescOther":
+    "Its token stops working from the next call, for agents already connected too. Also remove the registration from the agent's settings.",
   "mcpSettings.activity": "Activity",
   "mcpSettings.activityDesc":
     "Sessions agents have started, and each registration's latest 20 calls. Some agents never close their sessions when they quit, and those sessions stay too, so tell whether one is in use by its last request. Turning the MCP server off or quitting the app clears both. A new token also clears the old token's sessions from here.",
@@ -1590,5 +1604,10 @@ export const en = {
   "be.mcp.fellBack": "The original library could not be opened, so the MCP server is off",
   "be.mcp.badName": "Registration names are 1 to {max} characters",
   "be.mcp.nameTaken": "There is already a registration named “{name}”",
-  "be.mcp.userTaken": "“{name}” is already the registration for all of Claude Code",
+  "be.mcp.targetTaken": "{agent} already has the registration “{name}”",
+  "be.mcp.agentMissing": "Could not change {agent}'s settings: “{program}” was not found.",
+  "be.mcp.agentFailed": "Could not change {agent}'s settings: {error}",
+  "be.mcp.agentLost": "Could not change {agent}'s settings, and the earlier registration is gone from them: {error}",
+  "be.mcp.agentOther":
+    "{agent}'s settings already have a registration named “{name}” that is not Lattice's, so it was left as it is. Remove or rename it to add this one.",
 } satisfies Messages;

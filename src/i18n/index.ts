@@ -100,7 +100,7 @@ interface Coded {
   params?: Record<string, Value>;
 }
 
-function parseCoded(s: string): Coded | null {
+export function parseCoded(s: string): Coded | null {
   if (!s.startsWith('{"code":')) {
     return null;
   }

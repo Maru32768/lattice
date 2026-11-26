@@ -26,6 +26,7 @@ pub mod local;
 pub mod location;
 pub mod markdown;
 pub mod mcp;
+pub mod mcp_agents;
 pub mod mobile;
 pub mod mobile_publish;
 pub mod msg;

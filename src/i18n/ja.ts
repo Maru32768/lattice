@@ -1402,13 +1402,13 @@ export const ja = {
   "settingsView.mobile": "スマホで読む",
   "settingsView.mobileLead": "スマホのブラウザで記事一覧と原文・混在・訳文を読みます。",
   "settingsView.mcp": "AIエージェント(MCP)",
-  "settingsView.mcpLead": "Claude CodeなどのAIエージェントが、MCPでこのライブラリを読み、編集します。",
+  "settingsView.mcpLead": "Claude CodeやCodexなどのAIエージェントが、MCPでこのライブラリを読み、編集します。",
   "mcpSettings.server": "MCPサーバー",
   "mcpSettings.enabled": "MCPサーバーを動かす",
   "mcpSettings.enabledDesc": "このPCからだけつながります。ほかのPCやスマホからはつながりません。",
   "mcpSettings.registrations": "登録",
   "mcpSettings.registrationsDesc":
-    "エージェントごとに登録を作り、「コマンドをコピー」で写したClaude Codeのコマンドをターミナルで実行します。「Claude Code全体」の登録は1つだけ作れ、どのプロジェクトでも使われます。「1つのプロジェクト」の登録は、そのプロジェクトのフォルダでコマンドを実行します。Claude Codeは、Gitのリポジトリならリポジトリ全体で、そうでなければそのフォルダだけで、全体の登録の代わりにこちらを使います。1つのリポジトリやフォルダに登録できるのは1つだけです。ロールの変更は次の呼び出しから効きますが、エージェントに見えるツールの一覧は、つなぎ直すまで変わりません。",
+    "エージェントごとに登録を作ります。登録すると、MCPサーバーがオンになります。「Claude Code全体」と「Codex」では、そのエージェントの設定にもLatticeが登録を書き込みます。どのプロジェクトでも使われ、登録は1つずつです。「Claude Codeの1つのプロジェクト」は、「コマンドをコピー」で写したコマンドを、そのプロジェクトのフォルダで実行します。Claude Codeは、Gitのリポジトリならリポジトリ全体で、そうでなければそのフォルダだけで、全体の登録の代わりにこちらを使います。1つのリポジトリやフォルダに登録できるのは1つだけです。「その他」は、「設定をコピー」で写した設定を、エージェントのMCPの設定に貼ります。ロールの変更は次の呼び出しから効きますが、エージェントに見えるツールの一覧は、つなぎ直すまで変わりません。",
   "mcpSettings.rolesDesc":
     "読み取りでは、記事やフィードを読み、記事についてAIに質問します。質問はAIの使用量がかかり、「対話」に会話として残ります。編集では、URLの保存、フィードの登録、タグ、既読とお気に入り、タイトル、グループ、ジャンル、フィードの変更もできます。保存した記事や登録したフィードの記事にも、自動分類などでAIの使用量がかかります。削除では、記事、グループ、フィード、フォルダの削除と、ジャンルの統合もできます。削除のたびにアプリが許可を求め、2分のうちに答えなければ拒否します。",
   "mcpSettings.none": "登録はまだありません",
@@ -1418,24 +1418,38 @@ export const ja = {
   "mcpSettings.roleRead": "読み取り",
   "mcpSettings.roleEdit": "編集",
   "mcpSettings.roleDelete": "削除",
-  "mcpSettings.scope": "使う範囲",
-  "mcpSettings.scopeUser": "Claude Code全体",
-  "mcpSettings.scopeLocal": "1つのプロジェクト",
+  "mcpSettings.target": "登録先",
+  "mcpSettings.targetClaudeCode": "Claude Code全体",
+  "mcpSettings.targetClaudeCodeProject": "Claude Codeの1つのプロジェクト",
+  "mcpSettings.targetCodex": "Codex",
+  "mcpSettings.targetOther": "その他",
   "mcpSettings.create": "登録する",
-  "mcpSettings.copy": "コマンドをコピー",
+  "mcpSettings.connect": "{agent}に登録",
+  "mcpSettings.copyCommand": "コマンドをコピー",
+  "mcpSettings.copySettings": "設定をコピー",
   "mcpSettings.copied": "コピーしました",
+  "mcpSettings.writing": "{agent}の設定を書き換えています…",
+  "mcpSettings.added": "{agent}の設定に登録しました。開いているセッションでは、つなぎ直すと使えます。",
+  "mcpSettings.removed": "{agent}の設定からも登録を消しました。",
+  "mcpSettings.addByHand":
+    "Latticeの登録は保存しました。「{agent}に登録」を押すと、もう一度試します。手で登録するときは、前の登録があれば{remove}で消してから、コピーしたものを使ってください。",
+  "mcpSettings.removeByHand": "Latticeの登録は削除しました。{agent}の設定からは、{remove}で消してください。",
   "mcpSettings.regenerate": "トークンを作り直す",
   "mcpSettings.confirmRegenerate": "「{name}」のトークンを作り直しますか？",
-  "mcpSettings.regenerateDescUser":
-    "今のトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。Claude Codeでは、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
-  "mcpSettings.regenerateDescLocal":
+  "mcpSettings.regenerateDescAgent":
+    "今のトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。{agent}の設定のトークンも、Latticeが新しいものに替えます。開いているセッションは、つなぎ直してください。",
+  "mcpSettings.regenerateDescProject":
     "今のトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
+  "mcpSettings.regenerateDescOther":
+    "今のトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。新しい設定をコピーして、エージェントの前の設定と入れ替えてください。",
   "mcpSettings.regenerateConfirm": "作り直す",
   "mcpSettings.confirmDelete": "登録「{name}」を削除しますか？",
-  "mcpSettings.deleteDescUser":
-    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。Claude Codeでは、{remove}で登録も消してください。",
-  "mcpSettings.deleteDescLocal":
+  "mcpSettings.deleteDescAgent":
+    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。{agent}の設定からも、Latticeが登録を消します。",
+  "mcpSettings.deleteDescProject":
     "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で登録も消してください。消した後は、「Claude Code全体」の登録があれば、そのプロジェクトでもそちらが使われます。",
+  "mcpSettings.deleteDescOther":
+    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。エージェントの設定からも登録を消してください。",
   "mcpSettings.activity": "利用状況",
   "mcpSettings.activityDesc":
     "エージェントが始めたセッションと、登録ごとに最近の20件の呼び出しです。終わってもセッションを閉じないエージェントもあり、そのセッションも残るので、使われているかは最後のリクエストの時刻で見分けます。どちらも、MCPサーバーを止めるか、アプリを終了すると消えます。トークンを作り直すと、前のトークンのセッションもここから消えます。",
@@ -1572,5 +1586,9 @@ export const ja = {
   "be.mcp.fellBack": "元のライブラリを開けなかったので、MCPサーバーは止めています",
   "be.mcp.badName": "登録の名前は1〜{max}文字にしてください",
   "be.mcp.nameTaken": "「{name}」という登録はもうあります",
-  "be.mcp.userTaken": "Claude Code全体の登録は、もう「{name}」があります",
+  "be.mcp.targetTaken": "{agent}の登録は、もう「{name}」があります",
+  "be.mcp.agentMissing": "{agent}の設定を書き換えられませんでした。「{program}」が見つかりません。",
+  "be.mcp.agentFailed": "{agent}の設定を書き換えられませんでした: {error}",
+  "be.mcp.agentLost": "{agent}の設定を書き換えられず、前の登録もそこから消えました: {error}",
+  "be.mcp.agentOther": "{agent}の設定には、Latticeのものではない「{name}」という登録がもうあるので、変えませんでした。それを消すか名前を変えると登録できます。",
 } as const satisfies Record<string, string>;
