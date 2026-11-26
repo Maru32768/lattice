@@ -3551,6 +3551,19 @@ test("a follow-up being written stays as its sticky folds and unfolds", async ({
   await expect(followUpField(sticky)).toHaveValue("half a follow-up");
 });
 
+test("a sticky with a passage of several lines folds to one", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell, 6);
+  await askElsewhere(shell, LONG_ID, paraId(10), Array(6).fill(para(10)).join(" "));
+  await expect(cards(shell)).toHaveCount(1);
+  const sticky = cards(shell).first();
+  expect((await boxOf(sticky.locator(".sticky-quote"))).height, "of more than one line unfolded").toBeGreaterThan(40);
+  await sticky.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  expect((await boxOf(sticky.locator(".sticky-quote"))).height).toBeLessThan(25);
+  expect((await boxOf(sticky)).height).toBeLessThan(40);
+});
+
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
