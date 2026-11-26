@@ -1,5 +1,5 @@
 // Stickies: asking about a passage in the Reader, and the answer that stays beside it.
-import { test, expect, callsOf, list, listRow, navItem } from "./harness.ts";
+import { test, expect, callsOf, list, listRow, navItem, selectWord } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -3929,30 +3929,6 @@ test("メモに下書き: a memo that cannot be saved says so in the sticky, and
   await expect(panel.getByRole("status")).toHaveText("保存しました");
   expect(await lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED) });
 });
-
-/** Selects `word` inside block `block` as a mouse would, ending with mouseup. */
-async function selectWord(page: Page, block: number, word: string) {
-  await page.evaluate(
-    ({ block, word }) => {
-      const root = document.getElementById(`b-${block}`)!;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const i = n.textContent!.indexOf(word);
-        if (i >= 0) {
-          const range = document.createRange();
-          range.setStart(n, i);
-          range.setEnd(n, i + word.length);
-          getSelection()!.removeAllRanges();
-          getSelection()!.addRange(range);
-          root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-          return;
-        }
-      }
-      throw new Error(`${word} not in block ${block}`);
-    },
-    { block, word },
-  );
-}
 
 test("単語を登録 on a 用語 sticky saves its word in its sentence with what the sticky says, which the word list shows", async ({ app }) => {
   await openSnapshot(app);

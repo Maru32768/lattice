@@ -1,4 +1,4 @@
-import { test, expect, list, callsOf, navItem } from "./harness.ts";
+import { test, expect, list, callsOf, navItem, selectWord } from "./harness.ts";
 import { ARTICLES, REVIEW, SNAPSHOT_ID, VOCAB } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
@@ -10,38 +10,13 @@ async function openSnapshot(page: Page) {
   await page.locator(".docbar").getByRole("button", { name: "原文", exact: true }).click();
 }
 
-/** Selects `word` inside block `block` as a mouse would, ending with mouseup. */
-async function select(page: Page, block: number, word: string) {
-  await page.evaluate(
-    ({ block, word }) => {
-      const root = document.getElementById(`b-${block}`)!;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const i = n.textContent!.indexOf(word);
-        if (i < 0) {
-          continue;
-        }
-        const range = document.createRange();
-        range.setStart(n, i);
-        range.setEnd(n, i + word.length);
-        getSelection()!.removeAllRanges();
-        getSelection()!.addRange(range);
-        root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return;
-      }
-      throw new Error(`${word} not in block ${block}`);
-    },
-    { block, word },
-  );
-}
-
 test("単語を登録: select a word in the Reader, save it with its sentence, and see it marked", async ({ app }) => {
   await openSnapshot(app);
   // A saved word is underlined, its meaning on hover.
   await expect(app.locator("#b-106 .vw")).toHaveText("Write skew");
   await expect(app.locator("#b-106 .vw")).toHaveAttribute("title", "書き込みスキュー");
 
-  await select(app, 102, "consistent");
+  await selectWord(app, 102, "consistent");
   await app.getByRole("button", { name: /単語を登録/ }).click();
   await expect(app.locator(".vw-cap")).toHaveText("「consistent」を単語帳に登録しました");
   expect(await callsOf(app, "vocab_add")).toEqual([
@@ -58,17 +33,17 @@ test("単語を登録: select a word in the Reader, save it with its sentence, a
   await expect(app.locator("#b-102 .vw")).toHaveText("consistent");
 
   // The shortcut saves the selection too; a form already in the book gains the sentence.
-  await select(app, 103, "multi-version");
+  await selectWord(app, 103, "multi-version");
   await expect(app.getByRole("button", { name: /単語を登録/ })).toBeVisible();
   await app.keyboard.press("w");
   await expect(app.locator(".vw-cap")).toHaveText("「multi-version」を単語帳に登録しました");
-  await select(app, 106, "snapshot isolation");
+  await selectWord(app, 106, "snapshot isolation");
   await app.keyboard.press("w");
   await expect.poll(async () => (await callsOf(app, "vocab_add")).length).toBe(3);
 
   // Japanese text offers nothing.
   await app.locator(".docbar").getByRole("button", { name: "訳文", exact: true }).click();
-  await select(app, 102, "スナップショット");
+  await selectWord(app, 102, "スナップショット");
   await expect(app.getByRole("button", { name: /単語を登録/ })).toBeHidden();
 });
 
@@ -150,7 +125,7 @@ const spoken = (page: Page) => page.evaluate(() => (window as unknown as { __spo
 /** Saves `word` from block 104 and opens today's review at its card, the quiz cards taken out. */
 async function reviewWord(page: Page, word: string, beforeStart?: () => Promise<void>) {
   await openSnapshot(page);
-  await select(page, 104, word);
+  await selectWord(page, 104, word);
   await page.getByRole("button", { name: /単語を登録/ }).click();
   await expect(page.locator(".vw-cap")).toContainText("登録しました");
   const review = page.locator(".nav .ni").filter({ hasText: "今日の復習" });
@@ -238,7 +213,7 @@ test("auto-play can be turned off in Settings › 復習; the buttons still spea
 
 test("a word's card opens the passage it came from", async ({ app }) => {
   await openSnapshot(app);
-  await select(app, 104, "writers");
+  await selectWord(app, 104, "writers");
   await app.getByRole("button", { name: /単語を登録/ }).click();
   await expect(app.locator(".vw-cap")).toContainText("登録しました");
   await app.locator(".nav .ni").filter({ hasText: "今日の復習" }).click();
@@ -257,7 +232,7 @@ test("a word's card opens the passage it came from", async ({ app }) => {
 
 test("a word's source wins over the place its article was left at", async ({ app }) => {
   await openSnapshot(app);
-  await select(app, 104, "writers");
+  await selectWord(app, 104, "writers");
   await app.getByRole("button", { name: /単語を登録/ }).click();
   await expect(app.locator(".vw-cap")).toContainText("登録しました");
   await app.addStyleTag({ content: "[id^='b-'] { aspect-ratio: 1 / 3; }" });

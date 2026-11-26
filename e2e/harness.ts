@@ -51,6 +51,31 @@ export async function openPage(app: Page, title?: string) {
   await app.evaluate((p) => window.__e2e.emit("browser-page", p), { tab, url, loading: false, can_go_back: false, can_go_forward: false });
 }
 
+/** Selects `word` inside block `block` as a mouse would, ending with mouseup. */
+export async function selectWord(page: Page, block: number, word: string) {
+  await page.evaluate(
+    ({ block, word }) => {
+      const root = document.getElementById(`b-${block}`)!;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.textContent!.indexOf(word);
+        if (i < 0) {
+          continue;
+        }
+        const range = document.createRange();
+        range.setStart(n, i);
+        range.setEnd(n, i + word.length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+        root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        return;
+      }
+      throw new Error(`${word} not in block ${block}`);
+    },
+    { block, word },
+  );
+}
+
 /** The chat's 範囲: the button that shows the scope, and the dialog it opens. */
 export const chatScope = (page: Page) => page.getByRole("combobox", { name: "質問の範囲", exact: true });
 export const scopeDialog = (page: Page) => page.getByRole("dialog", { name: "質問の範囲" });
