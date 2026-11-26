@@ -3881,6 +3881,32 @@ test("メモに下書き: the draft waits, stays through leaving the article, is
   await expect.poll(() => lastMemo(shell), "typing on keeps it").toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる\n\n自分の言葉で直した下書き。" });
 });
 
+test("メモに下書き: a Vim memo open shows the text, a blank line before it, and typing on keeps it, with the keyboard left in the article", async ({
+  shell,
+}) => {
+  await shell.addInitScript(() => localStorage.setItem("lattice.chatVim", "on"));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(shell).click();
+  await expect(memoField(shell)).toBeFocused();
+  await shell.keyboard.type("2PL");
+  await shell.keyboard.press("Enter");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect(doc(shell)).toBeFocused();
+  await expect(memoField(shell), "the panel shows it").toContainText(draft);
+  await expect.poll(() => lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: `2PL\n\n${draft}` });
+  await memoField(shell).click();
+  await shell.keyboard.press("Control+End");
+  await shell.keyboard.type("!");
+  await expect.poll(() => lastMemo(shell), "typing on keeps it").toEqual({ id: SNAPSHOT_ID, body: `2PL\n\n${draft}!` });
+});
+
 test("メモに下書き: a failed draft is asked again, Esc and キャンセル leave the memo alone, and one added marks メモ", async ({ shell }) => {
   await shell.addInitScript(() => void (window.__e2eFail = ["sticky_note_draft"]));
   await shell.goto("/");
