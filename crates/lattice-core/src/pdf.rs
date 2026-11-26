@@ -444,16 +444,10 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
         let insets: Vec<f64> = margins.clone().map(|margin| margin.into_iter().fold(f64::MAX, f64::min).max(0.)).collect();
         let fitted = margins.zip(&insets).all(|([left, right, _], inset)| left == f64::MAX || left.max(right) < inset + 1.);
         let widths: Vec<f64> = insets.iter().enumerate().map(|(column, inset)| xs[column + 1] - xs[column] - 2. * inset).collect();
-        // Columns that are each as wide as their widest line are more likely to hold the rows of a group than lines that wrapped.
-        let enough = if fitted {
-            12
-        } else {
-            3
-        };
         // A rule drawn twice leaves an empty band between its strokes.
         let texted: Vec<usize> = (0..cells.len()).filter(|&row| cells[row].iter().flatten().any(|g| !g.text.trim().is_empty())).collect();
         let under_head = (texted.len() == 2).then(|| texted[1]);
-        if !(0..cells.len()).all(|row| one_row(&cells[row], row, &widths, enough, p.width, turns, under_head == Some(row))) {
+        if !(0..cells.len()).all(|row| one_row(&cells[row], row, &widths, fitted, p.width, turns, under_head == Some(row))) {
             continue;
         }
         let rows: Vec<Vec<Vec<Line>>> = cells.iter().map(|band| band.iter().map(|glyphs| cell_lines(glyphs, p.width)).collect()).collect();
@@ -523,11 +517,12 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 /// page that `turns`, in the head, or Japanese lines that come to the end of their column, as a cell's do where it wraps.
 /// A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns
 /// (`alone`) or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A
-/// line wraps where it leaves no room for the first word under it, in the `widths` the columns' text has.
+/// line wraps where it leaves no room for the first word under it, in the `widths` the columns' text has. Where every
+/// column is as wide as its widest line (`fitted`), the widest value of a group's column comes to its end too.
 // shortcut: Latin lines that wrap tell of nothing, as the lines of the rows of a group start in either case and end in a
 // hyphen too; nor do lists, a set-down label or one line set between a cell's, as a group's cells sit on its rows' lines.
 // A table with such a band under its head stays text. Tell them apart if such tables turn up.
-fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, width: f64, turns: bool, alone: bool) -> bool {
+fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width: f64, turns: bool, alone: bool) -> bool {
     let down = |g: &&Glyph| g.vertical || g.turned;
     if turns && band.iter().flatten().any(down) {
         return true;
@@ -600,7 +595,12 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
     // The first column with lines names the row. Beside a name of one line, less evidence is enough where fewer than two
     // columns go on onto another column's baseline (`tellers`), as two or more do in the rows of a group.
-    let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
+    let one_name = !fitted && tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
+    let enough = if fitted {
+        12
+    } else {
+        3
+    };
     head && !threes || one_name && evidence > 0 || evidence >= enough
 }
 
@@ -3547,6 +3547,14 @@ pub(crate) mod tests {
         for xs in [fitted(&all), roomy(&all)] {
             no_table(&groups(&xs, 14., &[head, fruit, greens]));
         }
+        // The same in Japanese, every column as wide as its widest line, so the first item of a group comes to its end.
+        let kana = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(3)[..4 * n]);
+        let mut text = kana(78., 114., 2) + &kana(110., 114., 2) + &kana(202., 114., 2);
+        for (top, items) in [(120., [8, 3]), (156., [6, 2])] {
+            text += &(kana(78., top + 14., 2) + &kana(110., top + 14., items[0]) + &kana(202., top + 14., 2) + &kana(110., top + 30., items[1]));
+        }
+        let ops = ruled(&[72., 104., 196., 228.], &[100., 120., 156., 192.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
         // The scores set larger at the top of each row, their baselines 1.5pt under the methods'.
         let xs = [72., 122., 188., 238.];
         let row = |y: f64, cells: [&str; 3]| shown(xs[0] + 6., y, cells[0]) + &shown(xs[1] + 6., y, cells[1]) + &sized(xs[2] + 6., y + 1.5, 12., cells[2]);
@@ -3755,6 +3763,8 @@ pub(crate) mod tests {
         for second in ["100", "API", "\\("] {
             assert_eq!(table([72., 114., 246., 288.], second), Some(3), "{second}");
         }
+        // With every column as wide as its widest line, a group's widest value comes to the end of its column too.
+        assert_eq!(table([72., 104., 236., 268.], "100"), None);
     }
 
     #[test]
