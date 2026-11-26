@@ -955,6 +955,14 @@ mod tests {
         let both = tokio::join!(s.agents.connect(&s.store, &r.id), s.agents.connect(&s.store, &r.id));
         assert_eq!(both, (Ok(true), Ok(true)));
         assert_eq!(s.file("log").split_whitespace().collect::<Vec<_>>(), ["begin", "end", "begin", "end"]);
+
+        let ours = json!({ "type": "http", "url": URL, "headers": { "Authorization": format!("Bearer {}", r.token) } });
+        s.set(".claude.json", &json!({ "mcpServers": { CLIENT_NAME: ours } }).to_string());
+        s.delete(&r);
+        s.set("log", "");
+        let both = tokio::join!(s.agents.disconnect(&s.store, Target::ClaudeCode), s.agents.disconnect(&s.store, Target::ClaudeCode));
+        assert_eq!(both, (Ok(true), Ok(true)));
+        assert_eq!(s.file("log").split_whitespace().collect::<Vec<_>>(), ["begin", "end", "begin", "end"], "taking it out too");
     }
 
     #[cfg(windows)]
