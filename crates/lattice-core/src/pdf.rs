@@ -595,8 +595,9 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
     // column.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
-    // The first column with lines names the row. Beside a name of one line, less evidence is enough where fewer than two
-    // columns go on onto another column's baseline (`tellers`), as two or more do in the rows of a group.
+    // The first column with lines names the row. Beside a name of one line, in a table with a column that has room, less
+    // evidence is enough where fewer than two columns go on onto another column's baseline (`tellers`), as two or more do
+    // in the rows of a group.
     let one_name = !fitted && tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
     let enough = if fitted {
         12
