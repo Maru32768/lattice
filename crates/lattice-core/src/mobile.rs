@@ -513,7 +513,9 @@ mod tests {
     }
 
     fn capture(article_id: Option<i64>, block_id: Option<i64>, url: Option<&str>) -> OpKind {
-        OpKind::VocabAdd { capture: Capture { surface: "word".into(), sentence: "A word here.".into(), article_id, block_id, url: url.map(Into::into), explanation: None } }
+        OpKind::VocabAdd {
+            capture: Capture { surface: "word".into(), sentence: "A word here.".into(), article_id, block_id, url: url.map(Into::into), explanation: None },
+        }
     }
 
     #[test]
