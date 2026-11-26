@@ -176,7 +176,8 @@ export function VocabView({
               </thead>
               <tbody>
                 {shown.map((e) => {
-                  const c = e.contexts[e.contexts.length - 1];
+                  // The sentence a 用語 sticky explained says the most, else the latest.
+                  const c = e.contexts.findLast((x) => x.explanation) ?? e.contexts.at(-1);
                   return (
                     <tr key={e.id} className={e.suspended ? "off" : undefined}>
                       <td>
@@ -210,6 +211,11 @@ export function VocabView({
                       </td>
                       <td className="ctx" lang="en">
                         {c && <Context c={c} />}
+                        {c?.explanation && (
+                          <span className="explain" lang="ja" title={c.explanation}>
+                            {c.explanation}
+                          </span>
+                        )}
                         {e.contexts.length > 1 && <span className="more">{t("vocabView.moreContexts", { n: e.contexts.length - 1 })}</span>}
                       </td>
                       <td className="m">{state(e)}</td>

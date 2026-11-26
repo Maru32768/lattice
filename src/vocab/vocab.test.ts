@@ -52,7 +52,7 @@ const entry = (id: number, headword: string, meaning: string, surfaces: string[]
   suspended: false,
   created_at: "",
   due_at: null,
-  contexts: surfaces.map((surface) => ({ surface, sentence: surface, article_id: null, block_id: null, url: null, title: null })),
+  contexts: surfaces.map((surface) => ({ surface, sentence: surface, article_id: null, block_id: null, url: null, title: null, explanation: null })),
   ...extra,
 });
 

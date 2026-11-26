@@ -1,4 +1,5 @@
 import type { Sticky, StickyKind } from "../api";
+import { splitCitations } from "../chat/chat.ts";
 
 /** Mirrors stickies.rs: a longer passage is refused. */
 export const MAX_QUOTE = 2000;
@@ -37,6 +38,12 @@ export const isFollowUp = (ask: Ask): ask is FollowUp => "sticky" in ask;
 
 /** An id alone does not name a sticky: SQLite gives it again. */
 export const isSame = (a: Sticky, b: Sticky) => a.id === b.id && a.quote === b.quote && a.messages[0]?.answer === b.messages[0]?.answer;
+
+/** What a 用語 sticky says, for the word list: its first answer, without the markers of the article's blocks and the space before them. */
+export function explanationOf({ messages: [first] }: Sticky) {
+  const parts = first ? splitCitations(first.answer, new Set(first.citations.map((c) => c.n))) : [];
+  return parts.reduce<string>((text, p) => (typeof p === "string" ? text + p : text.trimEnd()), "");
+}
 
 /** The stickies that are gone. */
 export const goneOf = (before: Sticky[], now: Sticky[]) => before.filter((s) => !now.some((n) => isSame(n, s)));

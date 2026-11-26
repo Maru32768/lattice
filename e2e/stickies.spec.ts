@@ -1,5 +1,5 @@
 // Stickies: asking about a passage in the Reader, and the answer that stays beside it.
-import { test, expect, callsOf, list, listRow } from "./harness.ts";
+import { test, expect, callsOf, list, listRow, navItem } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -3838,4 +3838,160 @@ test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await askOn(shell, "用語", cards(shell).first());
   await expect(child(shell, "用語").locator(".answer")).toBeVisible();
   expect(await foldedOnes(shell)).toEqual([false, false, false]);
+});
+
+const draftField = (sticky: Locator) => sticky.getByRole("textbox", { name: "メモの下書き" });
+const memoButton = (page: Page) => page.getByRole("button", { name: "メモ", exact: true });
+const memoField = (page: Page) => page.getByRole("complementary", { name: "メモ" }).getByRole("textbox", { name: "メモ" });
+const lastMemo = async (page: Page) => (await callsOf(page, "set_article_note")).at(-1);
+const DRAFTED = /^「.+」の下書き。答え1件から。$/;
+
+test("メモに下書き: the draft waits, stays through leaving the article, is changed in the sticky and goes to the end of the memo", async ({ shell }) => {
+  await hold(shell, "sticky_note_draft");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toHaveText(ANSWERED);
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("下書きを作成中…");
+  await open(shell, LONG_ID);
+  await shell.evaluate(() => window.__e2e.release("sticky_note_draft"));
+  await open(shell, SNAPSHOT_ID);
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  expect(await callsOf(shell, "sticky_note_draft")).toEqual([{ id: 1 }]);
+  await expect(draftField(sticky), "the keyboard stays where it was").not.toBeFocused();
+
+  await draftField(sticky).fill("自分の言葉で直した下書き");
+  await open(shell, LONG_ID);
+  await open(shell, SNAPSHOT_ID);
+  await expect(draftField(sticky), "what the reader changed stays too").toHaveValue("自分の言葉で直した下書き");
+
+  // A memo being typed in an open panel.
+  await memoButton(shell).click();
+  await memoField(shell).fill("2PLと比べる");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect(draftField(sticky)).toHaveCount(0);
+  await expect(memoField(shell), "the panel shows it").toHaveValue("2PLと比べる\n\n自分の言葉で直した下書き");
+  await expect.poll(() => lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる\n\n自分の言葉で直した下書き" });
+  await memoField(shell).press("Control+End");
+  await memoField(shell).pressSequentially("。");
+  await expect.poll(() => lastMemo(shell), "typing on keeps it").toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる\n\n自分の言葉で直した下書き。" });
+});
+
+test("メモに下書き: a failed draft is asked again, Esc and キャンセル leave the memo alone, and one added marks メモ", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eFail = ["sticky_note_draft"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  const draft = sticky.getByRole("button", { name: "メモに下書き" });
+  await draft.click();
+  await expect(sticky.getByRole("alert")).toHaveText(/sticky_note_draft failed/);
+  await shell.evaluate(() => void (window.__e2eFail = []));
+  await sticky.getByRole("button", { name: "再試行" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  await draftField(sticky).press("Escape");
+  await expect(draftField(sticky)).toHaveCount(0);
+  await draft.click();
+  await sticky.getByRole("button", { name: "キャンセル" }).click();
+  await expect(draftField(sticky)).toHaveCount(0);
+  expect(await callsOf(shell, "set_article_note")).toEqual([]);
+  await expect(memoButton(shell)).not.toHaveClass(/\bon\b/);
+
+  await draft.click();
+  await draftField(sticky).fill(" ");
+  await expect(sticky.getByRole("button", { name: "メモに足す" })).toBeDisabled();
+  await draftField(sticky).fill(" 下書き ");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(memoButton(shell), "with the panel closed too").toHaveClass(/\bon\b/);
+  expect(await callsOf(shell, "set_article_note")).toEqual([{ id: SNAPSHOT_ID, body: "下書き" }]);
+  await memoButton(shell).click();
+  await expect(memoField(shell)).toHaveValue("下書き");
+});
+
+test("メモに下書き: a memo that cannot be saved says so in the sticky, and the memo saves the text again", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eFail = ["set_article_note"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("alert")).toHaveText(/set_article_note failed/);
+  await memoButton(shell).click();
+  const panel = shell.getByRole("complementary", { name: "メモ" });
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await expect(memoField(shell)).toHaveValue(DRAFTED);
+  await shell.evaluate(() => void (window.__e2eFail = []));
+  await memoField(shell).blur();
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  expect(await lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED) });
+});
+
+/** Selects `word` inside block `block` as a mouse would, ending with mouseup. */
+async function selectWord(page: Page, block: number, word: string) {
+  await page.evaluate(
+    ({ block, word }) => {
+      const root = document.getElementById(`b-${block}`)!;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.textContent!.indexOf(word);
+        if (i >= 0) {
+          const range = document.createRange();
+          range.setStart(n, i);
+          range.setEnd(n, i + word.length);
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+          root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+          return;
+        }
+      }
+      throw new Error(`${word} not in block ${block}`);
+    },
+    { block, word },
+  );
+}
+
+test("単語を登録 on a 用語 sticky saves its word in its sentence with what the sticky says, which the word list shows", async ({ app }) => {
+  await openSnapshot(app);
+  await selectWord(app, 106, "snapshot");
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  const term = card(app, "用語");
+  await expect(term.locator(".answer")).toHaveText(ANSWERED);
+  await term.getByRole("button", { name: "単語を登録" }).click();
+  await expect(term.getByRole("status")).toHaveText("「snapshot」を単語帳に登録しました");
+  const explanation =
+    "選んだ箇所の説明です。記事には書かれていませんが、一般にも使います(snapshot)。出典のない番号 [7] と消えた出典、書き換わった出典 はそのままです。";
+  expect(await callsOf(app, "vocab_add")).toEqual([
+    {
+      capture: {
+        surface: "snapshot",
+        sentence: "Write skew is still possible under snapshot isolation.",
+        article_id: SNAPSHOT_ID,
+        block_id: 106,
+        url: ARTICLES[0].original_url,
+        explanation,
+      },
+    },
+  ]);
+
+  // Not of another kind, of code, of more than a word, or of an answer.
+  await askAbout(app, "詳しく", "#b-103");
+  await askAbout(app, "用語", "#b-105");
+  await askAbout(app, "用語", "#b-102");
+  const on = (block: number) => card(app, "用語").and(app.locator(`[data-block="${block}"]`));
+  await askOn(app, "用語", on(102));
+  for (const sticky of [card(app, "詳しく"), on(105), on(102), child(app, "用語")]) {
+    if ((await sticky.getAttribute("data-folded")) != null) {
+      await unfold(sticky);
+    }
+    await expect(sticky.getByRole("button", { name: "メモに下書き" })).toBeVisible();
+    await expect(sticky.getByRole("button", { name: "単語を登録" })).toHaveCount(0);
+  }
+
+  await navItem(app, "単語帳").click();
+  const row = app.locator(".vocab tbody tr").filter({ has: app.locator(".hw").getByText("snapshot", { exact: true }) });
+  await expect(row.locator(".explain")).toHaveText(explanation);
 });

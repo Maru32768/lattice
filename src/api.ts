@@ -161,6 +161,8 @@ export const api = {
     invoke<Sticky>("sticky_ask", ask),
   /** Asks on in a sticky and stores the answer there; `stickies-changed` follows. */
   stickyFollowUp: (ask: { id: number; question: string }) => invoke<Sticky>("sticky_follow_up", ask),
+  /** A draft for the article's memo of what the sticky says; nothing is stored. */
+  stickyNoteDraft: (id: number) => invoke<string>("sticky_note_draft", { id }),
   listStickies: (articleId: number) => invoke<Sticky[]>("list_stickies", { articleId }),
   deleteSticky: (id: number) => invoke<void>("delete_sticky", { id }),
   chatBudget: () => invoke<ChatBudget>("get_chat_budget"),

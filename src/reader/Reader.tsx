@@ -1,6 +1,18 @@
 import { Fragment, memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type StickyKind, type SummaryItem, type VocabCapture } from "../api";
+import {
+  api,
+  isLocal,
+  siteOf,
+  type ArticleView,
+  type Block,
+  type GroupRow,
+  type JobRow,
+  type Sticky,
+  type StickyKind,
+  type SummaryItem,
+  type VocabCapture,
+} from "../api";
 import { citeNumbers, gapAfter, markNumbers, unverifiedNumbers } from "./summary";
 import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
@@ -10,9 +22,9 @@ import { ActionKey, Dif, Icon, Kbd, useKeyTitle } from "../ui/Icon";
 import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
-import { NotePanel, hasNote } from "./NotePanel";
+import { NotePanel, addToNote, useHasNote } from "./NotePanel";
 import { StickyColumn, type Opened } from "./StickyColumn";
-import { MAX_QUOTE, STICKY_KINDS, type Passage } from "./stickies";
+import { MAX_QUOTE, STICKY_KINDS, explanationOf, type Passage } from "./stickies";
 import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
@@ -343,6 +355,7 @@ export function ArticleTools({
   const a = view.article;
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const local = isLocal(a.original_url);
+  const noted = useHasNote(view);
   const done = view.blocks.filter((b) => b.translation != null).length;
   const [retranslate, dialog] = useRetranslate(done, act.onRetranslate);
   const job = (type: string) => busy(view.jobs.find((j) => j.type === type));
@@ -380,7 +393,7 @@ export function ArticleTools({
         </button>
       )}
       <button
-        className={`tb qz-btn${panel === "note" ? " qz-open" : hasNote(view) ? " on" : ""}`}
+        className={`tb qz-btn${panel === "note" ? " qz-open" : noted ? " on" : ""}`}
         onClick={() => onPanel("note")}
         aria-pressed={panel === "note"}
         aria-label={t("notePanel.title")}
@@ -1019,6 +1032,17 @@ export function Reader({
     return { passage: { blockId: block ? Number(block) : null, parent: Number(answer.dataset.message), quote }, ...barAt(range, view) };
   }
 
+  /** The word of a 用語 sticky on a prose block, in its sentence as shown, or else as written, with what the sticky says. */
+  function stickyWord(s: Sticky): VocabCapture | null {
+    const block = blocks.find((b) => b.id === s.block_id);
+    if (s.kind !== "term" || s.parent != null || !block || !TRANSLATABLE.has(block.kind) || !isWord(s.quote)) {
+      return null;
+    }
+    const shown = shownText(block.text, pieces.get(block.id)!, (j) => shows(block.id, j));
+    const c = captureIn(shown, s.quote, 0) ?? captureIn(block.text, s.quote, 0);
+    return c && { ...c, article_id: a.id, block_id: block.id, url: isLocal(a.original_url) ? null : a.original_url, explanation: explanationOf(s) };
+  }
+
   async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
     clearTimeout(timers.current.cap);
     await api
@@ -1375,7 +1399,21 @@ export function Reader({
               </div>
             </OpenLink.Provider>
           </article>
-          <StickyColumn article={a.id} blocks={blocks} opened={opened} onOpen={onAsk} onSource={(b) => act.onFocusBlock(b, "sticky")} />
+          <StickyColumn
+            article={a.id}
+            blocks={blocks}
+            opened={opened}
+            onOpen={onAsk}
+            onSource={(b) => act.onFocusBlock(b, "sticky")}
+            onNote={(text) => addToNote(view, text)}
+            wordOf={stickyWord}
+            onWord={(word) =>
+              api.vocabAdd(word).then((r) => {
+                onVocabChanged();
+                return r;
+              })
+            }
+          />
         </div>
         {panel === "quiz" && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, "quiz")} onReviewChanged={act.onReviewChanged} onClose={closePanel} />}
         {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}

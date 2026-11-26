@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useEffectEvent, useRef, useState } from "react";
+import { Suspense, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { api, type ArticleView } from "../api";
 import { Icon } from "../ui/Icon";
 import "../quiz/quiz.css";
@@ -19,18 +19,59 @@ const typedText = new Map<number, string>();
 const failedSaves = new Map<number, string>();
 /** The open panels, told how each save ended: the panel that sent it may be gone by then after a pane swap, and two panes can show one article. */
 const panels = new Set<(id: number, error: string | null, body: string) => void>();
+/** Told of text added to a memo from elsewhere (`addToNote`): the open panels show it, the toolbar marks メモ. */
+const added = new Set<(id: number, body: string) => void>();
 /** Saves run one at a time, in typing order: two in flight could land out of order and keep the older text. */
 let queue: Promise<unknown> = Promise.resolve();
 
+/** Saves after the saves before it; resolves to the error, or null. */
+function save(id: number, body: string): Promise<string | null> {
+  const ended = queue
+    .then(() => api.setArticleNote(id, body))
+    .then(
+      () => {
+        failedSaves.delete(id);
+        panels.forEach((tell) => tell(id, null, body));
+        return null;
+      },
+      (e: unknown) => {
+        failedSaves.set(id, String(e));
+        panels.forEach((tell) => tell(id, String(e), body));
+        return String(e);
+      },
+    );
+  queue = ended;
+  return ended;
+}
+
 const noteOf = (view: ArticleView) => typedText.get(view.article.id) ?? view.note ?? "";
 /** Whether the article has a memo: the toolbar marks メモ. */
-export const hasNote = (view: ArticleView) => noteOf(view).trim() !== "";
+export const useHasNote = (view: ArticleView) =>
+  useSyncExternalStore(
+    (f) => {
+      added.add(f);
+      return () => void added.delete(f);
+    },
+    () => noteOf(view).trim() !== "",
+  );
+
+/** Adds `text` to the end of the article's memo, after a blank line, and saves it. Resolves to the error of the save, or null. */
+export function addToNote(view: ArticleView, text: string) {
+  const id = view.article.id;
+  const was = noteOf(view).trimEnd();
+  const body = was ? `${was}\n\n${text}` : text;
+  typedText.set(id, body);
+  added.forEach((show) => show(id, body));
+  return save(id, body);
+}
 
 /** メモ beside the Reader: the user's plain-text note on the article, saved as they type. */
 export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () => void }) {
   const t = useT();
   const id = view.article.id;
   const [text, setText] = useState(() => noteOf(view));
+  /** How many times text added elsewhere has replaced it: the Vim editor takes its text only as it comes up. */
+  const [shown, setShown] = useState(0);
   const [status, setStatus] = useState<"saving" | "saved" | null>(null);
   const [error, setError] = useState(() => failedSaves.get(id) ?? null);
   const vimOn = useVimEnabled();
@@ -48,18 +89,7 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
       return;
     }
     setStatus("saving");
-    queue = queue
-      .then(() => api.setArticleNote(id, body))
-      .then(
-        () => {
-          failedSaves.delete(id);
-          panels.forEach((tell) => tell(id, null, body));
-        },
-        (e: unknown) => {
-          failedSaves.set(id, String(e));
-          panels.forEach((tell) => tell(id, String(e), body));
-        },
-      );
+    void save(id, body);
   };
   const saveEnded = useEffectEvent((message: string | null, body: string) => {
     setError(message);
@@ -81,6 +111,19 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     };
     panels.add(tell);
     return () => void panels.delete(tell);
+  }, [id]);
+  // What was typed and not yet sent is in the text added to, which is being saved.
+  useEffect(() => {
+    const show = (to: number, body: string) => {
+      if (to === id) {
+        clearTimeout(timer.current);
+        pending.current = null;
+        setText(body);
+        setShown((n) => n + 1);
+      }
+    };
+    added.add(show);
+    return () => void added.delete(show);
   }, [id]);
   const typed = (value: string) => {
     typedText.set(id, value);
@@ -111,11 +154,13 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
       {vimOn ? (
         <Suspense fallback={<div className="note-text vim-editor" />}>
           <VimEditor
+            key={shown}
             className="note-text vim-editor"
             initial={text}
             label={t("notePanel.title")}
             placeholder={t("notePanel.placeholder")}
-            autoFocus
+            // Not as it comes up again: the text was added from a sticky, which keeps the keyboard.
+            autoFocus={shown === 0}
             onChange={typed}
             onWrite={flush}
             onQuit={onClose}

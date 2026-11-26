@@ -17,9 +17,14 @@ interface Stickies {
    * unless one has been folded or unfolded since, or to the one opened after it. A sent one's stays, as what it folded does.
    */
   undo: Undo[];
+  /** The memo drafts, by sticky id. */
+  drafts: ReadonlyMap<number, Draft>;
   /** Why the saved ones could not be read. */
   error: string | null;
 }
+
+/** メモに下書き: the model writing it, what went wrong, or its text as the reader has it. */
+export type Draft = { step: "pending" } | { step: "failed"; error: string } | { step: "ready"; text: string };
 
 interface Undo {
   ask: number;
@@ -28,7 +33,7 @@ interface Undo {
   made: Sticky[];
 }
 
-const NONE: Stickies = { saved: [], asks: [], answers: new Map(), folded: [], latest: 0, undo: [], error: null };
+const NONE: Stickies = { saved: [], asks: [], answers: new Map(), folded: [], latest: 0, undo: [], drafts: new Map(), error: null };
 // The Reader unmounts when another article, tab or screen is shown: what was asked outlives it here, by article id, and an
 // answer that comes meanwhile is put here too.
 const articles = new Map<number, Stickies>();
@@ -47,6 +52,7 @@ function put(article: number, change: Partial<Stickies>) {
     ...now,
     asks: asksLeft(now.asks, gone),
     answers: new Map([...now.answers].filter(([, id]) => !gone.some((s) => s.id === id))),
+    drafts: new Map([...now.drafts].filter(([id]) => !gone.some((s) => s.id === id))),
   });
   listeners.forEach((f) => f());
 }
@@ -152,6 +158,32 @@ export function openAsk(article: number, about: (Passage & { kind: StickyKind })
   }
   return ask.key;
 }
+
+function putDraft(article: number, sticky: number, draft: Draft | null) {
+  const drafts = new Map(of(article).drafts);
+  if (draft) {
+    drafts.set(sticky, draft);
+  } else {
+    drafts.delete(sticky);
+  }
+  put(article, { drafts });
+}
+
+/** Has the model write a memo draft of the sticky, or write it again after it failed. */
+export async function draftNote(article: number, sticky: number) {
+  putDraft(article, sticky, { step: "pending" });
+  const draft = await api.stickyNoteDraft(sticky).then(
+    (text): Draft => ({ step: "ready", text }),
+    (e: unknown): Draft => ({ step: "failed", error: String(e) }),
+  );
+  // Not on a sticky deleted meanwhile.
+  if (of(article).drafts.get(sticky)?.step === "pending") {
+    putDraft(article, sticky, draft);
+  }
+}
+
+export const changeDraft = (article: number, sticky: number, text: string) => putDraft(article, sticky, { step: "ready", text });
+export const dropDraft = (article: number, sticky: number) => putDraft(article, sticky, null);
 
 export function foldSticky(article: number, sticky: Sticky, fold: boolean) {
   const others = of(article).folded.filter((s) => !isSame(s, sticky));

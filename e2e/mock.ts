@@ -613,11 +613,15 @@ export const handlers = {
       block_id: c.block_id ?? null,
       url: c.url ?? null,
       title: a?.title ?? null,
+      explanation: c.explanation?.trim() || null,
     };
     const known = vocab.find((e) => [e.headword, ...e.contexts.map((x) => x.surface)].some((f) => f.toLowerCase() === c.surface.toLowerCase()));
     if (known) {
-      if (!known.contexts.some((x) => x.sentence === c.sentence)) {
+      const same = known.contexts.find((x) => x.sentence === c.sentence);
+      if (!same) {
         known.contexts.push(context);
+      } else if (context.explanation) {
+        same.explanation = context.explanation;
       }
       return { entry_id: known.id, new: false };
     }
@@ -713,6 +717,10 @@ export const handlers = {
     sticky.messages = [...sticky.messages, stickyMessage(sticky.article_id, sticky.block_id, question)];
     stickiesChanged(sticky.article_id);
     return { ...sticky };
+  },
+  sticky_note_draft: ({ id }: { id: number }): string => {
+    const sticky = stickies.find((s) => s.id === id) ?? reject("stickies.gone");
+    return `「${sticky.quote}」の下書き。答え${sticky.messages.length}件から。`;
   },
   list_stickies: ({ articleId }: { articleId: number }): Sticky[] => stickies.filter((s) => s.article_id === articleId).map((s) => ({ ...s })),
   delete_sticky: ({ id }: { id: number }) => {

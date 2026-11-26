@@ -1,13 +1,13 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import type { Block, Sticky, StickyMessage } from "../api";
+import type { Block, Sticky, StickyMessage, VocabAdded, VocabCapture } from "../api";
 import { splitCitations } from "../chat/chat";
 import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
 import { GAP, ROOM, cardsOf, findPassage, isFollowUp, isSame, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
-import { deleteSticky, changeAsk, dropAsk, foldSticky, openAsk, sendAsk, useStickies } from "./useStickies";
+import { deleteSticky, changeAsk, changeDraft, draftNote, dropAsk, dropDraft, foldSticky, openAsk, sendAsk, useStickies, type Draft } from "./useStickies";
 import "./stickies.css";
 
 /** A pane narrower than this has no room for a column beside the text. */
@@ -335,6 +335,9 @@ export function StickyColumn({
   opened: { pinned, on },
   onOpen,
   onSource,
+  onNote,
+  wordOf,
+  onWord,
 }: {
   article: number;
   blocks: Block[];
@@ -342,6 +345,11 @@ export function StickyColumn({
   onOpen: (ask: number) => void;
   /** Shows a block that an answer cites. */
   onSource: (block: number) => void;
+  /** Adds text to the article's memo; resolves to the error of saving it, or null. */
+  onNote: (text: string) => Promise<string | null>;
+  /** The word of a 用語 sticky to save, in its sentence; null where it has none. */
+  wordOf: (sticky: Sticky) => VocabCapture | null;
+  onWord: (word: VocabCapture) => Promise<VocabAdded>;
 }) {
   const t = useT();
   const opened = on.at(-1) ?? pinned;
@@ -349,7 +357,7 @@ export function StickyColumn({
   const kept = useRef<Kept | null>(null);
   /** The line before the last card opened, and with it. */
   const moved = useRef<{ from: Kept | null; to: Line | undefined }>(null);
-  const { saved, asks, answers, folded, error } = useStickies(article);
+  const { saved, asks, answers, folded, drafts, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
   const followUps = new Map(asks.filter(isFollowUp).map((f) => [f.sticky, f]));
   /** The card that the ask, or the answer to it, is on. */
@@ -487,12 +495,16 @@ export function StickyColumn({
               hasChildren={cards.some((child) => child.parent === c.key)}
               folded={folded.some((s) => isSame(s, c.sticky))}
               followUp={followUps.get(c.sticky.id)}
+              draft={drafts.get(c.sticky.id)}
+              word={wordOf(c.sticky)}
               opened={opened}
               blocks={blocks}
               onOpen={onOpen}
               onCancel={cancel}
               onFold={fold}
               onSource={onSource}
+              onNote={onNote}
+              onWord={onWord}
             />
           ) : (
             <AskCard key={c.key} spot={spot} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={cancel} />
@@ -570,12 +582,16 @@ function SavedCard({
   hasChildren,
   folded,
   followUp,
+  draft,
+  word,
   opened,
   blocks,
   onOpen,
   onCancel,
   onFold,
   onSource,
+  onNote,
+  onWord,
 }: {
   spot: Spot;
   article: number;
@@ -584,20 +600,42 @@ function SavedCard({
   /** To its quote's first line, beside its label. */
   folded: boolean;
   followUp: FollowUp | undefined;
+  draft: Draft | undefined;
+  word: VocabCapture | null;
   opened: number | null;
   blocks: Block[];
   onOpen: (ask: number) => void;
   onCancel: (ask: number) => void;
   onFold: (sticky: Sticky, folds: boolean, card: HTMLElement) => void;
   onSource: (block: number) => void;
+  onNote: (text: string) => Promise<string | null>;
+  onWord: (word: VocabCapture) => Promise<VocabAdded>;
 }) {
   const t = useT();
   const [deleting, setDeleting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const remove = useRef<HTMLButtonElement>(null);
   const label = useLabel(sticky);
   // At once: the dialog holds the focus while it is there, and leaves it nowhere.
   const close = () => flushSync(() => setDeleting(false));
+  const done = (said: { status: string } | { error: string }) => {
+    setStatus("status" in said ? said.status : null);
+    setError("error" in said ? said.error : null);
+  };
+  const addToNote = async (text: string) => {
+    // The text is in the memo whether or not it is saved: the memo saves it again as it opens.
+    dropDraft(article, sticky.id);
+    const failed = await onNote(text);
+    done(failed ? { error: failed } : { status: t("stickies.addedToNote") });
+  };
+  const saveWord = async (word: VocabCapture) => {
+    const said = await onWord(word).then(
+      (r) => ({ status: t(r.new ? "vocab.saved" : "vocab.added", { word: word.surface }) }),
+      (e: unknown) => ({ error: String(e) }),
+    );
+    done(said);
+  };
   return (
     <section className="sticky" aria-label={label} data-folded={folded || undefined} {...spot}>
       <div className="sticky-h">
@@ -629,14 +667,35 @@ function SavedCard({
             <div className="sticky-ask" data-opened={followUp.key === opened || undefined}>
               <AskBody article={article} ask={followUp} onCancel={onCancel} />
             </div>
+          ) : draft ? (
+            <DraftBody article={article} sticky={sticky.id} draft={draft} onAdd={(text) => void addToNote(text)} />
           ) : (
             <div className="sticky-acts">
+              {word && (
+                <button className="btn sm" onClick={() => void saveWord(word)}>
+                  {t("vocab.save")}
+                </button>
+              )}
+              <button
+                className="btn sm"
+                onClick={() => {
+                  done({ status: "" });
+                  void draftNote(article, sticky.id);
+                }}
+              >
+                {t("stickies.draftNote")}
+              </button>
               <button className="btn sm" onClick={() => onOpen(openAsk(article, { sticky: sticky.id }))}>
                 {t("stickies.followUp")}
               </button>
             </div>
           )}
         </>
+      )}
+      {status && (
+        <p className="sticky-status" role="status">
+          {status}
+        </p>
       )}
       {error && (
         <p className="error-text" role="alert">
@@ -662,6 +721,67 @@ function SavedCard({
         </ConfirmDialog>
       )}
     </section>
+  );
+}
+
+/** メモに下書き: the wait, the draft to change and add to the memo, or what went wrong. */
+function DraftBody({ article, sticky, draft, onAdd }: { article: number; sticky: number; draft: Draft; onAdd: (text: string) => void }) {
+  const t = useT();
+  if (draft.step === "pending") {
+    return (
+      <p className="pending" role="status">
+        <span className="dot" />
+        {t("stickies.drafting")}
+      </p>
+    );
+  }
+  const cancel = (from: HTMLElement) => {
+    leave(from);
+    dropDraft(article, sticky);
+  };
+  return (
+    <div className="sticky-ask">
+      {draft.step === "failed" ? (
+        <p className="error-text" role="alert">
+          {t.msg(draft.error)}
+        </p>
+      ) : (
+        <textarea
+          rows={5}
+          value={draft.text}
+          aria-label={t("stickies.draftLabel")}
+          onChange={(e) => changeDraft(article, sticky, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.stopPropagation();
+              cancel(e.currentTarget);
+            }
+          }}
+        />
+      )}
+      <div className="sticky-acts">
+        <button className="btn sm" onClick={(e) => cancel(e.currentTarget)}>
+          {t("common.cancel")}
+        </button>
+        {draft.step === "failed" ? (
+          <button className="btn sm pri" onClick={() => void draftNote(article, sticky)}>
+            {t("common.retry")}
+          </button>
+        ) : (
+          <button
+            className="btn sm pri"
+            disabled={!draft.text.trim()}
+            onClick={(e) => {
+              leave(e.currentTarget);
+              onAdd(draft.text.trim());
+            }}
+          >
+            {t("stickies.addToNote")}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

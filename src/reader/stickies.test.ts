@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { asksLeft, cardsOf, findPassage, goneOf, stack, type Ask } from "./stickies.ts";
+import { asksLeft, cardsOf, explanationOf, findPassage, goneOf, stack, type Ask } from "./stickies.ts";
 import type { Sticky } from "../api.ts";
 
 /** With a message of each of the ids. */
@@ -235,4 +235,12 @@ test("a word does not go on from one text node to the next one set apart from it
     ],
     "inline, as a link in a word",
   );
+});
+
+test("a sticky's explanation is its first answer without the markers it cites and the space before them", () => {
+  const citation = (n: number) => ({ n, block_id: n, article_id: 1, url: "", title: "", heading: null, text: "" });
+  const term = sticky(1, 10, [1, 2]);
+  term.messages[0] = { ...term.messages[0], answer: "先に書く [1]。dp[2] と番号 [9] は残る [2][3]。", citations: [1, 2, 3].map(citation) };
+  assert.equal(explanationOf(term), "先に書く。dp[2] と番号 [9] は残る。");
+  assert.equal(explanationOf(sticky(2, 10)), "", "none without an answer");
 });
