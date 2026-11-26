@@ -3577,6 +3577,7 @@ pub(crate) mod tests {
         let first: &[&[&str]] = &[&["Item", "Qty", "Price"], &["Widget", "4", "12.00"], &["Gadget", "2", "30.00"]];
         let second: &[&[&str]] = &[&["Gizmo", "1", "9.00"]];
         no_table(&groups(&xs, 14., &[first, second]));
+        no_table(&groups(&xs, 14., &[&first[..2], second]));
         // With no number under another line, the first band is the head.
         let head: &[&[&str]] = &[&["Item", "Qty", "Price"], &["", "(units)", "(USD)"]];
         assert_eq!(texts_of(&groups(&xs, 14., &[head, second])), ["Item\tQty (units)\tPrice (USD)\nGizmo\t1\t9.00"]);
