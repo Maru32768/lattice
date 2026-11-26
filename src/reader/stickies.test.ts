@@ -166,6 +166,14 @@ test("a passage of words is found where it is whole words before where it starts
     [0, 24],
     [0, 28],
   ]);
+  assert.deepEqual(
+    findPassage(["A locksmith fixed the lock."], 1, "lock"),
+    [
+      [0, 22],
+      [0, 26],
+    ],
+    "nor where it ends inside one",
+  );
   assert.deepEqual(findPassage(["This is the thesis."], 1, "is"), [
     [0, 5],
     [0, 7],
