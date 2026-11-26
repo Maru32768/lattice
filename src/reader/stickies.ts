@@ -35,9 +35,11 @@ export type Ask = PassageAsk | FollowUp;
 
 export const isFollowUp = (ask: Ask): ask is FollowUp => "sticky" in ask;
 
-/** The stickies that are gone. An id alone does not name one: SQLite gives it again. */
-export const goneOf = (before: Sticky[], now: Sticky[]) =>
-  before.filter((s) => !now.some((n) => n.id === s.id && n.quote === s.quote && n.messages[0]?.answer === s.messages[0]?.answer));
+/** An id alone does not name a sticky: SQLite gives it again. */
+export const isSame = (a: Sticky, b: Sticky) => a.id === b.id && a.quote === b.quote && a.messages[0]?.answer === b.messages[0]?.answer;
+
+/** The stickies that are gone. */
+export const goneOf = (before: Sticky[], now: Sticky[]) => before.filter((s) => !now.some((n) => isSame(n, s)));
 
 /** The asks then: a follow-up goes with its sticky, and an ask on an answer stays without its parent, as a saved child does. */
 export function asksLeft(asks: Ask[], gone: Sticky[]): Ask[] {

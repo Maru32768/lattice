@@ -463,6 +463,40 @@ test("a follow-up's answer that comes after a list with another window's later o
   await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
 });
 
+test("a sticky saved under the id of one deleted elsewhere shows as itself before the list after the deletion comes", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["sticky_ask"];
+    window.__e2eLate = ["list_stickies"];
+  });
+  const go = (cmd: string) => shell.evaluate((cmd) => window.__e2e.release(cmd), cmd);
+  const reads = async () => (await callsOf(shell, "list_stickies")).length;
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await go("list_stickies");
+  // Another window's sticky, with a follow-up: one more answer than a new sticky has.
+  const made = askElsewhere(shell, SNAPSHOT_ID, 102);
+  await expect.poll(async () => (await callsOf(shell, "sticky_ask")).length).toBe(1);
+  await go("sticky_ask");
+  await made;
+  await invoke(shell, "sticky_follow_up", { id: 1, question: "elsewhere" });
+  await expect.poll(reads).toBeGreaterThan(2);
+  await go("list_stickies");
+  await expect(cards(shell).locator(".answer")).toHaveCount(2);
+  await askAbout(shell, "詳しく", "#b-103");
+  await expect(cards(shell)).toHaveCount(2);
+  // Deleted there as this one waits, which then gets its id.
+  await invoke(shell, "delete_sticky", { id: 1 });
+  await go("sticky_ask");
+  await expect(shell.locator(".stickies").getByRole("status")).toHaveCount(0);
+  await expect(cards(shell)).toHaveCount(1);
+  await expect(card(shell, "詳しく").locator(".answer")).toHaveCount(1);
+  await go("list_stickies");
+  await frames(shell);
+  await expect(cards(shell)).toHaveCount(1);
+  await expect(card(shell, "詳しく").locator(".answer")).toHaveCount(1);
+});
+
 test("a list read before a sticky was asked does not take it away by coming last", async ({ shell }) => {
   await shell.addInitScript(() => void (window.__e2eLate = ["list_stickies"]));
   await shell.goto("/");

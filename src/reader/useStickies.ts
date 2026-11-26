@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type Sticky, type StickyKind } from "../api";
-import { asksLeft, goneOf, isFollowUp, type Ask, type Passage, type Step } from "./stickies";
+import { asksLeft, goneOf, isFollowUp, isSame, type Ask, type Passage, type Step } from "./stickies";
 
 interface Stickies {
   saved: Sticky[];
@@ -86,9 +86,9 @@ export async function sendAsk(article: number, ask: Ask) {
   try {
     const sticky = await answerTo(article, ask);
     const { saved, asks, answers } = of(article);
-    // A list read since it was stored can have another window's follow-up to it already: a sticky only gets more messages.
-    const read = saved.find((s) => s.id === sticky.id);
-    const newest = read && read.messages.length > sticky.messages.length ? read : sticky;
+    // One that a list read since it was stored has is as new, or has another window's follow-up already: a sticky only gets
+    // more messages.
+    const newest = saved.find((s) => isSame(s, sticky) && s.messages.length >= sticky.messages.length) ?? sticky;
     put(article, {
       saved: [...saved.filter((s) => s.id !== sticky.id), newest].toSorted((a, b) => a.id - b.id),
       asks: asks.filter((a) => a.key !== key),
