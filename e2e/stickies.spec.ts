@@ -3855,6 +3855,7 @@ test("メモに下書き: the draft waits, stays through leaving the article, is
   await expect(sticky.locator(".answer")).toHaveText(ANSWERED);
   await sticky.getByRole("button", { name: "メモに下書き" }).click();
   await expect(sticky.getByRole("status")).toHaveText("下書きを作成中…");
+  await expect(doc(shell), "the keyboard goes back to the article as the button goes").toBeFocused();
   await open(shell, LONG_ID);
   await shell.evaluate(() => window.__e2e.release("sticky_note_draft"));
   await open(shell, SNAPSHOT_ID);
@@ -3892,6 +3893,7 @@ test("メモに下書き: a failed draft is asked again, Esc and キャンセル
   await shell.evaluate(() => void (window.__e2eFail = []));
   await sticky.getByRole("button", { name: "再試行" }).click();
   await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  await expect(doc(shell)).toBeFocused();
   await draftField(sticky).press("Escape");
   await expect(draftField(sticky)).toHaveCount(0);
   await draft.click();

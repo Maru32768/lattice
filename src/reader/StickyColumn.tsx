@@ -671,7 +671,8 @@ function SavedCard({
               )}
               <button
                 className="btn sm"
-                onClick={() => {
+                onClick={(e) => {
+                  leave(e.currentTarget);
                   setSaid(null);
                   void draftNote(article, sticky.id);
                 }}
@@ -758,7 +759,13 @@ function DraftBody({ article, sticky, draft, onAdd }: { article: number; sticky:
           {t("common.cancel")}
         </button>
         {draft.step === "failed" ? (
-          <button className="btn sm pri" onClick={() => void draftNote(article, sticky)}>
+          <button
+            className="btn sm pri"
+            onClick={(e) => {
+              leave(e.currentTarget);
+              void draftNote(article, sticky);
+            }}
+          >
             {t("common.retry")}
           </button>
         ) : (
