@@ -12,7 +12,10 @@ interface Stickies {
   folded: Sticky[];
   /** The key of the last ask opened on the article's text, which folds the stickies there before it. */
   latest: number;
-  /** As each of those still open found them, in order, and what it folded: closed unsent, it unfolds them, unless one has been since. */
+  /**
+   * For each ask opened on the text, in order, the folded ones it found and those it folded. Closed unsent, it gives them back,
+   * unless one has been folded or unfolded since, or to the one opened after it. A sent one's stays, as what it folded does.
+   */
   undo: Undo[];
   /** Why the saved ones could not be read. */
   error: string | null;
