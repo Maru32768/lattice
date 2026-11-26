@@ -3443,6 +3443,24 @@ test("an answer that waits as two asks on the text open and close unsent, the fi
   expect(await foldedOnes(shell)).toEqual([false]);
 });
 
+test("of two asks on the text with an unfold of the reader's between their openings, closed unsent the first first, the second gives back what it folded", async ({
+  shell,
+}) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askMany(shell, LONG_ID, paraId(10), 2);
+  await askAbout(shell, "質問", paraBlock(12));
+  await unfold(cards(shell).first());
+  await askAbout(shell, "質問", paraBlock(14));
+  expect(await foldedOnes(shell)).toEqual([true, true, false, false]);
+  await field(shell).first().press("Escape");
+  await expect(cards(shell)).toHaveCount(3);
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell)).toEqual([false, true]);
+});
+
 test("an answer that comes as two asks on the text are open stays folded until both have closed unsent", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await shell.setViewportSize({ width: 1500, height: 900 });
