@@ -3168,7 +3168,7 @@ test("a child's passage is marked in the answer it is from, and a mark goes with
   await askOn(shell, "用語", parent);
   await expect(child(shell, "用語").locator(".answer")).toBeVisible();
   const [root, of] = await quotes(shell);
-  expect(of, "without the number of its citation").not.toContain("[1]");
+  expect(of, "without the number of its citation").not.toMatch(/です\s*1。/);
   expect(await marked(shell)).toEqual([root, of]);
   expect(await lines(shell), "a child has none").toHaveLength(1);
   await parent.getByRole("button", { name: "付箋をたたむ" }).click();
