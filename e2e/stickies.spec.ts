@@ -3157,6 +3157,23 @@ test("a child's passage is marked in the answer it is from, and a mark goes with
   await expect.poll(() => marked(shell)).toEqual([root]);
 });
 
+test("a child whose parent is folded is marked nowhere and has no line, though its words are in the text too", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const parent = card(shell, "詳しく");
+  await expect(parent.locator(".answer")).toBeVisible();
+  const [root] = await quotes(shell);
+  // As an answer that quotes the article would have it.
+  await askElsewhere(shell, LONG_ID, null, para(10), 1);
+  await expect(cards(shell)).toHaveCount(2);
+  await parent.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  expect(await marked(shell)).toEqual([root]);
+  expect(await lines(shell)).toHaveLength(1);
+});
+
 test("a sticky folds to a line by its label and unfolds, and folded for one asked below, above the view, moves no text", async ({ shell }) => {
   await startNarrow(shell);
   await scrollTo(shell, paraBlock(10), "center");

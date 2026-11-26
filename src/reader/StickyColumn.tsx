@@ -262,12 +262,14 @@ function mark(column: HTMLElement, cards: { el: HTMLElement; block: HTMLElement 
   const paths: string[] = [];
   for (const { el, block } of cards) {
     const quote = el.querySelector(".sticky-quote")?.textContent ?? "";
-    const answer = el.dataset.from ? column.querySelector(`.answer[data-message="${el.dataset.from}"]`) : null;
-    const range = answer ? passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
+    const message = el.dataset.from;
+    // A child's is in its parent's answer only: folded, that has none.
+    const answer = message ? column.querySelector(`.answer[data-message="${message}"]`) : null;
+    const range = message ? answer && passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
     if (range) {
       ranges.push(range);
     }
-    if (!beside || !block || answer) {
+    if (!beside || !block || message) {
       continue;
     }
     // At its first line, as a card is at its block's first.
