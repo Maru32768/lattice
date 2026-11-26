@@ -29,7 +29,7 @@ import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
 import { useLatest } from "../lib/useLatest";
-import { captureIn, isWord } from "../vocab/vocab";
+import { captureIn, isWord, wordIn } from "../vocab/vocab";
 import { locale, useT } from "../i18n";
 import "../vocab/vocab.css";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "./BlockView";
@@ -1039,7 +1039,7 @@ export function Reader({
       return null;
     }
     const shown = shownText(block.text, pieces.get(block.id)!, (j) => shows(block.id, j));
-    const c = captureIn(shown, s.quote, 0) ?? captureIn(block.text, s.quote, 0);
+    const c = wordIn(shown, s.quote) ?? wordIn(block.text, s.quote);
     return c && { ...c, article_id: a.id, block_id: block.id, url: isLocal(a.original_url) ? null : a.original_url, explanation: explanationOf(s) };
   }
 

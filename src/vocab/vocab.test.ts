@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { VocabEntry } from "../api.ts";
-import { MAX_SENTENCE, captureIn, findWord, isWord, markWords, sentenceAt, shownEntries, wordMarks } from "./vocab.ts";
+import { MAX_SENTENCE, captureIn, findWord, isWord, markWords, sentenceAt, shownEntries, wordIn, wordMarks } from "./vocab.ts";
 
 test("isWord: short English selections on one line", () => {
   assert.equal(isWord(" write skew "), true);
@@ -98,4 +98,12 @@ test("shownEntries searches every form and sorts by added or due", () => {
     shownEntries(es, "歪", "added").map((e) => e.id),
     [2],
   );
+});
+
+test("wordIn: a whole word in its sentence, first where it has its own case", () => {
+  const text = "See the catalog. The Log grows. The log is append-only.";
+  assert.deepEqual(wordIn(text, "log"), { surface: "log", sentence: "The log is append-only." }, "not inside catalog, and its own case first");
+  assert.deepEqual(wordIn(text, "LOG"), { surface: "Log", sentence: "The Log grows." }, "else the first, as it is written there");
+  assert.deepEqual(wordIn("write\n  skew happens.", "write skew"), { surface: "write skew", sentence: "write skew happens." });
+  assert.equal(wordIn(text, "cat"), null);
 });

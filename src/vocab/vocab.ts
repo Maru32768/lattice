@@ -51,6 +51,17 @@ export function captureIn(text: string, selected: string, near: number): { surfa
   return best < 0 ? null : { surface: collapse(needle), sentence: sentenceAt(text, best, best + needle.length) };
 }
 
+/**
+ * The capture of `form` where it is a whole word in `text`: the first place with its own case, else the first.
+ * shortcut: a sticky keeps no place in its block, so a word there twice is saved with the sentence of the first, which is also
+ * where its mark is; keep the place if that is ever wrong.
+ */
+export function wordIn(text: string, form: string): { surface: string; sentence: string } | null {
+  const found = findWord(text, form);
+  const [start, end] = found.find(([s, e]) => collapse(text.slice(s, e)) === collapse(form)) ?? found[0] ?? [];
+  return start == null || end == null ? null : { surface: collapse(text.slice(start, end)), sentence: sentenceAt(text, start, end) };
+}
+
 /** A form as a pattern: case-insensitive, any run of spaces between words, not inside a longer word. */
 const pattern = (forms: string[]) =>
   `(?<![\\p{L}\\p{N}])(?:${forms
