@@ -3286,6 +3286,43 @@ test("an answer that came folded for an ask on the text unfolds as that closes u
   expect(await foldedOnes(shell)).toEqual([false]);
 });
 
+test("an answer that waits as an ask opens on the text comes folded, though the ask closes unsent after a fold of the reader's", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "用語", paraBlock(8));
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "用語").locator(".answer")).toBeVisible();
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await unfold(card(shell, "用語"));
+  // That one folded for the question stays folded: so would the answer have.
+  await field(shell).press("Escape");
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく").locator(".sticky-quote")).toBeVisible();
+  expect(await foldedOnes(shell)).toEqual([false, true]);
+});
+
+test("an answer asked again while an ask on the text is open does not come folded once that closes unsent", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  const failing = (cmds: string[]) => shell.evaluate((cmds) => void (window.__e2eFail = cmds), cmds);
+  await failing(["sticky_ask"]);
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく").getByRole("alert")).toBeVisible();
+  await failing([]);
+  await askAbout(shell, "質問", paraBlock(12));
+  await card(shell, "詳しく").getByRole("button", { name: "再試行" }).click();
+  await field(shell).press("Escape");
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく").locator(".answer")).toBeVisible();
+  expect(await foldedOnes(shell)).toEqual([false]);
+});
+
 test("in a narrow pane an ask below a card that the view's top is in moves no text as that card folds for it", async ({ shell }) => {
   await startNarrow(shell);
   await scrollTo(shell, paraBlock(10), "center");

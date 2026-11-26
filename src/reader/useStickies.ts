@@ -74,7 +74,9 @@ export const changeAsk = (article: number, key: number, change: { question: stri
 
 export function dropAsk(article: number, key: number) {
   const { asks, folded, undo } = of(article);
-  const back = undo?.ask === key ? { latest: undo.latest, undo: null, ...(folded === undo.made && { folded: undo.folded }) } : {};
+  // Unless the reader has folded or unfolded one, it is as if it had not been opened. Else its folding stays, and so it does
+  // for an answer that waited as it opened.
+  const back = undo?.ask !== key ? {} : folded === undo.made ? { latest: undo.latest, undo: null, folded: undo.folded } : { undo: null };
   put(article, { asks: asks.filter((a) => a.key !== key), ...back });
 }
 
@@ -99,7 +101,7 @@ export async function sendAsk(article: number, ask: Ask) {
     // more messages.
     const newest = saved.find((s) => isSame(s, sticky) && s.messages.length >= sticky.messages.length) ?? sticky;
     // Had it been here as another was opened on the text, it would have folded then, and unfolds as that closes unsent.
-    const late = !isFollowUp(ask) && of(article).latest !== latest;
+    const late = !isFollowUp(ask) && of(article).latest > latest;
     const now = late ? [...folded, newest] : folded;
     put(article, {
       saved: [...saved.filter((s) => s.id !== sticky.id), newest].toSorted((a, b) => a.id - b.id),
