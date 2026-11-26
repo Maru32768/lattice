@@ -3303,6 +3303,20 @@ test("a sticky folds to a line by its label and unfolds, and folded for one aske
   expect(await foldedOnes(shell)).toEqual([true, false]);
 });
 
+test("in a narrow pane the column's end takes no press on the text's first pixel", async ({ shell }) => {
+  await startNarrow(shell);
+  await askMany(shell, LONG_ID, paraId(30), 1);
+  await doc(shell).evaluate((el) => (el.scrollTop = 0));
+  await frames(shell);
+  const under = await shell.locator(`${paraBlock(2)} p`).evaluate((p) => {
+    const r = document.createRange();
+    r.selectNodeContents(p);
+    const line = r.getClientRects()[0]!;
+    return document.elementFromPoint(line.left + 0.5, line.top + line.height / 2) === p;
+  });
+  expect(under).toBe(true);
+});
+
 for (const narrow of [true, false]) {
   test(`a card folded at the article's end moves no text${narrow ? ", in a narrow pane" : ""}, and one that goes takes the view up`, async ({ shell }) => {
     if (narrow) {
