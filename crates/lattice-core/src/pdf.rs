@@ -3744,6 +3744,9 @@ pub(crate) mod tests {
         // The second line of the one cell gives up its last letter to the mark that cannot start a line.
         let wrapped = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)];
         assert_eq!(read(332., &[&head[..], &wrapped, &foot].concat()), Some(3));
+        // As few as are enough: three lines that come to the end of their column.
+        let three = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 4), (78., 168., 5)];
+        assert_eq!(read(332., &[&head[..], &three, &foot].concat()), Some(3));
     }
 
     #[test]
