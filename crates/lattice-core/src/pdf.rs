@@ -3750,6 +3750,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn values_with_room_beside_japanese_terms_as_long_as_their_column_stay_text() {
+        // A group of rows: terms of eleven letters, each to within a letter of its column, beside a value apiece.
+        let set = |y: f64, n: usize| format!("1 0 0 1 78 {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
+        let terms: String = [(114., 2), (136., 11), (152., 11), (168., 11), (184., 11), (210., 2)].map(|(y, n)| set(y, n)).concat();
+        for values in [["Name", "Python", "Ruby", "Go", "Rust", "Foot"], ["Size", "120", "80", "64", "32", "Foot"]] {
+            let values: String = [114., 136., 152., 168., 184., 210.].iter().zip(values).map(|(&y, value)| shown(206., y, value)).collect();
+            let ops = ruled(&[72., 200., 332.], &[100., 120., 190., 220.], "strokes") + &format!("BT /F3 10 Tf {terms}ET\n") + &values;
+            let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+            assert!(ir.blocks.iter().all(|b| b.attrs.rows.is_none()), "{:?}", kinds(&ir));
+        }
+    }
+
+    #[test]
     fn japanese_rows_in_columns_as_wide_as_their_text_are_not_put_in_one() {
         // Each of two columns' letters, line by line: a head, a band, and a row of two letters under it.
         let read = |lines: &[[usize; 2]], room: f64| {
