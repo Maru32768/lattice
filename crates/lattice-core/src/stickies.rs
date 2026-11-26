@@ -168,7 +168,8 @@ fn err(e: impl ToString) -> String {
 }
 
 /// Asks about a passage of the article, or of an answer, and stores the answer. Nothing is stored before the answer is in.
-/// What is asked on is read as the question is sent, before it waits for its `turn`: by then the ids may be another's.
+/// What is asked on, and the article it is sent with, are read as the question is sent, before it waits for its `turn`: by
+/// then the ids may be another's.
 pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: Ask<'_>) -> Result<Sticky, String> {
     let quote = new.quote.trim();
     if quote.is_empty() || quote.chars().count() > MAX_QUOTE_CHARS {
@@ -190,8 +191,9 @@ pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: 
     let new = Ask { block_id, quote, question, ..new };
     levels.push(Level { quote: quote.into(), turns: Vec::new() });
     let url = store.article_url(new.article_id).map_err(err)?;
+    let prompt = prompt(store, new.article_id, block_id, &levels, &request(new.kind, question, &levels))?;
     let _turn = turn.acquire().await.map_err(err)?;
-    let answer = answer(store, llm, new.article_id, block_id, &levels, &request(new.kind, question, &levels)).await?;
+    let answer = answer(store, llm, prompt).await?;
     save(store, &new, parent.as_ref(), url.as_deref(), &answer).map_err(err)?.ok_or_else(|| msg!("stickies.articleGone"))
 }
 
@@ -199,8 +201,9 @@ pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: 
 pub async fn follow_up<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, id: i64, question: &str) -> Result<Sticky, String> {
     let question = chat::checked_question(question)?;
     let (asked, levels) = Asked::read(store, id).map_err(err)?.ok_or_else(|| msg!("stickies.gone"))?;
+    let prompt = prompt(store, asked.article_id, asked.block_id, &levels, &request(StickyKind::Question, question, &levels))?;
     let _turn = turn.acquire().await.map_err(err)?;
-    let answer = answer(store, llm, asked.article_id, asked.block_id, &levels, &request(StickyKind::Question, question, &levels)).await?;
+    let answer = answer(store, llm, prompt).await?;
     asked.add(store, question, &answer).map_err(err)?.ok_or_else(|| msg!("stickies.gone"))
 }
 
@@ -211,7 +214,14 @@ struct Answer {
     model: Option<String>,
 }
 
-async fn answer<L: LlmProvider>(store: &Store, llm: &L, article_id: i64, block_id: Option<i64>, levels: &[Level], request: &str) -> Result<Answer, String> {
+/// What the model is sent, and the blocks it may cite, as they are numbered in it.
+struct Prompt {
+    system: String,
+    user: String,
+    sources: Vec<Source>,
+}
+
+fn prompt(store: &Store, article_id: i64, block_id: Option<i64>, levels: &[Level], request: &str) -> Result<Prompt, String> {
     let all = store.scope_sources(Some(&[article_id]), SENT_KINDS, usize::MAX).map_err(err)?.unwrap_or_default();
     if all.is_empty() {
         return Err(msg!("article.noContent"));
@@ -229,9 +239,13 @@ async fn answer<L: LlmProvider>(store: &Store, llm: &L, article_id: i64, block_i
         (text, sent) = chat::sources_text(sources, max_chars, block_chars);
         rules = format!("{RULES} {PARTIAL}");
     }
-    let c = llm.complete_json(&format!("{rules}\n\n{UNTRUSTED}"), &format!("{text}{passages}{request}"), &chat::schema()).await.map_err(|e| e.message())?;
+    Ok(Prompt { system: format!("{rules}\n\n{UNTRUSTED}"), user: format!("{text}{passages}{request}"), sources: sources[..sent].to_vec() })
+}
+
+async fn answer<L: LlmProvider>(store: &Store, llm: &L, prompt: Prompt) -> Result<Answer, String> {
+    let c = llm.complete_json(&prompt.system, &prompt.user, &chat::schema()).await.map_err(|e| e.message())?;
     let answer = c.value["answer"].as_str().map(str::trim).filter(|a| !a.is_empty()).ok_or_else(|| msg!("stickies.malformed"))?;
-    let citations = chat::citations(store, &c.value, answer, &sources[..sent]).map_err(err)?;
+    let citations = chat::citations(store, &c.value, answer, &prompt.sources).map_err(err)?;
     Ok(Answer { text: answer.into(), citations, provider: c.provider, model: c.model })
 }
 
@@ -1083,6 +1097,68 @@ mod tests {
                 _ => assert_eq!(sent.unwrap_err(), msg!("stickies.articleGone")),
             }
             assert_eq!(list(&s, a).unwrap()[0], x, "{case}: nothing on the one that got the ids");
+        }
+    }
+
+    #[tokio::test]
+    async fn what_waits_for_its_turn_is_sent_the_article_as_it_was_asked_on() {
+        for case in ["follow-up", "child"] {
+            let s = Store::open_in_memory().unwrap();
+            let text = "A paragraph of the same article on both URLs. ".repeat(20);
+            let stays = add(&s, "https://a.dev/post", "WAL", &[(Paragraph, text.as_str())]);
+            let mirror = add(&s, "https://mirror.dev/post", "WAL", &[(Paragraph, text.as_str())]);
+            let llm = Fake::new(ANSWER);
+            let on_mirror = ask(&s, &llm, mirror, Some(block(&s, mirror, "A")), StickyKind::Detail, "both", "").await.unwrap();
+            let turn = Semaphore::new(1);
+            let held = turn.acquire().await.unwrap();
+            let sent = async {
+                match case {
+                    "follow-up" => super::follow_up(&s, &llm, &turn, on_mirror.id, "q").await,
+                    _ => {
+                        let new = Ask {
+                            article_id: mirror,
+                            block_id: None,
+                            parent: Some(on_mirror.messages[0].id),
+                            kind: StickyKind::Term,
+                            quote: "q",
+                            question: "",
+                        };
+                        super::ask(&s, &llm, &turn, new).await
+                    }
+                }
+            };
+            let meanwhile = async {
+                tokio::task::yield_now().await;
+                merge(&s, mirror, stays, &[(Paragraph, text.as_str())]);
+                drop(held);
+            };
+            let (sent, ()) = tokio::join!(sent, meanwhile);
+            assert_eq!(sent.map(|x| x.article_id), Ok(stays), "{case}: merged while it waits, as while the model answers");
+        }
+        for case in ["follow-up", "child", "root"] {
+            let s = Store::open_in_memory().unwrap();
+            let a = add(&s, "https://a.dev/wal", "WAL", WAL);
+            let llm = Fake::new(ANSWER);
+            let on = ask(&s, &llm, a, None, StickyKind::Term, "A", "").await.unwrap();
+            let turn = Semaphore::new(1);
+            let held = turn.acquire().await.unwrap();
+            let sent = async {
+                let parent = (case == "child").then_some(on.messages[0].id);
+                match case {
+                    "follow-up" => super::follow_up(&s, &llm, &turn, on.id, "q").await,
+                    _ => super::ask(&s, &llm, &turn, Ask { article_id: a, block_id: None, parent, kind: StickyKind::Term, quote: "q", question: "" }).await,
+                }
+            };
+            // The article goes, and its id to another.
+            let meanwhile = async {
+                tokio::task::yield_now().await;
+                s.delete_article(a).unwrap();
+                assert_eq!(add(&s, "https://a.dev/next", "Next", &[(Paragraph, "Of another article.")]), a);
+                drop(held);
+            };
+            let (sent, ()) = tokio::join!(sent, meanwhile);
+            assert!(sent.is_err());
+            assert!(llm.input().contains(WAL[0].1) && !llm.input().contains("Of another article."), "{case}: sent the article it was asked on");
         }
     }
 
