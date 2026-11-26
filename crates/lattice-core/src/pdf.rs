@@ -3559,9 +3559,13 @@ pub(crate) mod tests {
         grouped(xs, &ys, &lines)
     }
 
+    /// Asserts that the page `ops` draws reads as its text does without the rules, as on master, which draws no table.
     fn no_table(ops: &str) {
-        let texts = texts_of(ops);
-        assert!(texts.iter().all(|t| !t.contains('\t')), "{texts:?}");
+        let alone: String = ops.lines().filter(|l| l.starts_with("BT")).map(|l| format!("{l}\n")).collect();
+        let (ruled, alone) = (pages_of(&[ops.to_string()]), pages_of(&[alone]));
+        assert_eq!(to_ir(&ruled, None).unwrap(), to_ir(&alone, None).unwrap(), "{:?}", texts_of(ops));
+        let json = |bytes: &[u8]| serde_json::to_string(&regions(bytes).unwrap()).unwrap();
+        assert_eq!(json(&ruled), json(&alone));
     }
 
     #[test]
