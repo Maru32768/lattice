@@ -7,6 +7,7 @@
 //! with a comment above an inline table. So `config.toml` is edited here.
 
 use std::io::Write;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::LazyLock;
@@ -319,7 +320,7 @@ impl Agents {
             Want::Token(token) => Entry::Lattices(Some(token.into())),
             Want::Gone { .. } => Entry::Absent,
         };
-        if codex_entry(&parse_toml(&after).map_err(at(&path))?) != wanted {
+        if codex_entry(&parse_toml(&after).map_err(at(&path))?) != wanted || !keeps_comments(text, &after) {
             return Err(at(&path)(CANNOT_KEEP));
         }
         if after != text {
@@ -515,23 +516,85 @@ fn within(item: &mut Item, change: impl FnOnce(&mut dyn TableLike)) -> Option<()
     Some(())
 }
 
-fn tables_within(table: &Table) -> Vec<&Table> {
-    let own = table.iter().flat_map(|(_, item)| match item {
-        Item::Table(table) => vec![table],
-        Item::ArrayOfTables(tables) => tables.iter().collect(),
-        Item::None | Item::Value(_) => vec![],
-    });
-    own.flat_map(|table| std::iter::once(table).chain(tables_within(table))).collect()
+/// Whether each comment of `before` outside Lattice's entry is still in `after`. What `toml_edit` does with the comments
+/// around what it takes out depends on the form of the file, so every change is checked here.
+fn keeps_comments(before: &str, after: &str) -> bool {
+    let ours = entry_spans(before);
+    let mut left: Vec<&str> = comments(after).into_iter().map(|(_, comment)| comment).collect();
+    let mut theirs = comments(before).into_iter().filter(|(at, _)| !ours.iter().any(|span| span.contains(at)));
+    theirs.all(|(_, comment)| left.iter().position(|kept| *kept == comment).map(|i| left.swap_remove(i)).is_some())
 }
 
-/// Whether there is a comment above one of the tables within it that does not follow on from its own header, so that it
-/// may be about what is before it.
-fn has_comment_apart(table: &Table) -> bool {
-    let within = tables_within(table);
-    let places: Vec<isize> = within.iter().filter_map(|t| t.position()).collect();
-    let follows = |at: isize| table.position().is_some_and(|own| own < at && (own + 1..at).all(|between| places.contains(&between)));
-    let commented = within.iter().filter(|t| t.decor().prefix().and_then(|above| above.as_str()).is_some_and(|above| above.contains('#')));
-    commented.filter_map(|t| t.position()).any(|at| !follows(at))
+/// Each comment, from its `#` to the end of its line, after where it starts.
+fn comments(text: &str) -> Vec<(usize, &str)> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(start) = text.get(at..).and_then(|rest| rest.find(['#', '"', '\''])).map(|i| at + i) {
+        let quote = bytes[start];
+        if quote == b'#' {
+            let end = text[start..].find('\n').map_or(text.len(), |i| start + i);
+            found.push((start, text[start..end].trim_end()));
+            at = end;
+            continue;
+        }
+        let long = bytes[start..].starts_with(&[quote; 3]);
+        let close: &[u8] = if long {
+            &[quote; 3]
+        } else {
+            &[quote]
+        };
+        let mut end = start + close.len();
+        while end < bytes.len() && !bytes[end..].starts_with(close) {
+            end += if quote == b'"' && bytes[end] == b'\\' {
+                2
+            } else {
+                1
+            };
+        }
+        end += close.len();
+        // A long string may end in two of its quotes, just before the three that close it.
+        for _ in 0..2 {
+            if long && bytes.get(end) == Some(&quote) {
+                end += 1;
+            }
+        }
+        at = end;
+    }
+    found
+}
+
+/// What of the text is Lattice's entry: from a line of its own to the last of the lines of its own that follow it, with the
+/// comments between them.
+fn entry_spans(text: &str) -> Vec<Range<usize>> {
+    let Ok(doc) = toml_edit::Document::parse(text) else {
+        return Vec::new();
+    };
+    let mut pieces = Vec::new();
+    visit(doc.as_table(), &[], &mut pieces);
+    let start = |at: usize| text.get(..at).and_then(|above| above.rfind('\n')).map_or(0, |i| i + 1);
+    let end = |at: usize| text.get(at..).and_then(|rest| rest.find('\n')).map_or(text.len(), |i| at + i);
+    let mut lines: Vec<(Range<usize>, bool)> = pieces.into_iter().map(|(span, ours)| (start(span.start)..end(span.end), ours)).collect();
+    lines.sort_by_key(|(span, _)| span.start);
+    let runs = lines.chunk_by(|a, b| a.1 == b.1);
+    runs.filter_map(|run| Some(run.first().filter(|(_, ours)| *ours)?.0.start..run.last()?.0.end)).collect()
+}
+
+/// Each header and each value outside an inline table, and whether it is Lattice's.
+fn visit(table: &Table, path: &[&str], pieces: &mut Vec<(Range<usize>, bool)>) {
+    let ours = |path: &[&str]| path.starts_with(&[SERVERS, CLIENT_NAME]);
+    if let Some(header) = table.span().filter(|_| !path.is_empty() && !table.is_dotted() && !table.is_implicit()) {
+        pieces.push((header, ours(path)));
+    }
+    for (key, item) in table.iter() {
+        let path = [path, &[key]].concat();
+        match item {
+            Item::None => (),
+            Item::Value(value) => pieces.extend(value.span().map(|span| (span, ours(&path)))),
+            Item::Table(table) => visit(table, &path, pieces),
+            Item::ArrayOfTables(tables) => tables.iter().for_each(|table| visit(table, &path, pieces)),
+        }
+    }
 }
 
 /// The comments above the entry stay: they may be about the whole file.
@@ -542,9 +605,6 @@ fn take_out_codex(doc: &mut DocumentMut) -> Option<String> {
         return Some(doc.to_string());
     }
     let (mut key, item) = servers.as_table_mut()?.get_key_value_mut(CLIENT_NAME)?;
-    if item.as_table().is_some_and(has_comment_apart) {
-        return None;
-    }
     match item {
         Item::Table(table) if !table.is_dotted() => {
             table.clear();
@@ -1128,6 +1188,12 @@ http_headers = {
         }
     }
 
+    #[test]
+    fn what_only_looks_like_a_comment_in_a_string_is_not_one() {
+        let text = "n = \"\"\"# a\n# b \\\"\"\"\"\"\nk = '#c' # k\nl = \"\\\"#d\" # l\nm = '''#e'''''\n# f\r\n";
+        assert_eq!(comments(text).into_iter().map(|(_, comment)| comment).collect::<Vec<_>>(), ["# k", "# l", "# f"]);
+    }
+
     #[tokio::test]
     async fn codex_loses_the_entry_and_nothing_else() {
         let ours = format!("[mcp_servers.lattice-dev] # ours\n{AT}\n# t\nhttp_headers = {{ Authorization = \"Bearer old\" }} # t\n");
@@ -1161,9 +1227,10 @@ http_headers = {
             ),
             ("\u{feff}# head\r\n[mcp_servers.lattice-dev]\r\n{AT}\r\n\r\n[z]\r\nn = 9\r\n", "\u{feff}# head\r\n\r\n[z]\r\nn = 9\r\n"),
             ("[z]\n\n{OURS}", "[z]\n"),
+            ("{OURS}# h\n[mcp_servers.lattice-dev.env_http_headers]\nX = \"V\"\n# t\n[mcp_servers.lattice-dev.tools.x]\na = 1\n[z]\n", "[z]\n"),
         ] {
             let before = before.replace("{OURS}", &ours).replace("{AT}", AT);
-            assert_eq!(codex_file(&before, true).await.unwrap(), after);
+            assert_eq!(codex_file(&before, true).await.unwrap(), after, "{before}");
         }
         for before in ["", "a = 1\n", "# c\n[mcp_servers.other]\nurl = \"u\"\n\n# the end\n", "a = 1\r\n"] {
             let added = codex_file(before, false).await.unwrap();
@@ -1188,6 +1255,8 @@ http_headers = {
             (format!("[mcp_servers]\nlattice-dev = {{\n  {AT}, # at\n  # sign in\n  bearer_token_env_var = \"T\" # tok\n}}\n"), CANNOT_KEEP),
             (format!("[mcp_servers.lattice-dev]\n{AT}\nhttp_headers = {{\n  X = \"V\", # x\n  authorization = \"Bearer old\",\n}}\n"), CANNOT_KEEP),
             (format!("[mcp_servers.lattice-dev]\n{AT}\nenv_http_headers = {{\n  Authorization = \"T\", # t\n  X = \"V\", # x\n}}\n"), CANNOT_KEEP),
+            // A comment above the line that would go, which may be about what is before it.
+            (format!("[mcp_servers]\n# Lattice\nlattice-dev.bearer_token_env_var = \"T\"\nlattice-dev.{AT}\n"), CANNOT_KEEP),
         ] {
             let e = codex_file(&before, false).await.unwrap_err();
             assert!(e.contains("mcp.agentFailed") && e.contains("config.toml") && e.contains(reason), "{before}: {e}");
@@ -1213,6 +1282,8 @@ http_headers = {
         }
         let commented = format!("mcp_servers = {{\n  a = {{ command = \"a\" }}, # a\n  # ours\n  lattice-dev = {{ {AT} }}, # l\n}} # all\n");
         assert!(codex_file(&commented, true).await.unwrap_err().contains(CANNOT_KEEP));
+        let last = format!("mcp_servers = {{\n  lattice-dev = {{ {AT} }} # servers\n}}\n");
+        assert!(codex_file(&last, true).await.unwrap_err().contains(CANNOT_KEEP), "nothing to hand its comment on to");
         for before in [other, "mcp_servers = \"none\"\n", "a.x = 1\nb = 2\na.y = 3\n"] {
             s.set("config.toml", before);
             assert_eq!(s.agents.disconnect(&s.store, Target::Codex).await, Ok(false));
