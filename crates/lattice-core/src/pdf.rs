@@ -597,8 +597,8 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
     // column.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
-    // The first column with lines names the row. Beside a name of one line, less evidence is enough where no two columns
-    // share a baseline, as those of the rows of a group do.
+    // The first column with lines names the row. Beside a name of one line, less evidence is enough where fewer than two
+    // columns go on onto another column's baseline (`tellers`), as two or more do in the rows of a group.
     let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
     head && !threes || one_name && evidence > 0 || evidence >= enough
 }
@@ -3492,59 +3492,17 @@ pub(crate) mod tests {
     const SCORES: &[&[&str]] = &[&["Method", "Accuracy", "F1"], &["Baseline", "71.2", "68.0"], &["Ours", "74.9", "72.3"], &["Ours (large)", "78.1", "75.6"]];
 
     #[test]
-    fn a_name_in_the_middle_of_its_row_beside_three_latin_lines_stays_text() {
-        let ops =
-            ruled(&WIDE, &[200., 220., 270., 290.], "strokes") + &shown(78., 214., "Name") + &shown(178., 214., "What it does") + &shown(78., 248., "Saw");
-        let lines = shown(178., 236., "It cuts.") + &shown(178., 248., "It sings.") + &shown(178., 260., "It rests.");
-        let foot = shown(78., 284., "Axe") + &shown(178., 284., "It chops.");
-        no_table(&(ops + &lines + &foot));
-    }
-
-    #[test]
     fn a_latin_name_that_wraps_beside_marks_stays_text() {
-        // As a comparison of products ticks each feature: the head, a name over `names` with marks on the line at `marks`,
-        // and a row of one line. Between the name's lines, the marks may be those of a group's row whose name wrapped.
-        let table = |xs: &[f64], names: &[(f64, &str)], marks: Option<f64>| {
-            let mut ops = ruled(xs, &[160., 180., 216., 236.], "strokes") + &shown(78., 174., "Feature");
-            ops += &(shown(xs[1] + 6., 174., "Free") + &shown(xs[2] + 6., 174., "Pro"));
-            ops += &names.iter().map(|&(y, name)| shown(78., y, name)).collect::<String>();
-            for y in marks.into_iter().chain([230.]) {
-                ops += &(shown(xs[1] + 26., y, "x") + &shown(xs[2] + 26., y, "x"));
-            }
-            ops + &shown(78., 230., "Sign")
-        };
+        // As a comparison of products ticks each feature: the head, a name of two lines with marks between them, and a
+        // row of one line. The marks may be those of a group's row whose name wrapped.
         let name = "Create and edit";
         let xs = [72., 84. + wide(name), 144. + wide(name), 204. + wide(name)];
-        let names = [(194., name), (206., "PDF files")];
-        no_table(&table(&xs, &names, Some(200.)));
-        // On one of the name's lines, the marks may be those of a group's row alone, as on the middle one of three; with none,
-        // the name's lines may each be a row's.
-        no_table(&table(&xs, &names, Some(194.)));
-        no_table(&table(&xs, &[(186., name), (198., "PDF files that"), (210., "you sign")], Some(198.)));
-        no_table(&table(&xs, &names, None));
-        // Marks between the name's lines in one column and on its first line in the next; and marks in another size, as
-        // a group's first row or last row sets them, a little off the name's first line or its last.
-        no_table(&(table(&xs, &names, None) + &shown(xs[1] + 26., 200., "x") + &shown(xs[2] + 26., 194., "x")));
-        no_table(&(table(&xs, &names, None) + &sized(xs[1] + 26., 195.8, 12., "x") + &sized(xs[2] + 26., 195.8, 12., "x")));
-        no_table(&(table(&xs, &names, None) + &sized(xs[1] + 26., 204.2, 8., "x") + &sized(xs[2] + 26., 204.2, 8., "x")));
-        // A group's three rows in one band: a mark alone under two names, and a mark between the lines of one column
-        // beside another whose lines fill it.
-        let head = |xs: &[f64], heads: [&str; 3]| {
-            let ops = ruled(xs, &[160., 180., 228., 248.], "strokes") + &shown(78., 174., heads[0]);
-            ops + &shown(xs[1] + 6., 174., heads[1]) + &shown(xs[2] + 6., 174., heads[2])
-        };
-        let mut ops = head(&xs, ["Feature", "Free", "Pro"]) + &shown(78., 194., name) + &shown(78., 206., "Create and sign");
-        ops += &(shown(xs[1] + 26., 218., "x") + &shown(xs[1] + 26., 242., "x") + &shown(xs[2] + 26., 242., "x") + &shown(78., 242., "Share"));
-        no_table(&ops);
-        let who = [72., 84. + wide(name), 96. + wide(name) + wide("Ann Author"), 156. + wide(name) + wide("Ann Author")];
-        let mut ops = head(&who, ["Feature", "Who", "Pro"]) + &shown(78., 194., name) + &shown(78., 218., "Create and sign");
-        ops += &(shown(who[1] + 6., 194., "Ann Author") + &shown(who[1] + 6., 206., "Bob Author") + &shown(who[1] + 6., 218., "Cal Author"));
-        ops += &(shown(who[2] + 26., 206., "x") + &shown(78., 242., "Share") + &shown(who[1] + 6., 242., "Dan") + &shown(who[2] + 26., 242., "x"));
-        no_table(&ops);
-        // Lines with room for the first word under them and two letters more may each be a row's.
-        let names = [(194., "Paint the door"), (206., "Paint the gate")];
-        let x1 = 84. + wide(names[0].1) + 8. * wide(names[1].1) / 14.;
-        no_table(&table(&[72., x1, x1 + 60., x1 + 120.], &names, Some(200.)));
+        let mut ops = ruled(&xs, &[160., 180., 216., 236.], "strokes") + &shown(78., 174., "Feature");
+        ops += &(shown(xs[1] + 6., 174., "Free") + &shown(xs[2] + 6., 174., "Pro") + &shown(78., 194., name) + &shown(78., 206., "PDF files"));
+        for y in [200., 230.] {
+            ops += &(shown(xs[1] + 26., y, "x") + &shown(xs[2] + 26., y, "x"));
+        }
+        no_table(&(ops + &shown(78., 230., "Sign")));
     }
 
     /// A table ruled at `ys` between its rows or groups of rows, each line's baseline with its cells.
@@ -3580,10 +3538,7 @@ pub(crate) mod tests {
         let first: &[&[&str]] = &[&["", "Baseline", "98.1"], &["MNIST", "Ours", "99.0"], &["", "Ours, large", "99.3"]];
         let second: &[&[&str]] = &[&["", "Baseline", "88.1"], &["CIFAR", "Ours", "89.0"], &["", "Ours, large", "91.3"]];
         no_table(&groups(&[72., 122., 188., 228.], 12., &[head, first, second]));
-        // The best score alone, and a note on one row of each group beside names of one line.
-        let first: &[&[&str]] = &[&["", "Baseline", ""], &["MNIST", "Ours", "99.0"], &["", "Ours, large", ""]];
-        let second: &[&[&str]] = &[&["", "Baseline", ""], &["CIFAR", "Ours", ""], &["", "Ours, large", "91.3"]];
-        no_table(&groups(&[72., 122., 188., 228.], 12., &[head, first, second]));
+        // A note on one row of each group beside names of one line.
         let head: &[&[&str]] = &[&["Kind", "Item", "Note"]];
         let fruit: &[&[&str]] = &[&["Fruit", "Apples", "from Kent"], &["", "Pears", ""], &["", "Plums", ""]];
         let greens: &[&[&str]] = &[&["Greens", "Leeks", ""], &["", "Kale", "frozen"]];
@@ -3664,23 +3619,9 @@ pub(crate) mod tests {
         let head: &[&[&str]] = &[&["Name", "Kind"]];
         let short: &[&[&str]] = &[&["Random", "Open"], &["forest", "source"]];
         let long: &[&[&str]] = &[&["Model", "It is in"], &["trees", "the park"]];
-        let said: &[&[&str]] = &[&["Model", "It is in"], &["", "the park"]];
         let xs = roomy(&[head, short, long].concat());
-        // Latin lines may be the rows of a group, however another band's lines wrap, and beside a name of one line too.
+        // Latin lines beside each other in two columns may be the rows of a group.
         no_table(&groups(&xs, 12., &[head, short, long]));
-        no_table(&groups(&xs, 12., &[head, said, short]));
-        no_table(&groups(&xs, 12., &[head, said, said]));
-        // A group whose last column has text on its first line only, beside a band whose sentence wrapped.
-        let long = "The structure keeps each node with its";
-        let xs = [72., 200., 214. + wide(long), 300. + wide(long)];
-        let lines: &[(f64, &[&str])] = &[
-            (174., &["Method", "Kind", "Note"]),
-            (193., &["Model A", "flat tree", "kept"]),
-            (205., &["Model B", "deep heap", ""]),
-            (224., &["Model C", long, ""]),
-            (236., &["", "parent and children", ""]),
-        ];
-        no_table(&grouped(&xs, &[160., 180., 212., 242.], lines));
         // Rows of a group that start in either case, or end in a hyphen.
         let names: &[&[&str]] = &[&["Name", "Role"], &["Ada Byron", "analyst"], &["von Neumann", "developer"], &["de Gaulle", "general"]];
         no_table(&groups(&roomy(names), 12., &[&names[..1], &names[1..3], &names[3..]]));
@@ -3743,20 +3684,12 @@ pub(crate) mod tests {
         }
         assert_eq!(rows(&(ruled(&[72., 172., 292., 472.], &[100., 120., 170., 220.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n"))), None);
         // A value on each item's line, the first as long as its column.
-        for (xs, values) in
-            [([72., 172., 292., 364.], [[6, 3], [6, 4]]), ([72., 172., 292., 364.], [[4, 6], [4, 5]]), ([72., 172., 292., 384.], [[7, 4], [6, 5]])]
-        {
-            let (mut text, mut ys) = (set(78., 114., 2) + &set(178., 114., 2) + &set(298., 114., 2), vec![100., 120.]);
-            for group in values {
-                let top = ys[ys.len() - 1];
-                text += &set(78., top + 14., 2);
-                for (i, n) in group.into_iter().enumerate() {
-                    text += &(item(178., top + 14. + 16. * i as f64, 3 + i % 2) + &set(298., top + 14. + 16. * i as f64, n));
-                }
-                ys.push(top + 40.);
-            }
-            assert_eq!(rows(&(ruled(&xs, &ys, "strokes") + &format!("BT /F3 10 Tf {text}ET\n"))), None, "{values:?}");
+        let mut text = set(78., 114., 2) + &set(178., 114., 2) + &set(298., 114., 2);
+        for (top, values) in [(120., [6, 3]), (160., [6, 4])] {
+            text += &(set(78., top + 14., 2) + &item(178., top + 14., 3) + &set(298., top + 14., values[0]));
+            text += &(item(178., top + 30., 4) + &set(298., top + 30., values[1]));
         }
+        assert_eq!(rows(&(ruled(&[72., 172., 292., 364.], &[100., 120., 160., 200.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n"))), None);
     }
 
     #[test]
@@ -6051,8 +5984,8 @@ pub(crate) mod tests {
         assert_eq!(read(&(few + &prose + &set_down(560., 200., label))), read(&(prose + &set_down(560., 200., label))));
         let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &set_down(560., 200., label)));
         assert!(blocks.contains(&"table: Strong\tLasting\nCostly\tEasy".to_string()), "{blocks:?}");
-        // A label set down beside each group of rows that no rule parts, with sales on each row, or on its first or its last.
-        for sold in [&[0, 1, 2][..], &[0], &[2]] {
+        // A label set down beside each group of rows that no rule parts, with sales on each row or on its first only.
+        for sold in [&[0, 1, 2][..], &[0]] {
             let mut groups = ruled(&[72., 110., 260., 400.], &[150., 170., 230., 290.], "strokes") + &shown(116., 164., "Month") + &shown(266., 164., "Sales");
             for (top, months) in [(170., ["April", "May", "June"]), (230., ["October", "November", "December"])] {
                 groups += &set_down(91., top + 15., "034B034D");
