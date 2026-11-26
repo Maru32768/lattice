@@ -450,7 +450,7 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
         } else {
             3
         };
-        if !(0..cells.len()).all(|row| one_row(&cells, row, &widths, enough, p.width)) {
+        if !(0..cells.len()).all(|row| one_row(&cells, row, &widths, enough, p.width, turns)) {
             continue;
         }
         let rows: Vec<Vec<Vec<Line>>> = cells.iter().map(|band| band.iter().map(|glyphs| cell_lines(glyphs, p.width)).collect()).collect();
@@ -516,8 +516,8 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
     p.glyphs.iter().any(|g| across(g) && beside(g) && on_a_baseline(g) && !grids.iter().any(|other| other.cell(g).is_some()))
 }
 
-/// Whether the lines of a band, which lies between two rules across, are those of one row: on one baseline, set down the
-/// page, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one line set in the
+/// Whether the lines of a band, which lies between two rules across, are those of one row: on one baseline, set down a
+/// page that `turns`, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one line set in the
 /// middle of the band, or Japanese lines that each come to the end of their column, as a cell's do where it wraps. A band
 /// that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns or a group of
 /// rows, leaves its table text: read as one row, it runs the values of each column together. A line wraps where it leaves
@@ -525,12 +525,15 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 // shortcut: Latin cells that wrap in two columns of a row, or in a name of two lines beside a cell on its first or last
 // line, tell of nothing, as the lines of the rows of a group start in either case and end in a hyphen too, so their table
 // stays text. Tell them apart if such tables turn up.
-fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize, width: f64) -> bool {
+fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize, width: f64, turns: bool) -> bool {
     let band = &bands[row];
-    if band.iter().flatten().any(|g| g.vertical || g.turned) {
+    let down = |g: &&Glyph| g.vertical || g.turned;
+    if turns && band.iter().flatten().any(down) {
         return true;
     }
-    let mut columns: Vec<Vec<Line>> = band.iter().map(|glyphs| page_lines(0, glyphs, width)).collect();
+    // On a page set across, a label set down beside the rows of a group tells nothing of them.
+    let mut columns: Vec<Vec<Line>> =
+        band.iter().map(|glyphs| page_lines(0, &glyphs.iter().filter(|g| !down(g)).copied().collect::<Vec<_>>(), width)).collect();
     for lines in &mut columns {
         lines.sort_by(|a, b| a.y.total_cmp(&b.y));
         lines.dedup_by(|next, kept| {
@@ -5945,6 +5948,16 @@ pub(crate) mod tests {
         assert_eq!(read(&(few + &prose + &set_down(560., 200., label))), read(&(prose + &set_down(560., 200., label))));
         let (blocks, _) = read(&(two_by_two([72., 306., 540.], [90., 400., 700.], PROS) + &set_down(560., 200., label)));
         assert!(blocks.contains(&"table: Strong\tLasting\nCostly\tEasy".to_string()), "{blocks:?}");
+        // A label set down beside each group of rows that no rule parts.
+        let mut groups = ruled(&[72., 110., 260., 400.], &[150., 170., 230., 290.], "strokes") + &shown(116., 164., "Month") + &shown(266., 164., "Sales");
+        for (top, months) in [(170., ["April", "May", "June"]), (230., ["October", "November", "December"])] {
+            groups += &set_down(91., top + 15., "034B034D");
+            for (i, month) in months.iter().enumerate() {
+                groups += &(shown(116., top + 16. + 16. * i as f64, month) + &shown(266., top + 16. + 16. * i as f64, "100"));
+            }
+        }
+        let (blocks, _) = read(&groups);
+        assert!(blocks.iter().all(|b| !b.starts_with("table: ")), "{blocks:?}");
     }
 
     #[test]
