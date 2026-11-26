@@ -3690,6 +3690,28 @@ test("beside the text a card after another that gave way to the one opened last 
   expect((await boxOf(second)).y).toBeCloseTo(at, 0);
 });
 
+test.describe("in English", () => {
+  test.use({ locale: "en-US" });
+  test("folded, a card of an answer is one line with some of its passage in the narrowest column, however deep", async ({ shell }) => {
+    await shell.setViewportSize({ width: 1380, height: 900 });
+    await startLong(shell);
+    let parent: number | null = null;
+    for (let i = 0; i < 4; i++) {
+      await askElsewhere(shell, LONG_ID, paraId(3), "a passage of an answer that goes on for a while", parent);
+      await expect(cards(shell)).toHaveCount(i + 1);
+      parent = Number(await cards(shell).nth(i).locator(".answer").getAttribute("data-message"));
+    }
+    for (let i = 3; i >= 0; i--) {
+      await cards(shell).nth(i).getByRole("button", { name: "Fold the sticky" }).click();
+    }
+    await frames(shell);
+    const sizes = await cards(shell).evaluateAll((els) =>
+      els.map((el) => ({ card: Math.round(el.getBoundingClientRect().height), quote: el.querySelector(".sticky-quote")!.getBoundingClientRect().width > 30 })),
+    );
+    expect(sizes).toEqual(Array(4).fill({ card: sizes[0]!.card, quote: true }));
+  });
+});
+
 test("a sticky folded before an ask on the text opens stays folded as that closes unsent", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
