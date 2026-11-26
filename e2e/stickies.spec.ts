@@ -3272,6 +3272,20 @@ test("an ask on the text closed unsent unfolds what it folded, unless one has be
   expect(await foldedOnes(shell)).toEqual([false, true]);
 });
 
+test("an answer that came folded for an ask on the text unfolds as that closes unsent", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく")).toHaveAttribute("data-folded");
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(1);
+  expect(await foldedOnes(shell)).toEqual([false]);
+});
+
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);

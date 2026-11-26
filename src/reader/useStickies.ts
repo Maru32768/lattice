@@ -94,16 +94,19 @@ export async function sendAsk(article: number, ask: Ask) {
   changeAsk(article, key, { step: "pending" });
   try {
     const sticky = await answerTo(article, ask);
-    const { saved, asks, answers, folded } = of(article);
+    const { saved, asks, answers, folded, undo } = of(article);
     // One that a list read since it was stored has is as new, or has another window's follow-up already: a sticky only gets
     // more messages.
     const newest = saved.find((s) => isSame(s, sticky) && s.messages.length >= sticky.messages.length) ?? sticky;
+    // Had it been here as another was opened on the text, it would have folded then, and unfolds as that closes unsent.
+    const late = !isFollowUp(ask) && of(article).latest !== latest;
+    const now = late ? [...folded, newest] : folded;
     put(article, {
       saved: [...saved.filter((s) => s.id !== sticky.id), newest].toSorted((a, b) => a.id - b.id),
       asks: asks.filter((a) => a.key !== key),
       answers: new Map(answers).set(key, sticky.id),
-      // Had it been here as another was opened on the text, it would have folded then.
-      folded: !isFollowUp(ask) && of(article).latest !== latest ? [...folded, newest] : folded,
+      folded: now,
+      ...(late && undo?.made === folded && { undo: { ...undo, made: now } }),
     });
   } catch (e) {
     changeAsk(article, key, { step: "failed", error: String(e) });
