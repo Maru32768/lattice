@@ -433,10 +433,15 @@ export function StickyColumn({
       scroller.scrollTop += offsetOf(from.line, scroller) - from.offset;
     }
   };
-  const fold = (sticky: Sticky, folds: boolean) => {
+  const fold = (sticky: Sticky, folds: boolean, card: HTMLElement) => {
     // From what the reader sees, as a scroll does: the line kept from before a card folded under the view's top would
     // take the view back into it. As with the folding, an ask closed unsent does not give the view back then.
     kept.current = keep(root.current!.parentElement!);
+    // Held, as one asked on is: one that gave way to the pinned card would grow up and out of the view.
+    const { pin } = root.current!.dataset;
+    if (pin != null) {
+      holds.set(card, pin);
+    }
     foldSticky(article, sticky, folds);
   };
   return (
@@ -566,7 +571,7 @@ function SavedCard({
   blocks: Block[];
   onOpen: (ask: number) => void;
   onCancel: (ask: number) => void;
-  onFold: (sticky: Sticky, folds: boolean) => void;
+  onFold: (sticky: Sticky, folds: boolean, card: HTMLElement) => void;
   onSource: (block: number) => void;
 }) {
   const t = useT();
@@ -583,7 +588,7 @@ function SavedCard({
         {folded && <Quote text={sticky.quote} />}
         <button
           className="ib fold"
-          onClick={() => onFold(sticky, !folded)}
+          onClick={(e) => onFold(sticky, !folded, e.currentTarget.closest<HTMLElement>(".sticky")!)}
           aria-expanded={!folded}
           aria-label={t(folded ? "stickies.unfold" : "stickies.fold")}
           title={t(folded ? "stickies.unfold" : "stickies.fold")}

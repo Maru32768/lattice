@@ -2680,13 +2680,17 @@ async function startCrowded(shell: Page) {
   await hold(shell, "sticky_ask", "sticky_follow_up");
   await shell.setViewportSize({ width: 1500, height: 1400 });
   await startLong(shell);
-  for (const [i, block] of [30, 31].entries()) {
-    await scrollTo(shell, paraBlock(block), "center");
-    await askAbout(shell, "用語", paraBlock(block));
-    await shell.evaluate(() => window.__e2e.release("sticky_ask"));
-    await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
-  }
-  await unfold(cards(shell).first());
+  await scrollTo(shell, paraBlock(31), "center");
+  await askAbout(shell, "用語", paraBlock(31));
+  // Another window's, which nothing here folds: one asked here before would fold for the one opened on the text after it,
+  // and one unfolded here stays where it is. It is answered first, which gives the two the ids of their blocks' order.
+  const other = askElsewhere(shell, LONG_ID, paraId(30));
+  await shell.waitForFunction(() => window.__e2e.calls.filter((c) => c.cmd === "sticky_ask").length === 2);
+  await shell.evaluate(() => window.__e2e.release("sticky_ask", -1));
+  expect(await other).toMatchObject({ id: 1 });
+  await release(shell, "sticky_ask")();
+  await expect(cards(shell).locator(".answer")).toHaveCount(2);
+  await frames(shell);
   const off = async (nth: number, block: number) => (await boxOf(cards(shell).nth(nth))).y - (await boxOf(shell.locator(paraBlock(block)))).y;
   expect(await off(0, 30), "gave way").toBeLessThan(-20);
   expect(Math.abs(await off(1, 31))).toBeLessThan(1);
@@ -2853,14 +2857,16 @@ async function startTall(shell: Page) {
   await shell.setViewportSize({ width: 1500, height: 2400 });
   await startLong(shell);
   await scrollTo(shell, paraBlock(31), "center");
-  for (const [i, block] of [28, 29, 30, 31].entries()) {
-    await askAbout(shell, "用語", paraBlock(block));
-    await release(shell, "sticky_ask")();
-    await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
+  await askAbout(shell, "用語", paraBlock(31));
+  // As in `startCrowded`, another window's, answered first.
+  for (const [i, block] of [28, 29, 30].entries()) {
+    const other = askElsewhere(shell, LONG_ID, paraId(block));
+    await shell.waitForFunction((n) => window.__e2e.calls.filter((c) => c.cmd === "sticky_ask").length === n, i + 2);
+    await shell.evaluate(() => window.__e2e.release("sticky_ask", -1));
+    expect(await other).toMatchObject({ id: i + 1 });
   }
-  for (let i = 0; i < 3; i++) {
-    await unfold(cards(shell).nth(i));
-  }
+  await release(shell, "sticky_ask")();
+  await expect(cards(shell).locator(".answer")).toHaveCount(4);
   await frames(shell);
 }
 
@@ -3459,6 +3465,28 @@ test("in a narrow pane a card that folded under the view's top unfolds where the
   await frames(shell);
   expect((await boxOf(first)).y).toBeCloseTo(at, 0);
   expect((await boxOf(text)).y).toBeCloseTo(above, 0);
+});
+
+test("beside the text a card that gave way to the one opened last unfolds where it is, and that one gives way to it", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await askElsewhere(shell, LONG_ID, paraId(10), para(10));
+  await expect(cards(shell)).toHaveCount(1);
+  await scrollTo(shell, paraBlock(10), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop -= 5));
+  await frames(shell);
+  await askAbout(shell, "質問", paraBlock(12));
+  const [above, opened] = [cards(shell).first(), cards(shell).last()];
+  await expect(above).toHaveAttribute("data-folded");
+  const at = (await boxOf(above)).y;
+  const text = async () => (await boxOf(shell.locator(paraBlock(12)))).y;
+  const before = await text();
+  await unfold(above);
+  await frames(shell);
+  const { y, height } = await boxOf(above);
+  expect(y).toBeCloseTo(at, 0);
+  expect((await boxOf(opened)).y, "below it").toBeGreaterThan(y + height);
+  expect(await text()).toBeCloseTo(before, 0);
 });
 
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
