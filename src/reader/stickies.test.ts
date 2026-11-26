@@ -200,6 +200,14 @@ test("a passage of words is found where it is whole words before where it starts
     "Japanese, which has no spaces to tell a word's edge by",
   );
   assert.deepEqual(
+    findPassage(["Deadlocks", " A lock is held."], 1, "lock"),
+    [
+      [0, 4],
+      [0, 8],
+    ],
+    "in its own block, though it is whole in the next",
+  );
+  assert.deepEqual(
     findPassage(["ユーザーIDを確かめてから、ユーザーに返す。"], 1, "ユーザー"),
     [
       [0, 0],
