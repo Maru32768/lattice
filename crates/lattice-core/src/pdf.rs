@@ -533,11 +533,22 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
     // On a page set across, a label set down beside the rows of a group tells nothing of them.
     let mut columns: Vec<Vec<Line>> =
         band.iter().map(|glyphs| page_lines(0, &glyphs.iter().filter(|g| !down(g)).copied().collect::<Vec<_>>(), width)).collect();
+    // `page_lines` starts a line where the pen goes back, so a line drawn from its middle comes in pieces.
     for lines in &mut columns {
         lines.sort_by(|a, b| a.y.total_cmp(&b.y));
         lines.dedup_by(|next, kept| {
             let piece = next.y - kept.y < 0.3 * kept.size;
             if piece {
+                let (first, second) = if next.x0 < kept.x0 {
+                    (&next.text, &kept.text)
+                } else {
+                    (&kept.text, &next.text)
+                };
+                kept.text = if between_japanese(first, second) {
+                    format!("{first}{second}")
+                } else {
+                    format!("{first} {second}")
+                };
                 (kept.x0, kept.x1) = (kept.x0.min(next.x0), kept.x1.max(next.x1));
             }
             piece
@@ -3846,6 +3857,27 @@ pub(crate) mod tests {
         let ops = ruled(&[72., 272., 472.], &[100., 120., 190., 220.], "strokes") + &format!("BT /F3 10 Tf {}{}ET\n", column(72.), column(272.));
         let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
         assert!(ir.blocks.iter().all(|b| b.attrs.rows.is_none()), "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_cell_line_drawn_from_its_middle_is_one_line_with_the_letters_of_both_pieces() {
+        let kana = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{}> Tj ET\n", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
+        // A head, a band beside a name of one line, and a foot.
+        let table = |ys: [f64; 4], foot: f64, description: &str| {
+            let mut ops = ruled(&[72., 114., 246., 288.], &ys, "strokes") + &kana(78., 114., 2) + &kana(120., 114., 2) + &kana(252., 114., 2);
+            ops += &(kana(78., 134., 2) + &kana(252., 134., 2) + description);
+            ops += &(kana(78., foot, 2) + &kana(120., foot, 5) + &kana(252., foot, 2));
+            to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len)
+        };
+        // The first line, to the end of its column, wraps.
+        assert_eq!(table([100., 120., 156., 176.], 170., &(kana(180., 134., 6) + &kana(120., 134., 6) + &kana(120., 150., 3))), Some(3));
+        // The line after it starts with a Latin word, drawn after the Japanese that follows it.
+        let latin = kana(120., 134., 12) + &kana(120. + wide("USB"), 150., 3) + &shown(120., 150., "USB");
+        assert_eq!(table([100., 120., 156., 176.], 170., &latin), None);
+        // A line 40pt short of the end, room for four of the letters of the line after it, ends a row.
+        let room = kana(120., 134., 8) + &kana(120., 166., 3);
+        assert_eq!(table([100., 120., 172., 192.], 186., &(room.clone() + &kana(120., 150., 12))), None);
+        assert_eq!(table([100., 120., 172., 192.], 186., &(room + &kana(180., 150., 6) + &kana(120., 150., 6))), None);
     }
 
     #[test]
