@@ -445,6 +445,24 @@ test("an answer that the list has before it comes is one card", async ({ shell }
   await expect(cards(shell)).toHaveCount(1);
 });
 
+test("a follow-up's answer that comes after a list with another window's later one leaves that one there", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eLate = ["sticky_follow_up"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askElsewhere(shell, SNAPSHOT_ID, 102);
+  await followUp(shell).click();
+  await followUpField(shell).fill("here");
+  await shell.keyboard.press("Control+Enter");
+  void invoke(shell, "sticky_follow_up", { id: 1, question: "elsewhere" });
+  await expect(cards(shell).locator(".answer")).toHaveCount(3);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up", 1));
+  await expect(cards(shell).getByRole("status")).toHaveCount(0);
+  await frames(shell);
+  await expect(cards(shell).locator(".answer")).toHaveCount(3);
+  await expect(cards(shell).locator(".sticky-q")).toHaveText(["here", "elsewhere"]);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
+});
+
 test("a list read before a sticky was asked does not take it away by coming last", async ({ shell }) => {
   await shell.addInitScript(() => void (window.__e2eLate = ["list_stickies"]));
   await shell.goto("/");

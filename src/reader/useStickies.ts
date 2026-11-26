@@ -86,8 +86,11 @@ export async function sendAsk(article: number, ask: Ask) {
   try {
     const sticky = await answerTo(article, ask);
     const { saved, asks, answers } = of(article);
+    // A list read since it was stored can have another window's follow-up to it already: a sticky only gets more messages.
+    const read = saved.find((s) => s.id === sticky.id);
+    const newest = read && read.messages.length > sticky.messages.length ? read : sticky;
     put(article, {
-      saved: [...saved.filter((s) => s.id !== sticky.id), sticky].toSorted((a, b) => a.id - b.id),
+      saved: [...saved.filter((s) => s.id !== sticky.id), newest].toSorted((a, b) => a.id - b.id),
       asks: asks.filter((a) => a.key !== key),
       answers: new Map(answers).set(key, sticky.id),
     });
