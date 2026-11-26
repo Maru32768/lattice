@@ -613,6 +613,15 @@ mod tests {
         assert_eq!(source(capture(Some(id + 1), Some(999), None)), (None, None, None), "the article is gone");
         assert_eq!(source(capture(None, None, Some("javascript:alert(1)"))), (None, None, None), "not an address to link to");
         apply(&s, &op("gone", capture(Some(id + 1), Some(999), None))).unwrap();
+
+        // A sticky's explanation comes only from the app.
+        let OpKind::VocabAdd { capture: explained } = capture(Some(id), None, None) else {
+            panic!("a capture")
+        };
+        let explained = Capture { explanation: Some("PHONE".into()), ..explained };
+        assert_eq!(stored_capture(&s, &explained).unwrap().explanation, None);
+        apply(&s, &op("explained", OpKind::VocabAdd { capture: explained })).unwrap();
+        assert!(vocab::list(&s).unwrap().iter().flat_map(|e| &e.contexts).all(|c| c.explanation.is_none()));
     }
 
     #[test]
