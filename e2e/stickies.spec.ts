@@ -4033,3 +4033,21 @@ test("単語を登録 on a 用語 sticky saves its word in its sentence with wha
   const row = app.locator(".vocab tbody tr").filter({ has: app.locator(".hw").getByText("snapshot", { exact: true }) });
   await expect(row.locator(".explain")).toHaveText(explanation);
 });
+
+test("単語を登録: the word list shows the sentence a 用語 sticky explained, not one saved after it", async ({ app }) => {
+  await openSnapshot(app);
+  await selectWord(app, 106, "snapshot");
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  const term = card(app, "用語");
+  await term.getByRole("button", { name: "単語を登録" }).click();
+  await expect(term.getByRole("status")).toHaveText("「snapshot」を単語帳に登録しました");
+  await selectWord(app, 102, "snapshot");
+  await bar(app)
+    .getByRole("button", { name: /単語を登録/ })
+    .click();
+  await expect.poll(async () => (await callsOf(app, "vocab_add")).map((c) => (c as { capture: { block_id: number } }).capture.block_id)).toEqual([106, 102]);
+  await navItem(app, "単語帳").click();
+  const row = app.locator(".vocab tbody tr").filter({ has: app.locator(".hw").getByText("snapshot", { exact: true }) });
+  await expect(row.locator(".ctx")).toContainText("Write skew is still possible under snapshot isolation.");
+  await expect(row.locator(".explain")).toHaveText(/^選んだ箇所の説明です。/);
+});
