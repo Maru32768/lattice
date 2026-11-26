@@ -4132,6 +4132,33 @@ test("単語を登録: a 用語 sticky on a word in a translation saves it in th
   expect(sticky).toEqual(reader);
 });
 
+test("単語を登録: a 用語 sticky on a word of both texts saves the sentence shown, and of the original only the original's", async ({ app }) => {
+  const sentences = async () => ((await callsOf(app, "vocab_add")) as { capture: { sentence: string } }[]).map((c) => c.capture.sentence);
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(app.locator("#b-103")).toContainText("MVCCで");
+  await selectWord(app, 103, "PostgreSQL");
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  const both = card(app, "用語");
+  await both.getByRole("button", { name: "単語を登録" }).click();
+  await expect(both.getByRole("status")).toHaveText("「PostgreSQL」を単語帳に登録しました");
+  expect(await sentences()).toEqual(["PostgreSQLはこれをMVCCで実装している。"]);
+  await both.getByRole("button", { name: "付箋を削除" }).click();
+  await app.getByRole("alertdialog").getByRole("button", { name: "削除" }).click();
+  await expect(both).toHaveCount(0);
+
+  await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "原文", exact: true }).click();
+  await selectWord(app, 106, "snapshot");
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  const original = card(app, "用語");
+  await expect(original.locator(".answer")).toHaveText(ANSWERED);
+  await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(app.locator("#b-106")).toContainText("write skewは");
+  await original.getByRole("button", { name: "単語を登録" }).click();
+  await expect(original.getByRole("status")).toHaveText("「snapshot」を単語帳に登録しました");
+  expect((await sentences()).at(-1)).toBe("Write skew is still possible under snapshot isolation.");
+});
+
 test("単語を登録: the word list shows the sentence a 用語 sticky explained, not one saved after it", async ({ app }) => {
   await openSnapshot(app);
   await selectWord(app, 106, "snapshot");
