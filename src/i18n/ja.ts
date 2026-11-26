@@ -896,7 +896,6 @@ export const ja = {
   "browserView.add": "ライブラリに保存",
   "browserView.addToGroup": "開いているグループ「{name}」にも入れます。",
   "browserView.loading": "読み込み中",
-  "browserView.loadingEllipsis": "読み込み中…",
   "chatPane.cite": "出典{n}: {where}",
   "chatPane.citations": "引用{length}",
   "chatPane.newChat": "新しい会話",
