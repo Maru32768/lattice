@@ -3216,6 +3216,27 @@ test("each Reader of an article marks its passages", async ({ shell }) => {
   expect(await marked(shell)).toEqual([para(10), para(10)]);
 });
 
+test("a child of a later answer is marked in that answer", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const parent = card(shell, "詳しく");
+  await expect(parent.locator(".answer")).toBeVisible();
+  await followUp(parent).click();
+  await followUpField(parent).fill("なぜ？");
+  await shell.keyboard.press("Control+Enter");
+  await expect(parent.locator(".answer")).toHaveCount(2);
+  await askOn(shell, "用語", parent, 1);
+  await expect(child(shell, "用語").locator(".answer")).toBeVisible();
+  await frames(shell);
+  // The answers all say the same: where it is marked tells them apart.
+  const where = await shell.evaluate(() =>
+    [...(CSS.highlights.get("sticky") ?? [])].map((r) => (r as Range).startContainer.parentElement!.closest(".answer")?.getAttribute("data-message") ?? null),
+  );
+  expect(where).toEqual([null, await parent.locator(".answer").nth(1).getAttribute("data-message")]);
+});
+
 test("a child whose parent is folded is marked nowhere and has no line, though its words are in the text too", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
