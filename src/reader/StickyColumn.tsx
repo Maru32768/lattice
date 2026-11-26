@@ -186,8 +186,9 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
     }
     return { ...s, height: talls.get(el) ?? s.height };
   });
-  // Under the blocks, what a card folds by comes off the text's end.
-  const folds = unfolded.reduce((px, u, i) => px + u.height - spots[i]!.height, 0);
+  // Under the blocks, what a card folds by comes off the text's end. Not that of one above the view: the view went up with the text.
+  const viewTop = viewEnd - scroller.clientHeight;
+  const folds = unfolded.reduce((px, u, i) => (tops[i]! + spots[i]!.height > viewTop ? px + u.height - spots[i]!.height : px), 0);
   const end = beside
     ? Math.max(endOf(tops), Math.min(endOf(stack(unfolded), unfolded), viewEnd))
     : Math.min(column.previousElementSibling!.getBoundingClientRect().bottom - top + folds, viewEnd);

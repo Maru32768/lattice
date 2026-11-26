@@ -3311,6 +3311,11 @@ for (const narrow of [true, false]) {
       await shell.setViewportSize({ width: 1500, height: 900 });
       await startLong(shell);
     }
+    // Folded far above, they took nothing from what is under the view.
+    await askMany(shell, LONG_ID, paraId(30), 2);
+    for (const above of await cards(shell).all()) {
+      await above.getByRole("button", { name: "付箋をたたむ" }).click();
+    }
     const toEnd = async () => {
       await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
       await frames(shell);
@@ -3332,7 +3337,7 @@ for (const narrow of [true, false]) {
     const end = await scrollTop(shell);
     await sticky.getByRole("button", { name: "付箋を削除" }).click();
     await shell.getByRole("alertdialog").getByRole("button", { name: "削除" }).click();
-    await expect(cards(shell)).toHaveCount(0);
+    await expect(cards(shell)).toHaveCount(2);
     await frames(shell);
     expect(await scrollTop(shell)).toBeLessThan(end - 100);
   });
