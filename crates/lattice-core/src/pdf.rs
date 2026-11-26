@@ -3572,6 +3572,18 @@ pub(crate) mod tests {
         ops += &(set(78., 134., 2) + &shown(120., 134., "Docker") + &set(252., 134., 2) + &set(120., 150., 12) + &set(120., 166., 3));
         ops += &(set(78., 186., 2) + &set(120., 186., 5) + &set(252., 186., 2));
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
+        // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
+        // larger one set lower: two columns go on onto another's baseline.
+        for (size, drop) in [(10., 0.), (12., 1.5), (14., 3.)] {
+            let price = |y: f64, text: &str| sized(195., y + drop, size, text);
+            let mut ops = ruled(&[72., 112., 189., 235.], &[100., 120., 160., 200.], "strokes") + &set(78., 114., 2) + &set(118., 114., 2);
+            ops += &set(195., 114., 2);
+            for (top, last, prices) in [(120., 3, ["100", "250"]), (160., 2, ["300", "80"])] {
+                ops += &(set(78., top + 14., 2) + &set(118., top + 14., 6) + &set(118., top + 30., last));
+                ops += &(price(top + 14., prices[0]) + &price(top + 30., prices[1]));
+            }
+            assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None, "{size}");
+        }
         // The scores set larger at the top of each row, their baselines 1.5pt under the methods'.
         let xs = [72., 122., 188., 238.];
         let row = |y: f64, cells: [&str; 3]| shown(xs[0] + 6., y, cells[0]) + &shown(xs[1] + 6., y, cells[1]) + &sized(xs[2] + 6., y + 1.5, 12., cells[2]);
@@ -3791,18 +3803,6 @@ pub(crate) mod tests {
         ops += &(kana(78., 134., 2) + &kana(120., 134., 9) + &shown(210., 134., "HTTP") + &kana(252., 134., 2) + &kana(120., 150., 3));
         ops += &(kana(78., 170., 2) + &kana(120., 170., 5) + &kana(252., 170., 2));
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
-        // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
-        // larger one 1.5pt lower: two columns go on onto another's baseline.
-        for (size, drop) in [(10., 0.), (12., 1.5)] {
-            let price = |y: f64, text: &str| sized(195., y + drop, size, text);
-            let mut ops = ruled(&[72., 112., 189., 235.], &[100., 120., 160., 200.], "strokes") + &kana(78., 114., 2) + &kana(118., 114., 2);
-            ops += &kana(195., 114., 2);
-            for (top, last, prices) in [(120., 3, ["100", "250"]), (160., 2, ["300", "80"])] {
-                ops += &(kana(78., top + 14., 2) + &kana(118., top + 14., 6) + &kana(118., top + 30., last));
-                ops += &(price(top + 14., prices[0]) + &price(top + 30., prices[1]));
-            }
-            assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None, "{size}");
-        }
         // With every column as wide as its widest line, a group's widest value comes to the end of its column too.
         assert_eq!(table([72., 104., 236., 268.]), None);
     }
