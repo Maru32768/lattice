@@ -3551,6 +3551,20 @@ pub(crate) mod tests {
         no_table(&(table(&xs, &names, None) + &shown(xs[1] + 26., 200., "x") + &shown(xs[2] + 26., 194., "x")));
         no_table(&(table(&xs, &names, None) + &sized(xs[1] + 26., 195.8, 12., "x") + &sized(xs[2] + 26., 195.8, 12., "x")));
         no_table(&(table(&xs, &names, None) + &sized(xs[1] + 26., 204.2, 8., "x") + &sized(xs[2] + 26., 204.2, 8., "x")));
+        // A group's three rows in one band: a mark alone under two names, and a mark between the lines of one column
+        // beside another whose lines fill it.
+        let head = |xs: &[f64], heads: [&str; 3]| {
+            let ops = ruled(xs, &[160., 180., 228., 248.], "strokes") + &shown(78., 174., heads[0]);
+            ops + &shown(xs[1] + 6., 174., heads[1]) + &shown(xs[2] + 6., 174., heads[2])
+        };
+        let mut ops = head(&xs, ["Feature", "Free", "Pro"]) + &shown(78., 194., name) + &shown(78., 206., "Create and sign");
+        ops += &(shown(xs[1] + 26., 218., "x") + &shown(xs[1] + 26., 242., "x") + &shown(xs[2] + 26., 242., "x") + &shown(78., 242., "Share"));
+        no_table(&ops);
+        let who = [72., 84. + wide(name), 96. + wide(name) + wide("Ann Author"), 156. + wide(name) + wide("Ann Author")];
+        let mut ops = head(&who, ["Feature", "Who", "Pro"]) + &shown(78., 194., name) + &shown(78., 218., "Create and sign");
+        ops += &(shown(who[1] + 6., 194., "Ann Author") + &shown(who[1] + 6., 206., "Bob Author") + &shown(who[1] + 6., 218., "Cal Author"));
+        ops += &(shown(who[2] + 26., 206., "x") + &shown(78., 242., "Share") + &shown(who[1] + 6., 242., "Dan") + &shown(who[2] + 26., 242., "x"));
+        no_table(&ops);
         // Lines with room for the first word under them and two letters more may each be a row's.
         let names = [(194., "Paint the door"), (206., "Paint the gate")];
         let x1 = 84. + wide(names[0].1) + 8. * wide(names[1].1) / 14.;
