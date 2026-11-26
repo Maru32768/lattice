@@ -3609,6 +3609,26 @@ test("beside the text a child that gave way to the one opened last folds and unf
   expect(await text()).toBeCloseTo(before, 0);
 });
 
+test("beside the text a second child that gave way to the one opened last folds where it is", async ({ shell }) => {
+  await startCrowded(shell);
+  const parent = Number(await cards(shell).first().locator(".answer").getAttribute("data-message"));
+  for (const n of [3, 4]) {
+    const asked = askElsewhere(shell, LONG_ID, paraId(30), "elsewhere", parent);
+    await shell.waitForFunction((n) => window.__e2e.calls.filter((c) => c.cmd === "sticky_ask").length === n, n);
+    await release(shell, "sticky_ask")();
+    await asked;
+  }
+  await expect(cards(shell).locator(".answer")).toHaveCount(4);
+  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["用語", "用語(回答から)", "用語(回答から)", "用語"]);
+  await frames(shell);
+  const kid = cards(shell).nth(2);
+  const at = (await boxOf(kid)).y;
+  await kid.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  await expect(kid).toHaveAttribute("data-folded");
+  expect((await boxOf(kid)).y).toBeCloseTo(at, 0);
+});
+
 test("beside the text a card folded above the one opened last unfolds where it is, and that one gives way to it", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
