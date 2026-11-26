@@ -3371,6 +3371,32 @@ test("in a narrow pane a card folded far from the article's end leaves no room b
   expect(await height()).toBeCloseTo(before - (by - (await boxOf(sticky)).height), -1);
 });
 
+test("in a narrow pane at the article's end a card whose first line the view's top is in folds where it is", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(72), "center");
+  await askAbout(shell, "詳しく", paraBlock(72));
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toBeVisible();
+  await frames(shell);
+  // A view as tall as from 5px into the card to the article's end.
+  const [needed, has] = await doc(shell).evaluate((el) => {
+    const c = el.querySelector(".stickies > .sticky")!.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+    return [el.scrollHeight - (c + 5), el.clientHeight];
+  });
+  await shell.setViewportSize({ width: 1200, height: Math.round(800 + needed - has) });
+  await frames(shell);
+  await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await frames(shell);
+  const view = await boxOf(doc(shell));
+  const at = (await boxOf(sticky)).y;
+  expect(view.y - at, "the view's top is in its first line").toBeGreaterThan(0);
+  expect(view.y - at).toBeLessThan(15);
+  await sticky.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  await expect(sticky).toHaveAttribute("data-folded");
+  expect((await boxOf(sticky)).y).toBeCloseTo(at, 0);
+});
+
 test("a sticky opened on the text folds those there before it, and has its block's height however tall they were", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
