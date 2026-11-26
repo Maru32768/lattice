@@ -62,8 +62,9 @@ function lineAt(scroller: HTMLElement): Line {
 function offsetOf({ block, share, past, room }: Line, scroller: HTMLElement) {
   const r = block.getBoundingClientRect();
   const now = roomOf(block);
-  // Among the cards a card stays, if it can. Else, and past them, it is the text below.
-  const down = past <= Math.min(room, now) ? past : Math.max(0, past + now - room);
+  // Among the cards a card stays, if it can. Else it is the text below, up into the block if the cards have folded under
+  // the view's top.
+  const down = past <= Math.min(room, now) ? past : past + now - room;
   return r.top + share * r.height + down - scroller.getBoundingClientRect().top;
 }
 

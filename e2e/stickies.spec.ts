@@ -3286,6 +3286,27 @@ test("an answer that came folded for an ask on the text unfolds as that closes u
   expect(await foldedOnes(shell)).toEqual([false]);
 });
 
+test("in a narrow pane an ask below a card that the view's top is in moves no text as that card folds for it", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const first = card(shell, "詳しく");
+  await expect(first.locator(".answer")).toBeVisible();
+  const view = await boxOf(doc(shell));
+  await doc(shell).evaluate((el, by) => (el.scrollTop += by), (await boxOf(shell.locator(paraBlock(11)))).y - view.y - 100);
+  await frames(shell);
+  const { y, height } = await boxOf(first);
+  expect(y, "the view's top is in it").toBeLessThan(view.y);
+  expect(y + height).toBeGreaterThan(view.y);
+  const text = async () => (await boxOf(shell.locator(paraBlock(11)))).y;
+  const before = await text();
+  await askAbout(shell, "用語", paraBlock(11));
+  await expect(card(shell, "用語").locator(".answer")).toBeVisible();
+  await frames(shell);
+  await expect(first).toHaveAttribute("data-folded");
+  expect(await text()).toBeCloseTo(before, 0);
+});
+
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
