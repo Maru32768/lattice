@@ -3609,7 +3609,7 @@ test("beside the text a child that gave way to the one opened last folds and unf
   expect(await text()).toBeCloseTo(before, 0);
 });
 
-test("beside the text a card that gave way to the one opened last unfolds where it is, and that one gives way to it", async ({ shell }) => {
+test("beside the text a card folded above the one opened last unfolds where it is, and that one gives way to it", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
   await askElsewhere(shell, LONG_ID, paraId(10), para(10));
