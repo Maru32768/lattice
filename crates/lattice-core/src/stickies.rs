@@ -1146,6 +1146,7 @@ mod tests {
             let a = add(&s, "https://a.dev/wal", "WAL", WAL);
             let llm = Fake::new(ANSWER);
             let on = ask(&s, &llm, a, None, StickyKind::Term, "A", "").await.unwrap();
+            let asked = llm.sent.lock().unwrap().len();
             let turn = Semaphore::new(1);
             let held = turn.acquire().await.unwrap();
             let sent = async {
@@ -1163,7 +1164,12 @@ mod tests {
                 drop(held);
             };
             let (sent, ()) = tokio::join!(sent, meanwhile);
-            assert!(sent.is_err());
+            let gone = if case == "follow-up" {
+                msg!("stickies.gone")
+            } else {
+                msg!("stickies.articleGone")
+            };
+            assert_eq!((sent.map(|x| x.id), llm.sent.lock().unwrap().len()), (Err(gone), asked + 1), "{case}");
             assert!(llm.input().contains(WAL[0].1) && !llm.input().contains("Of another article."), "{case}: sent the article it was asked on");
         }
     }
