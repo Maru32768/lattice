@@ -3831,6 +3831,24 @@ pub(crate) mod tests {
         ops += &(kana(78., 134., 2) + &kana(120., 134., 9) + &shown(210., 134., "HTTP") + &kana(252., 134., 2) + &kana(120., 150., 3));
         ops += &(kana(78., 170., 2) + &kana(120., 170., 5) + &kana(252., 170., 2));
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
+        // Japanese that wraps onto a bracket or a full-width digit, which join Japanese as kana do.
+        for first in ['「', '（', '１'] {
+            let utf16 = (first as u32 as u16).to_be_bytes();
+            let cid = (1..20000).find(|&c| crate::pdf_japan1::utf16(c) == Some(&utf16[..])).unwrap();
+            let mut ops =
+                ruled(&[72., 114., 246., 288.], &[100., 120., 156., 176.], "strokes") + &kana(78., 114., 2) + &kana(120., 114., 2) + &kana(252., 114., 2);
+            ops +=
+                &(kana(78., 134., 2) + &kana(120., 134., 12) + &format!("BT /F3 10 Tf 1 0 0 1 120 642 Tm <{cid:04X}034B034D> Tj ET\n") + &kana(252., 134., 2));
+            ops += &(kana(78., 170., 2) + &kana(120., 170., 5) + &kana(252., 170., 2));
+            assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3), "{first}");
+        }
+        // A first column of marks, empty beside the band: the name is in the first column with lines.
+        let xs = [72., 96., 138., 270., 312.];
+        let mut ops =
+            ruled(&xs, &[100., 120., 156., 176.], "strokes") + &kana(78., 114., 1) + &kana(102., 114., 2) + &kana(144., 114., 2) + &kana(276., 114., 2);
+        ops += &(kana(102., 134., 2) + &kana(144., 134., 12) + &kana(144., 150., 3) + &kana(276., 134., 2));
+        ops += &(kana(78., 170., 1) + &kana(102., 170., 2) + &kana(144., 170., 5) + &kana(276., 170., 2));
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
         // With every column as wide as its widest line, a group's widest value comes to the end of its column too.
         assert_eq!(table([72., 104., 236., 268.]), None);
     }
