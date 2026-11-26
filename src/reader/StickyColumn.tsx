@@ -613,29 +613,22 @@ function SavedCard({
 }) {
   const t = useT();
   const [deleting, setDeleting] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [said, setSaid] = useState<{ status: string } | { error: string } | null>(null);
   const remove = useRef<HTMLButtonElement>(null);
   const label = useLabel(sticky);
   // At once: the dialog holds the focus while it is there, and leaves it nowhere.
   const close = () => flushSync(() => setDeleting(false));
-  const done = (said: { status: string } | { error: string }) => {
-    setStatus("status" in said ? said.status : null);
-    setError("error" in said ? said.error : null);
-  };
   const addToNote = async (text: string) => {
     // The text is in the memo whether or not it is saved: the memo saves it again as it opens.
     dropDraft(article, sticky.id);
     const failed = await onNote(text);
-    done(failed ? { error: failed } : { status: t("stickies.addedToNote") });
+    setSaid(failed ? { error: failed } : { status: t("stickies.addedToNote") });
   };
-  const saveWord = async (word: VocabCapture) => {
-    const said = await onWord(word).then(
-      (r) => ({ status: t(r.new ? "vocab.saved" : "vocab.added", { word: word.surface }) }),
-      (e: unknown) => ({ error: String(e) }),
+  const saveWord = (word: VocabCapture) =>
+    onWord(word).then(
+      (r) => setSaid({ status: t(r.new ? "vocab.saved" : "vocab.added", { word: word.surface }) }),
+      (e: unknown) => setSaid({ error: String(e) }),
     );
-    done(said);
-  };
   return (
     <section className="sticky" aria-label={label} data-folded={folded || undefined} {...spot}>
       <div className="sticky-h">
@@ -679,7 +672,7 @@ function SavedCard({
               <button
                 className="btn sm"
                 onClick={() => {
-                  done({ status: "" });
+                  setSaid(null);
                   void draftNote(article, sticky.id);
                 }}
               >
@@ -692,14 +685,14 @@ function SavedCard({
           )}
         </>
       )}
-      {status && (
+      {said && "status" in said && (
         <p className="sticky-status" role="status">
-          {status}
+          {said.status}
         </p>
       )}
-      {error && (
+      {said && "error" in said && (
         <p className="error-text" role="alert">
-          {t.msg(error)}
+          {t.msg(said.error)}
         </p>
       )}
       {deleting && (
@@ -709,7 +702,7 @@ function SavedCard({
           onConfirm={() => {
             close();
             leave(remove.current);
-            deleteSticky(sticky.article_id, sticky.id).catch((e: unknown) => setError(String(e)));
+            deleteSticky(sticky.article_id, sticky.id).catch((e: unknown) => setSaid({ error: String(e) }));
           }}
           onCancel={() => {
             close();
