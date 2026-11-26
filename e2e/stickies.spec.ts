@@ -2286,8 +2286,10 @@ test("the print of an article with a column of stickies has the text as without 
   await shell.emulateMedia({ media: "screen" });
   await askElsewhere(shell, LONG_ID, paraId(1));
   await expect(shell.locator(".stickies[data-beside] > .sticky")).toBeVisible();
+  await expect(shell.locator(".sticky-lines")).toBeVisible();
   await shell.emulateMedia({ media: "print" });
   await expect(shell.locator(".stickies")).toBeHidden();
+  await expect(shell.locator(".sticky-lines")).toBeHidden();
   expect(await boxOf(shell.locator(paraBlock(1)))).toEqual(before);
 });
 
