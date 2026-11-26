@@ -438,9 +438,14 @@ export function StickyColumn({
     // take the view back into it. As with the folding, an ask closed unsent does not give the view back then.
     kept.current = keep(root.current!.parentElement!);
     // Held, as one asked on is: one that gave way to the pinned card would grow up and out of the view.
+    // A child sits under its root, which is what the column places.
     const { pin } = root.current!.dataset;
+    let rootCard = card;
+    while (rootCard.hasAttribute("data-child")) {
+      rootCard = rootCard.previousElementSibling as HTMLElement;
+    }
     if (pin != null) {
-      holds.set(card, pin);
+      holds.set(rootCard, pin);
     }
     foldSticky(article, sticky, folds);
   };
