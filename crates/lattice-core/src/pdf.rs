@@ -521,7 +521,9 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 /// column is as wide as its widest line (`fitted`), the widest value of a group's column comes to its end too.
 // shortcut: Latin lines that wrap tell of nothing, as the lines of the rows of a group start in either case and end in a
 // hyphen too; nor do lists, a set-down label or one line set between a cell's, as a group's cells sit on its rows' lines.
-// A table with such a band under its head stays text. Tell them apart if such tables turn up.
+// A table with such a band under its head stays text. Japanese rows of a group whose values come to the end of their
+// column, as the first of two beside a name of one line, read as a cell that wrapped. Tell them apart if such tables
+// turn up.
 fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width: f64, turns: bool, alone: bool) -> bool {
     let down = |g: &&Glyph| g.vertical || g.turned;
     if turns && band.iter().flatten().any(down) {
