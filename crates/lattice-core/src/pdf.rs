@@ -463,6 +463,8 @@ fn take_tables(p: &mut Page, grids: Vec<Grid>, turns: bool) {
 
 /// Whether a word runs across a grid's rules: one too long for its cell, or a mark laid over the page. Each cell would hold
 /// a piece of it.
+// shortcut: letters set one to a square with room between them cross no rule, so writing on squared paper set so is a
+// table of letters. Tell it by cells of one letter each if such pages turn up.
 fn crossed(p: &Page, grid: &Grid) -> bool {
     // Where a glyph starts and ends along its line, and where its line is.
     let along = |g: &Glyph| {
@@ -608,6 +610,8 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
     // The first band is the head, one row: its cells may each set a unit under their name, which breaks as rows do. It
     // holds rows too where a number is under another line, and may where lines in threes break as rows do or are in every
     // column.
+    // shortcut: a first band that holds the head and one row of words, with no rule under the head, reads as one row, the
+    // head and the row in each cell. Tell them apart if such tables turn up.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
     // The first column with lines names the row. Beside a name of one line, in a table with a column that has room, less
@@ -986,6 +990,8 @@ fn grids(rules: impl Iterator<Item = Bounds>) -> Vec<Grid> {
             let (&[left, .., right], &[top, .., bottom]) = (&xs[..], &ys[..]) else {
                 return None;
             };
+            // shortcut: rules down that run past the first and last rules across make a grid of the rows ruled round, the
+            // head over it and the row under it left out as paragraphs. Leave such tables text if they turn up.
             let whole = |rules: &[Rule], others: &[Rule], from: f64, to: f64| {
                 let slack = RULE_SLACK + others.iter().map(|r| r.3).fold(0., f64::max);
                 rules.iter().all(|r| r.1 < from + slack && r.2 > to - slack)
@@ -1240,6 +1246,8 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
         // page's columns. In a document set across they have, or a label set down beside a page of tables would turn it.
         // The page's turn is known before its tables are taken, so that a turned glyph goes into its cell, or as a label
         // is dropped before.
+        // shortcut: so a grid that is no table has no say either, and its page turns, each of its cells a paragraph. Take
+        // only the tables' glyphs out if such pages turn up.
         let says = |g: &&Glyph| g.vertical || !vertical || !grids.iter().any(|grid| grid.cell(g).is_some());
         let turns = mostly_down(page.glyphs.iter().filter(says));
         if !turns {
@@ -1595,6 +1603,8 @@ enum Side {
 impl Side {
     /// The half of a page `width` across that the span from `x0` to `x1` is in: across the middle by up to 1% of the
     /// width is still in one half, as a column's lines run a little into the gutter.
+    // shortcut: a table of the left column across the middle by more parts the page's bands, so the columns above it and
+    // those under it each read left then right. Place it by its cells' text if such pages turn up.
     fn of(x0: f64, x1: f64, width: f64) -> Side {
         let (mid, tol) = (width / 2., width * 0.01);
         match () {
