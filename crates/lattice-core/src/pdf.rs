@@ -557,7 +557,9 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
     if baselines.len() < 2 {
         return true;
     }
-    if bands.len() == 2 && row == 1 {
+    // A rule drawn twice leaves an empty band between its strokes.
+    let texted = |band: &Vec<Vec<&Glyph>>| band.iter().flatten().any(|g| !g.text.trim().is_empty());
+    if bands.iter().filter(|band| texted(band)).count() == 2 && bands[..row].iter().any(texted) {
         return false;
     }
     // `parted`: whether a line on a baseline with another column's comes after a line with room for it. `tellers`: the
@@ -3490,8 +3492,11 @@ pub(crate) mod tests {
             [(78., 114., 2), (206., 114., 2), (78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)]
                 .map(|(x, y, n)| set(x, y, n))
                 .concat();
-        let ops = ruled(&[72., 200., 332.], &[100., 120., 180.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
-        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
+        // And with the rule under the head drawn twice.
+        for ys in [&[100., 120., 180.][..], &[100., 120., 125., 180.]] {
+            let ops = ruled(&[72., 200., 332.], ys, "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+            assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None, "{ys:?}");
+        }
     }
 
     /// `rows` as a table's text.
