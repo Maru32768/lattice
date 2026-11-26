@@ -3186,6 +3186,23 @@ test("a child's passage is marked in the answer it is from, and a mark goes with
   await expect.poll(() => marked(shell)).toEqual([root]);
 });
 
+test("a passage over two paragraphs is marked over both, and the text's DOM is as it was", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  const html = () => shell.locator(".blocks").evaluate((el) => el.innerHTML.replace(/ style="[^"]*"/g, ""));
+  const before = await html();
+  await drag(shell, paraBlock(10), paraBlock(11));
+  await bar(shell).getByRole("button", { name: "詳しく", exact: true }).click();
+  await expect(card(shell, "詳しく").locator(".answer")).toBeVisible();
+  await frames(shell);
+  // The two paragraphs' text runs on, with nothing between them.
+  const bare = (t: string) => t.replace(/\s+/g, "");
+  expect((await marked(shell)).map(bare)).toEqual([bare(para(10) + para(11))]);
+  await shell.evaluate(() => getSelection()!.removeAllRanges());
+  expect(await html()).toBe(before);
+});
+
 test("a child whose parent is folded is marked nowhere and has no line, though its words are in the text too", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
