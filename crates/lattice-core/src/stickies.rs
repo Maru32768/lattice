@@ -708,7 +708,9 @@ mod tests {
         ask(&s, &Fake::new("OTHER-A"), a, first, StickyKind::Question, "OTHER", "OTHER-Q").await.unwrap();
         let child = ask_on(&s, &Fake::new("CHILD-A1"), &root, 0, StickyKind::Question, "A1", "CHILD-Q1").await.unwrap();
         ask_on(&s, &Fake::new("GRANDCHILD-A"), &child, 0, StickyKind::Detail, "GRANDCHILD", "").await.unwrap();
-        let before = rows(&s);
+        // Of every table, the memo's among them: the store has the one connection.
+        let changes = || s.conn().query_row("SELECT total_changes()", [], |r| r.get::<_, i64>(0)).unwrap();
+        let before = changes();
         let request = "Write the note for the memo of the passage and the conversation above, in Japanese.\n";
 
         let llm = Fake::new(" ノート ");
@@ -721,7 +723,7 @@ mod tests {
         let down = "<passage>\nROOT\n</passage>\n\n<conversation>\nQ: 用語\nA: ROOT-A1 [2]\n\n</conversation>\n\n<excerpt>\nA1\n</excerpt>\n\n\
              <conversation>\nQ: CHILD-Q1\nA: CHILD-A1\n\n</conversation>\n\n";
         assert_eq!(llm.input(), format!("{down}{request}"), "its ancestors up to the answer it is from, not its own child");
-        assert_eq!(rows(&s), before, "nothing stored");
+        assert_eq!(changes(), before, "nothing stored");
 
         assert!(draft(&s, &Fake::new(" "), root.id).await.unwrap_err().contains("stickies.malformed"));
         delete(&s, root.id).unwrap();
