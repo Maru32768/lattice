@@ -3953,6 +3953,7 @@ test("メモに下書き: a memo that cannot be saved says so in the sticky, and
   await sticky.getByRole("button", { name: "メモに下書き" }).click();
   await sticky.getByRole("button", { name: "メモに足す" }).click();
   await expect(sticky.getByRole("alert")).toHaveText(/set_article_note failed/);
+  await expect(draftField(sticky), "it is in the memo already, not to be added twice").toHaveCount(0);
   await memoButton(shell).click();
   const panel = shell.getByRole("complementary", { name: "メモ" });
   await expect(panel.getByRole("alert")).toBeVisible();
