@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { asksLeft, cardsOf, goneOf, stack, type Ask } from "./stickies.ts";
+import { asksLeft, cardsOf, findPassage, goneOf, stack, type Ask } from "./stickies.ts";
 import type { Sticky } from "../api.ts";
 
 /** With a message of each of the ids. */
@@ -136,4 +136,31 @@ test("a held card stays where it is put: those between it and the pinned one giv
     [0, 110, 400],
     "no higher than the column's top leaves",
   );
+});
+
+test("a passage is found in the text nodes as the reader selected it, whitespace apart, starting in the block's own", () => {
+  const texts = ["A first ", "line.\n", "  Then ", "the next.", "After"];
+  assert.deepEqual(findPassage(texts, 4, "first line. Then"), [
+    [0, 2],
+    [2, 6],
+  ]);
+  assert.deepEqual(findPassage(texts, 4, "line.Then the  next."), [
+    [1, 0],
+    [3, 9],
+  ]);
+  assert.deepEqual(
+    findPassage(texts, 2, "line. Then the next. After"),
+    [
+      [1, 0],
+      [4, 5],
+    ],
+    "on into the blocks after",
+  );
+  assert.equal(findPassage(texts, 2, "Then the next."), null, "it starts in another block");
+  assert.equal(findPassage(texts, 4, "first  lines"), null);
+  assert.equal(findPassage(texts, 4, " \n"), null);
+  assert.deepEqual(findPassage(["ab ab"], 1, "ab"), [
+    [0, 0],
+    [0, 2],
+  ]);
 });

@@ -3029,3 +3029,86 @@ test("a follow-up, or a child, that opens below the view moves it no further tha
     expect(await scrollTop(shell)).toBe(top);
   }
 });
+
+const ANIMALS =
+  "Ants build bridges of their own bodies. Bees dance to say where the flowers are. Crows remember the faces of people who were unkind to them. Dolphins call each other by name. Elephants mourn their dead for days.";
+
+/** The passages marked in the text and in answers, as a quote is taken: without the text of buttons, whitespace as one space. */
+const marked = (page: Page) =>
+  page.evaluate(() =>
+    [...(CSS.highlights.get("sticky") ?? [])].map((r) => {
+      const text = (r as Range).cloneContents();
+      text.querySelectorAll("button").forEach((b) => b.remove());
+      return text.textContent.replace(/\s+/g, " ").trim();
+    }),
+  );
+const quotes = async (page: Page) => (await asked(page)).map((c) => c.quote.replace(/\s+/g, " "));
+
+/** The lines from the text to the cards, each as its two ends in the page. */
+const lines = (page: Page) =>
+  page.locator(".sticky-lines").evaluate((svg) => {
+    const o = svg.getBoundingClientRect();
+    const n = "(-?[\\d.e]+)";
+    const each = new RegExp(`M${n} ${n}C${n} ${n} ${n} ${n} ${n} ${n}`, "g");
+    return [...(svg.querySelector("path")!.getAttribute("d") ?? "").matchAll(each)].map((m) => ({
+      from: { x: o.left + Number(m[1]), y: o.top + Number(m[2]) },
+      to: { x: o.left + Number(m[7]), y: o.top + Number(m[8]) },
+    }));
+  });
+
+test("a passage is marked in the text, and beside it a line goes from the text's edge at its first line to the card's", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  // Of no sentence twice, which would have the first marked.
+  await startLong(shell, 1, `['paragraph', '${ANIMALS}', null]`);
+  await scrollTo(shell, paraBlock(80), "center");
+  const p = shell.locator(`${paraBlock(80)} p`);
+  const { x, y } = await boxOf(p);
+  const line = await p.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+  // From the second line into the third.
+  await dragTo(shell, [x + 150, y + line * 1.5], [x + 300, y + line * 2.5]);
+  await bar(shell).getByRole("button", { name: "詳しく", exact: true }).click();
+  await expect(card(shell, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  const [quote] = await quotes(shell);
+  expect(quote.length).toBeGreaterThan(60);
+  expect(await marked(shell)).toEqual([quote]);
+  // One whose passage is not in its block's text any more has its line from the block's first.
+  await askElsewhere(shell, LONG_ID, paraId(24), "not in the text");
+  await expect(cards(shell)).toHaveCount(2);
+  await frames(shell);
+  expect(await marked(shell)).toEqual([quote]);
+
+  const text = await boxOf(shell.locator(".blocks"));
+  const first = await shell.evaluate(() => {
+    const [range] = [...(CSS.highlights.get("sticky") ?? [])].map((r) => r as Range);
+    const r = [...range.getClientRects()].find((r) => r.width > 0)!;
+    return { top: r.top, bottom: r.bottom, left: r.left };
+  });
+  expect(first.left, "not at the paragraph's start").toBeGreaterThan(x + 50);
+  const other = await boxOf(shell.locator(paraBlock(24)));
+  const ends = await lines(shell);
+  expect(ends).toHaveLength(2);
+  // Down the article: the one on the block before first.
+  for (const [i, from] of [{ top: other.y, bottom: other.y + line }, first].entries()) {
+    const sticky = cards(shell).nth(i);
+    const head = await boxOf(sticky.locator(".sticky-h"));
+    expect(ends[i].from.x).toBeCloseTo(text.x + text.width, 0);
+    expect(ends[i].from.y).toBeGreaterThan(from.top);
+    expect(ends[i].from.y).toBeLessThan(from.bottom);
+    expect(ends[i].to.x).toBeCloseTo((await boxOf(sticky)).x, 0);
+    expect(ends[i].to.y).toBeGreaterThan(head.y);
+    expect(ends[i].to.y).toBeLessThan(head.y + head.height);
+  }
+});
+
+test("under its block a card has no line, and its passage is marked; beside the text it has one", async ({ shell }) => {
+  await startNarrow(shell, 3);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "用語", paraBlock(10));
+  await expect(card(shell, "用語").locator(".answer")).toBeVisible();
+  expect(await marked(shell)).toEqual(await quotes(shell));
+  expect(await lines(shell)).toEqual([]);
+  await shell.setViewportSize({ width: 1700, height: 800 });
+  await frames(shell);
+  expect(await lines(shell)).toHaveLength(1);
+  expect(await marked(shell)).toEqual(await quotes(shell));
+});

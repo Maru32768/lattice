@@ -82,6 +82,35 @@ export function cardsOf(saved: Sticky[], asks: Ask[], blocks: { id: number }[]):
 }
 
 /**
+ * Where `quote` is in `texts`, the text nodes one after the other, starting in the first `own` of them: as [node, offset] at
+ * its start and past its end. A selection gives the text with whitespace as it is laid out, so none counts. Of the same text
+ * twice it is the first.
+ */
+export function findPassage(texts: string[], own: number, quote: string): [[number, number], [number, number]] | null {
+  const want = quote.replace(/\s+/g, "");
+  const at: [number, number][] = [];
+  let text = "";
+  let ownEnd = 0;
+  texts.forEach((t, i) => {
+    for (let j = 0; j < t.length; j++) {
+      if (!/\s/.test(t[j]!)) {
+        text += t[j];
+        at.push([i, j]);
+      }
+    }
+    if (i < own) {
+      ownEnd = text.length;
+    }
+  });
+  const i = want ? text.indexOf(want) : -1;
+  if (i < 0 || i >= ownEnd) {
+    return null;
+  }
+  const [node, offset] = at[i + want.length - 1]!;
+  return [at[i]!, [node, offset + 1]];
+}
+
+/**
  * Where the cards go in the column, in order: each at its block's height, or below the card before where it would cover that.
  * For those at the indexes `anchors` it is the cards before that give way, up the column as far as there is room, or as
  * the anchor before them leaves.

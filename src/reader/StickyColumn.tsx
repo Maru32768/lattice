@@ -6,7 +6,7 @@ import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
-import { GAP, ROOM, cardsOf, isFollowUp, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
+import { GAP, ROOM, cardsOf, findPassage, isFollowUp, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
 import { deleteSticky, changeAsk, dropAsk, openAsk, sendAsk, useStickies } from "./useStickies";
 import "./stickies.css";
 
@@ -194,7 +194,83 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   if (Math.abs(moved) >= 0.5) {
     scroller.scrollTop += moved;
   }
+  mark(column, cards, beside, article);
   kept.current = cards.length > 0 ? keep(scroller, scrolledOn ? lineAt(scroller) : line) : null;
+}
+
+/** What is not the text that a passage was selected from. */
+const NOT_SELECTED = "button, textarea, .blk-label, .pop";
+
+/** The passage in `within`'s text that starts in `from`'s, as the reader selected it. */
+function passageIn(from: Element, within: Element, quote: string) {
+  const want = quote.replace(/\s+/g, "").length;
+  const nodes: Text[] = [];
+  let own = -1;
+  let after = 0;
+  const walk = document.createTreeWalker(within, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n instanceof Element ? (n.matches(NOT_SELECTED) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP) : NodeFilter.FILTER_ACCEPT),
+  });
+  walk.currentNode = from;
+  for (let n = walk.nextNode() as Text | null; n && after < want; n = walk.nextNode() as Text | null) {
+    if (own < 0 && !from.contains(n)) {
+      own = nodes.length;
+    }
+    if (own >= 0) {
+      after += n.data.replace(/\s+/g, "").length;
+    }
+    nodes.push(n);
+  }
+  const found = findPassage(
+    nodes.map((n) => n.data),
+    own < 0 ? nodes.length : own,
+    quote,
+  );
+  if (!found) {
+    return null;
+  }
+  const [[start, startAt], [end, endAt]] = found;
+  const range = document.createRange();
+  range.setStart(nodes[start]!, startAt);
+  range.setEnd(nodes[end]!, endAt);
+  return range;
+}
+
+/** The passages of each column's cards. Every Reader's are in the one highlight the page has. */
+const marks = new Map<Element, Range[]>();
+function paint() {
+  CSS.highlights.set("sticky", new Highlight(...[...marks.values()].flat()));
+}
+
+/**
+ * Marks each card's passage, in the text or in the answer it is of. Beside the text a line goes from the text's edge, at the
+ * passage, to the card's: under its block the card is by it.
+ */
+function mark(column: HTMLElement, cards: { el: HTMLElement; block: HTMLElement | null }[], beside: boolean, article: HTMLElement) {
+  const lines = column.nextElementSibling!;
+  const origin = lines.getBoundingClientRect();
+  const ranges: Range[] = [];
+  const paths: string[] = [];
+  for (const { el, block } of cards) {
+    const quote = el.querySelector(".sticky-quote")?.textContent ?? "";
+    const answer = el.dataset.from ? column.querySelector(`.answer[data-message="${el.dataset.from}"]`) : null;
+    const range = answer ? passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
+    if (range) {
+      ranges.push(range);
+    }
+    if (!beside || !block || answer) {
+      continue;
+    }
+    // At its first line, as a card is at its block's first.
+    const from = [...(range?.getClientRects() ?? [])].find((r) => r.width > 0) ?? block.getBoundingClientRect();
+    const head = el.querySelector(".sticky-h")!.getBoundingClientRect();
+    const [x1, y1] = [article.getBoundingClientRect().right - origin.left, from.top + Math.min(from.height, 24) / 2 - origin.top];
+    const [x2, y2] = [el.getBoundingClientRect().left - origin.left, (head.top + head.bottom) / 2 - origin.top];
+    const mid = (x1 + x2) / 2;
+    paths.push(`M${x1} ${y1}C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`);
+  }
+  marks.set(column, ranges);
+  paint();
+  lines.firstElementChild!.setAttribute("d", paths.join(""));
 }
 
 /**
@@ -282,6 +358,13 @@ export function StickyColumn({
     };
   });
   useLayoutEffect(() => {
+    const column = root.current!;
+    return () => {
+      marks.delete(column);
+      paint();
+    };
+  }, []);
+  useLayoutEffect(() => {
     const scroller = root.current!.parentElement!;
     const read = () => {
       const k = kept.current;
@@ -323,39 +406,45 @@ export function StickyColumn({
   };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
-    <aside className="stickies" ref={root} hidden={cards.length === 0 && !error} aria-label={t("stickies.title")} data-pin={pinned ?? undefined}>
-      {error && (
-        <p className="sticky error-text" role="alert">
-          {t("stickies.loadFailed", { error: t.msg(error) })}
-        </p>
-      )}
-      {cards.map((c) => {
-        const spot: Spot = {
-          "data-block": c.blockId ?? undefined,
-          "data-child": c.parent ? true : undefined,
-          "data-pinned": c.key === pinnedCard || undefined,
-          "data-held": held.has(c.key) || undefined,
-          style: { left: INDENT * Math.min(c.depth, DEEPEST) },
-        };
-        return "sticky" in c ? (
-          <SavedCard
-            key={c.key}
-            spot={spot}
-            article={article}
-            sticky={c.sticky}
-            hasChildren={cards.some((child) => child.parent === c.key)}
-            followUp={followUps.get(c.sticky.id)}
-            opened={opened}
-            blocks={blocks}
-            onOpen={onOpen}
-            onCancel={cancel}
-            onSource={onSource}
-          />
-        ) : (
-          <AskCard key={c.key} spot={spot} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={cancel} />
-        );
-      })}
-    </aside>
+    <>
+      <aside className="stickies" ref={root} hidden={cards.length === 0 && !error} aria-label={t("stickies.title")} data-pin={pinned ?? undefined}>
+        {error && (
+          <p className="sticky error-text" role="alert">
+            {t("stickies.loadFailed", { error: t.msg(error) })}
+          </p>
+        )}
+        {cards.map((c) => {
+          const spot: Spot = {
+            "data-block": c.blockId ?? undefined,
+            "data-child": c.parent ? true : undefined,
+            "data-pinned": c.key === pinnedCard || undefined,
+            "data-held": held.has(c.key) || undefined,
+            "data-from": c.parent ? (("sticky" in c ? c.sticky.parent : c.ask.parent) ?? undefined) : undefined,
+            style: { left: INDENT * Math.min(c.depth, DEEPEST) },
+          };
+          return "sticky" in c ? (
+            <SavedCard
+              key={c.key}
+              spot={spot}
+              article={article}
+              sticky={c.sticky}
+              hasChildren={cards.some((child) => child.parent === c.key)}
+              followUp={followUps.get(c.sticky.id)}
+              opened={opened}
+              blocks={blocks}
+              onOpen={onOpen}
+              onCancel={cancel}
+              onSource={onSource}
+            />
+          ) : (
+            <AskCard key={c.key} spot={spot} article={article} ask={c.ask} opened={c.ask.key === opened} onCancel={cancel} />
+          );
+        })}
+      </aside>
+      <svg className="sticky-lines" aria-hidden="true">
+        <path />
+      </svg>
+    </>
   );
 }
 
@@ -365,6 +454,8 @@ interface Spot {
   "data-child": true | undefined;
   "data-pinned": true | undefined;
   "data-held": true | undefined;
+  /** Of a child: the message whose answer its passage is of. */
+  "data-from": number | undefined;
   style: { left: number };
 }
 

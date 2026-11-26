@@ -47,4 +47,12 @@
 /* While the passage to ask about is read from the selection: neither is the block's text. */
 .blocks[data-quoting] :is(.blk-label, .pop) { user-select: none; }
 
-@media print { .stickies { display: none !important; } }
+/* Not the card's own color: a card of a paler one would leave no mark to see. */
+:root { --sticky-mark: var(--acc-ink2); }
+/* A highlight leaves the text's DOM as it is, which the find, the hints and the reading place go by. */
+::highlight(sticky) { text-decoration: underline 2px var(--sticky-mark); text-underline-offset: 3px; }
+/* Its paths are in the scroller's coordinates, from its corner. */
+.sticky-lines { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; overflow-anchor: none; }
+.sticky-lines path { fill: none; stroke: var(--sticky-mark); stroke-width: 1px; opacity: .6; }
+
+@media print { .stickies, .sticky-lines { display: none !important; } ::highlight(sticky) { text-decoration: none; } }
