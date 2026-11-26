@@ -3357,6 +3357,20 @@ for (const narrow of [true, false]) {
   });
 }
 
+test("in a narrow pane a card folded far from the article's end leaves no room below the text", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toBeVisible();
+  await frames(shell);
+  const height = () => doc(shell).evaluate((el) => el.scrollHeight);
+  const [before, by] = [await height(), (await boxOf(sticky)).height];
+  await sticky.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  expect(await height()).toBeCloseTo(before - (by - (await boxOf(sticky)).height), -1);
+});
+
 test("a sticky opened on the text folds those there before it, and has its block's height however tall they were", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
