@@ -221,7 +221,8 @@ fn note_schema() -> serde_json::Value {
 }
 
 /// A draft for the article's memo of what the sticky says, for the reader to change before it goes there. It is sent the
-/// sticky as a follow-up would be, with neither the article nor the memo, and nothing is stored.
+/// sticky and its ancestors with neither the article nor the memo, so they have the whole context budget a follow-up
+/// shares with the article, and nothing is stored.
 pub async fn note_draft<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, id: i64) -> Result<String, String> {
     let (_, levels) = Asked::read(store, id).map_err(err)?.ok_or_else(|| msg!("stickies.gone"))?;
     let user = format!(
