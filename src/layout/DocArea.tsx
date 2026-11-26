@@ -140,6 +140,18 @@ function SplitHandle({ dir, size, next, onSize }: { dir: Dir; size: number; next
   );
 }
 
+/**
+ * A pane's document, or the one before while the next renders nothing yet (its article view still loading): as a browser
+ * keeps the page before, the pane keeps its toolbar rather than going blank for that moment.
+ */
+function KeepLast({ children }: { children: React.ReactNode }) {
+  const [last, setLast] = useState(children);
+  if (children != null && children !== last) {
+    setLast(children);
+  }
+  return children ?? last;
+}
+
 function NodeView({
   n,
   layout,
@@ -253,7 +265,7 @@ function NodeView({
         onTitleDrag={title?.top.has(n.id) ? dragWindow : undefined}
         end={title?.corner === n.id && <WindowControls />}
       />
-      {renderPane(n)}
+      <KeepLast>{renderPane(n)}</KeepLast>
       {/* Over the page stills that stand in for the webviews during a drag. */}
       {body?.pane === n.id && <div className={`drop-zone ${body.zone}`} aria-hidden />}
     </section>

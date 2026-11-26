@@ -913,7 +913,6 @@ export const en = {
   "browserView.add": "Save to library",
   "browserView.addToGroup": "It also goes into the open collection “{name}”.",
   "browserView.loading": "Loading",
-  "browserView.loadingEllipsis": "Loading…",
   "chatPane.cite": "Source {n}: {where}",
   "chatPane.citations": (p) => plural(p.length, "citation", "citations"),
   "chatPane.newChat": "New chat",

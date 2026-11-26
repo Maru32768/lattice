@@ -405,7 +405,16 @@ export function BrowserView({
   // A saved PDF's address means nothing to the user, and its viewer's page is not one to save.
   const pdf = isPdfPage(url);
   const shownUrl = !pdf ? url : saved && !isLocal(saved.original_url) ? saved.original_url : t("browserView.savedPdf");
-  const shown = saved && view && act && view.article.id === saved.id ? view : null;
+  const current = saved && view && act && view.article.id === saved.id ? { view, act } : null;
+  // While the next saved article's view loads, the one before keeps its strip and tools, as its page stays on screen:
+  // dropping them for that moment resized the webview twice.
+  const [kept, setKept] = useState(current);
+  if (current && current.view !== kept?.view) {
+    setKept(current);
+  }
+  const held = current ?? (saved && loading ? kept : null);
+  const shown = held?.view ?? null;
+  const shownAct = held?.act ?? null;
   const copyUrl = () => navigator.clipboard.writeText(url).catch((e: unknown) => onError(String(e)));
   return (
     <div className="doc">
@@ -458,10 +467,10 @@ export function BrowserView({
             <span className="lbl">{t("browserView.indexed")}</span>
           </span>
         )}
-        {shown && act ? (
+        {shown && shownAct ? (
           <ArticleTools
             view={shown}
-            act={act}
+            act={shownAct}
             panel={panel}
             onPanel={togglePanel}
             rerender={
@@ -523,20 +532,19 @@ ${t("browserView.addToGroup", { name: saveGroup })}`
       {/* A strip above the page; the webview shrinks to the placeholder below it. */}
       {summary && shown && !failedOf(shown) && (
         <div className="summary-strip">
-          <Summary view={shown} onSummarize={act!.onSummarize} onSource={(b) => act!.onFocusBlock(b, "summary")} initialOpen={summaryByKey} />
+          <Summary view={shown} onSummarize={shownAct!.onSummarize} onSource={(b) => shownAct!.onFocusBlock(b, "summary")} initialOpen={summaryByKey} />
         </div>
       )}
       <div className="doc-body">
-        {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
         <div ref={host} className="page-host" data-page-key={id}>
-          {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
+          {still && <img className="page-still" src={still} alt="" />}
         </div>
-        {panel === "quiz" && shown && act && (
+        {panel === "quiz" && shown && shownAct && (
           <QuizPanel
             key={shown.article.id}
             view={shown}
-            onSource={(b) => act.onFocusBlock(b, "quiz")}
-            onReviewChanged={act.onReviewChanged}
+            onSource={(b) => shownAct.onFocusBlock(b, "quiz")}
+            onReviewChanged={shownAct.onReviewChanged}
             onClose={closePanel}
           />
         )}
