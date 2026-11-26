@@ -572,7 +572,7 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
             let word = if japanese {
                 after.text.chars().take(4).count()
             } else {
-                after.text.split(' ').next().unwrap_or_default().chars().count()
+                after.text.chars().take_while(|&c| c != ' ' && !joins_without_space(c)).count()
             };
             let left = room - (before.x1 - before.x0);
             let fits = (word as f64 + 2.) * letter <= left;
@@ -3572,6 +3572,14 @@ pub(crate) mod tests {
         ops += &(set(78., 134., 2) + &shown(120., 134., "Docker") + &set(252., 134., 2) + &set(120., 150., 12) + &set(120., 166., 3));
         ops += &(set(78., 186., 2) + &set(120., 186., 5) + &set(252., 186., 2));
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
+        // Items of three, a short one between one to the end of its column and one that starts with a Latin word glued to
+        // its Japanese: the short one's room ends a row.
+        let mut ops = ruled(&[72., 114., 206., 238.], &[100., 120., 172., 224.], "strokes") + &set(78., 114., 2) + &set(120., 114., 2) + &set(212., 114., 2);
+        for (top, latin) in [(120., "USB"), (172., "A4")] {
+            ops += &(set(78., top + 14., 2) + &set(120., top + 14., 8) + &set(212., top + 14., 2) + &set(120., top + 30., 3));
+            ops += &(shown(120., top + 46., latin) + &set(120. + wide(latin), top + 46., 5));
+        }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
         // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
         // larger one set lower: two columns go on onto another's baseline.
         for (size, drop) in [(10., 0.), (12., 1.5), (14., 3.)] {
@@ -3691,6 +3699,15 @@ pub(crate) mod tests {
         // A head whose cell is broken by hand into three lines, none on another column's baseline.
         let lines: &[(f64, &[&str])] = &[(172., &["Item", "Price"]), (184., &["", "per unit"]), (196., &["", "in dollars"]), (214., &["Widget", "12.00"])];
         assert_eq!(texts_of(&grouped(&[72., 222., 382.], &[160., 202., 220.], lines)), ["Item\tPrice per unit in dollars\nWidget\t12.00"]);
+        // A Japanese head over two rows whose descriptions start with a Latin word glued to their Japanese.
+        let kana = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{}> Tj ET\n", 792. - y, &"034B034D034F".repeat(3)[..4 * n]);
+        let mut ops = ruled(&[72., 104., 236., 268.], &[100., 152., 172., 192.], "strokes") + &kana(78., 114., 2) + &kana(110., 114., 2) + &kana(242., 114., 2);
+        ops += &(kana(78., 130., 2) + &shown(110., 130., "USB") + &kana(110. + wide("USB"), 130., 8));
+        ops += &(kana(78., 146., 2) + &shown(110., 146., "API") + &kana(110. + wide("API"), 146., 7) + &kana(242., 146., 2));
+        for y in [166., 186.] {
+            ops += &(kana(78., y, 2) + &kana(110., y, 7) + &kana(242., y, 2));
+        }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
     }
 
     #[test]
