@@ -3129,6 +3129,29 @@ test("under its block a card has no line, and its passage is marked; beside the 
   expect(await marked(shell)).toEqual(await quotes(shell));
 });
 
+test("a passage whose sentence is shown in translation and back is marked again, though nothing changes size", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell, 1, "", true);
+  await shell.locator(".docbar").getByRole("button", { name: "原文", exact: true }).click();
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await expect(card(shell, "詳しく").locator(".answer")).toBeVisible();
+  const passage = await quotes(shell);
+  expect(await marked(shell)).toEqual(passage);
+  const flip = async (shown: number) => {
+    await shell.locator(`${paraBlock(10)} .mk`).click();
+    await expect(shell.locator(`${paraBlock(10)} .sent.tr`)).toHaveCount(shown);
+    await frames(shell);
+  };
+  await flip(1);
+  await flip(0);
+  expect(await marked(shell)).toEqual(passage);
+  const [{ from }] = await lines(shell);
+  const p = await boxOf(shell.locator(`${paraBlock(10)} p`));
+  expect(from.y).toBeGreaterThan(p.y);
+  expect(from.y).toBeLessThan(p.y + p.height);
+});
+
 test("a child's passage is marked in the answer it is from, and a mark goes with its sticky, its answer and the Reader", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);

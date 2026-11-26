@@ -142,7 +142,7 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
     return;
   }
   const article = scroller.querySelector<HTMLElement>(".blocks")!;
-  const cards = (Array.from(column.children) as HTMLElement[]).map((el) => ({ el, block: article.querySelector<HTMLElement>(`#b-${el.dataset.block}`) }));
+  const cards = cardsIn(column, article);
   const beside = cards.length > 0 && scroller.clientWidth >= COLUMN_FROM;
 
   // The browser's scroll anchoring lets go of text whose own styles change, as they do here.
@@ -208,6 +208,9 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
   mark(column, cards, beside, article);
   kept.current = cards.length > 0 ? keep(scroller, scrolledOn ? lineAt(scroller) : line) : null;
 }
+
+const cardsIn = (column: HTMLElement, article: HTMLElement) =>
+  (Array.from(column.children) as HTMLElement[]).map((el) => ({ el, block: article.querySelector<HTMLElement>(`#b-${el.dataset.block}`) }));
 
 /** What is not the text that a passage was selected from. */
 const NOT_SELECTED = "button, textarea, .blk-label, .pop";
@@ -364,9 +367,17 @@ export function StickyColumn({
     for (const card of column.children) {
       own.observe(card);
     }
+    // Text put in place of other text of the same size, as a sentence shown in translation and back, leaves a mark's range
+    // empty and moves nothing that would place the cards again.
+    const text = new MutationObserver(() => {
+      const article = scroller.querySelector<HTMLElement>(".blocks")!;
+      mark(column, cardsIn(column, article), column.hasAttribute("data-beside"), article);
+    });
+    text.observe(column.previousElementSibling!, { childList: true, characterData: true, subtree: true });
     return () => {
       around.disconnect();
       own.disconnect();
+      text.disconnect();
       cancelAnimationFrame(frame);
     };
   });
