@@ -3980,7 +3980,21 @@ test("単語を登録 on a 用語 sticky saves its word in its sentence with wha
   await askAbout(app, "用語", "#b-105");
   await askAbout(app, "用語", "#b-102");
   const on = (block: number) => card(app, "用語").and(app.locator(`[data-block="${block}"]`));
-  await askOn(app, "用語", on(102));
+  // One word, which in the article would be offered.
+  const word = await on(102)
+    .locator(".answer p")
+    .first()
+    .evaluate((p) => {
+      const text = [...p.childNodes].find((n) => n.textContent!.includes("snapshot"))!;
+      const range = document.createRange();
+      range.setStart(text, text.textContent!.indexOf("snapshot"));
+      range.setEnd(text, text.textContent!.indexOf("snapshot") + "snapshot".length);
+      const box = range.getBoundingClientRect();
+      return [box.x + box.width / 2, box.y + box.height / 2] as const;
+    });
+  await app.mouse.dblclick(...word);
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  await expect(child(app, "用語").locator(".sticky-quote")).toHaveText("snapshot");
   for (const sticky of [card(app, "詳しく"), on(105), on(102), child(app, "用語")]) {
     if ((await sticky.getAttribute("data-folded")) != null) {
       await unfold(sticky);
