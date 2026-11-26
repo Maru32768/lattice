@@ -3765,6 +3765,18 @@ pub(crate) mod tests {
         for second in ["100", "API", "\\("] {
             assert_eq!(table([72., 114., 246., 288.], second), Some(3), "{second}");
         }
+        // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
+        // larger one 1.5pt lower: two columns go on onto another's baseline.
+        for (size, drop) in [(10., 0.), (12., 1.5)] {
+            let price = |y: f64, text: &str| sized(195., y + drop, size, text);
+            let mut ops = ruled(&[72., 112., 189., 235.], &[100., 120., 160., 200.], "strokes") + &kana(78., 114., 2) + &kana(118., 114., 2);
+            ops += &kana(195., 114., 2);
+            for (top, last, prices) in [(120., 3, ["100", "250"]), (160., 2, ["300", "80"])] {
+                ops += &(kana(78., top + 14., 2) + &kana(118., top + 14., 6) + &kana(118., top + 30., last));
+                ops += &(price(top + 14., prices[0]) + &price(top + 30., prices[1]));
+            }
+            assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None, "{size}");
+        }
         // With every column as wide as its widest line, a group's widest value comes to the end of its column too.
         assert_eq!(table([72., 104., 236., 268.], "100"), None);
     }
