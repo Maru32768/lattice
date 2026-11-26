@@ -3664,6 +3664,13 @@ pub(crate) mod tests {
         let prefixes: &[&[&str]] =
             &[&["Prefix", "Meaning", "Example"], &["un-", "not", "unhappy"], &["re-", "again", "redo"], &["dis-", "opposite", "disagree"]];
         no_table(&groups(&fitted(prefixes), 12., &[&prefixes[..1], &prefixes[1..3], &prefixes[3..]]));
+        // Japanese lines that wrap in one band, and too few of them to the end of their column in the next.
+        let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
+        let wrapped = [(78., 136., 11), (206., 136., 12), (78., 152., 11), (206., 152., 11), (78., 168., 5), (206., 168., 4)];
+        let cells = [&[(78., 114., 2), (206., 114., 2)][..], &wrapped, &[(78., 196., 11), (206., 196., 12), (78., 212., 3), (206., 212., 2)]].concat();
+        let text: String = cells.iter().map(|&(x, y, n)| set(x, y, n)).collect();
+        let ops = ruled(&[72., 200., 332.], &[100., 120., 180., 220.], "strokes") + &format!("BT /F3 10 Tf {text}ET\n");
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
     }
 
     #[test]
