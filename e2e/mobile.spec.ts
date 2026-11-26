@@ -1016,6 +1016,7 @@ test("a selected word can be saved with its sentence and source", async ({ page 
 test("Japanese or a long selection offers no word", async ({ page }) => {
   await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
+  await expect(page.locator(".sent").getByText("一文目。", { exact: true })).toBeVisible();
   await page.evaluate(() => getSelection()!.selectAllChildren([...document.querySelectorAll(".sent")].find((e) => e.textContent === "一文目。")!));
   await page.waitForTimeout(100);
   await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
