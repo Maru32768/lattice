@@ -900,7 +900,8 @@ mod tests {
         s.set(".config.json", &json!({ "mcpServers": { CLIENT_NAME: { "command": "mine" } } }).to_string());
         assert!(s.agents.connect(&s.store, &r.id).await.unwrap_err().contains("mcp.agentOther"), "the file Claude Code uses");
         s.set(".config.json", "{}");
-        assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false), "that one alone");
+        assert_eq!(s.agents.connect(&s.store, &r.id).await, Ok(true));
+        assert_eq!(calls(), [add(&ours)], "that one alone, with nothing in it");
         s.set(".config.json", "");
         assert_eq!(s.agents.disconnect(&s.store, Target::ClaudeCode).await, Ok(false), "a registration that is left uses it");
         assert!(calls().is_empty());
