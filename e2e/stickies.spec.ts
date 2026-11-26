@@ -3368,6 +3368,7 @@ test("in a narrow pane a card folded far from the article's end leaves no room b
   const [before, by] = [await height(), (await boxOf(sticky)).height];
   await sticky.getByRole("button", { name: "付箋をたたむ" }).click();
   await frames(shell);
+  await expect(sticky).toHaveAttribute("data-folded");
   expect(await height()).toBeCloseTo(before - (by - (await boxOf(sticky)).height), -1);
 });
 
