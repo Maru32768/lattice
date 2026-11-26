@@ -3641,6 +3641,7 @@ test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await scrollTo(shell, paraBlock(10), "center");
   await askMany(shell, LONG_ID, paraId(10), 2);
   await followUp(cards(shell).first()).click();
+  expect(await foldedOnes(shell), "as it is open").toEqual([false, false]);
   await shell.keyboard.press("Escape");
   await askOn(shell, "用語", cards(shell).first());
   await expect(child(shell, "用語").locator(".answer")).toBeVisible();
