@@ -3978,6 +3978,22 @@ test("メモに下書き: the draft of a sticky deleted meanwhile goes to no oth
   await expect(draftField(sticky)).toHaveValue(/^「PostgreSQL implements it with multi-version concurrency control\.」の下書き。/);
 });
 
+test("メモに下書き: a draft is on its own sticky only", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  await askAbout(app, "用語", "#b-103");
+  const [drafted, other] = [card(app, "詳しく"), card(app, "用語")];
+  await expect(other.locator(".answer")).toHaveText(ANSWERED);
+  await unfold(drafted);
+  await drafted.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(drafted)).toHaveValue(DRAFTED);
+  if ((await other.getAttribute("data-folded")) != null) {
+    await unfold(other);
+  }
+  await expect(other.getByRole("button", { name: "メモに下書き" })).toBeVisible();
+  await expect(draftField(other)).toHaveCount(0);
+});
+
 test("メモに下書き: the memo panel of another article in another pane keeps its own text", async ({ app }) => {
   await app.setViewportSize({ width: 2400, height: 1000 });
   await openSnapshot(app);
