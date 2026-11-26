@@ -3978,6 +3978,29 @@ test("メモに下書き: the draft of a sticky deleted meanwhile goes to no oth
   await expect(draftField(sticky)).toHaveValue(/^「PostgreSQL implements it with multi-version concurrency control\.」の下書き。/);
 });
 
+test("メモに下書き: the memo panel of another article in another pane keeps its own text", async ({ app }) => {
+  await app.setViewportSize({ width: 2400, height: 1000 });
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const sticky = card(app, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  await app.getByRole("button", { name: "右に分割" }).click();
+  await expect(app.locator(".dpane")).toHaveCount(2);
+  const other = app.locator(".dpane").nth(1);
+  await (await listRow(app, titleOf(LONG_ID))).click();
+  await expect(other.locator(".art-title")).toHaveText(titleOf(LONG_ID));
+  await other.getByRole("button", { name: "メモ", exact: true }).click();
+  await memoField(app).fill("長い記事のメモ");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect(memoField(app)).toHaveValue("長い記事のメモ");
+  expect(await callsOf(app, "set_article_note")).toEqual([
+    { id: LONG_ID, body: "長い記事のメモ" },
+    { id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED) },
+  ]);
+});
+
 test("単語を登録 on a 用語 sticky saves its word in its sentence with what the sticky says, which the word list shows", async ({ app }) => {
   await openSnapshot(app);
   await selectWord(app, 106, "snapshot");
