@@ -3534,6 +3534,23 @@ test("after a fold of the reader's an answer comes folded, and an ask on the tex
   expect(await foldedOnes(shell)).toEqual([false, true]);
 });
 
+test("a follow-up being written stays as its sticky folds and unfolds", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askMany(shell, LONG_ID, paraId(10), 1);
+  const sticky = cards(shell).first();
+  await followUp(sticky).click();
+  await followUpField(sticky).fill("half a follow-up");
+  await askAbout(shell, "質問", paraBlock(12));
+  await expect(sticky).toHaveAttribute("data-folded");
+  await field(shell).press("Escape");
+  await expect(followUpField(sticky)).toHaveValue("half a follow-up");
+  await sticky.getByRole("button", { name: "付箋をたたむ" }).click();
+  await unfold(sticky);
+  await expect(followUpField(sticky)).toHaveValue("half a follow-up");
+});
+
 test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
