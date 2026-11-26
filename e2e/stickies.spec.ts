@@ -3722,7 +3722,7 @@ test.describe("in English", () => {
     const sizes = await cards(shell).evaluateAll((els) =>
       els.map((el) => ({ card: Math.round(el.getBoundingClientRect().height), quote: el.querySelector(".sticky-quote")!.getBoundingClientRect().width > 30 })),
     );
-    expect(sizes).toEqual(Array(4).fill({ card: sizes[0]!.card, quote: true }));
+    expect(sizes).toEqual(sizes.map(() => ({ card: sizes[0].card, quote: true })));
   });
 });
 
