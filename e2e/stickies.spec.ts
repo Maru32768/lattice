@@ -463,6 +463,27 @@ test("a follow-up's answer that comes after a list with another window's later o
   await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
 });
 
+test("a follow-up's answer that comes late goes to its own sticky, not to another with more answers", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eLate = ["sticky_follow_up"]));
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askElsewhere(shell, SNAPSHOT_ID, 102, "first");
+  await askElsewhere(shell, SNAPSHOT_ID, 103, "second");
+  void invoke(shell, "sticky_follow_up", { id: 1, question: "one" });
+  void invoke(shell, "sticky_follow_up", { id: 1, question: "two" });
+  await expect(cards(shell).first().locator(".answer")).toHaveCount(3);
+  await followUp(cards(shell).nth(1)).click();
+  await followUpField(shell).fill("here");
+  await shell.keyboard.press("Control+Enter");
+  await expect(cards(shell).nth(1).getByRole("status")).toHaveCount(1);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up", -1));
+  await expect(cards(shell).getByRole("status")).toHaveCount(0);
+  await frames(shell);
+  await expect(cards(shell).locator(".sticky-quote")).toHaveText(["first", "second"]);
+  await expect(cards(shell).nth(1).locator(".sticky-q")).toHaveText(["here"]);
+  await shell.evaluate(() => window.__e2e.release("sticky_follow_up"));
+});
+
 test("a sticky saved under the id of one deleted elsewhere shows as itself before the list after the deletion comes", async ({ shell }) => {
   await shell.addInitScript(() => {
     window.__e2eHold = ["sticky_ask"];
