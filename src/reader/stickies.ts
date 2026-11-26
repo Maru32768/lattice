@@ -85,14 +85,18 @@ export function cardsOf(saved: Sticky[], asks: Ask[], blocks: { id: number }[]):
  * Where `quote` is in `texts`, the text nodes one after the other, starting in the first `own` of them: as [node, offset] at
  * its start and past its end. A selection gives the text with whitespace as it is laid out, so none counts. Of the same text
  * twice it is the first, unless that starts or ends inside a word and another does not: a term selected is often part of others.
+ * A word does not go on into a node `apart` from the one before, as one in another cell or block: no space is between them.
  */
-export function findPassage(texts: string[], own: number, quote: string): [[number, number], [number, number]] | null {
+export function findPassage(texts: string[], own: number, quote: string, apart: boolean[] = []): [[number, number], [number, number]] | null {
   const want = quote.replace(/\s+/g, "");
   const full: [number, number][] = [];
   /** Where in `full` each character of `text` is. */
   const at: number[] = [];
   let text = "";
   texts.forEach((t, i) => {
+    if (apart[i]) {
+      full.push([i, -1]);
+    }
     for (let j = 0; j < t.length; j++) {
       if (!/\s/.test(t[j]!)) {
         text += t[j];

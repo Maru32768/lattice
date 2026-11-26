@@ -200,3 +200,23 @@ test("a passage of words is found where it is whole words before where it starts
     "nor by a mark that Japanese shares with no one script",
   );
 });
+
+test("a word does not go on from one text node to the next one set apart from it, as in another cell or block", () => {
+  const cells = ["Primitive", "Use", "lock", "Guard a resource with a lock."];
+  assert.deepEqual(findPassage(cells, 4, "lock", [false, true, true, true]), [
+    [2, 0],
+    [2, 4],
+  ]);
+  assert.deepEqual(findPassage(["Deadlocks and the lock", "When two threads wait."], 1, "lock", [false, true]), [
+    [0, 18],
+    [0, 22],
+  ]);
+  assert.deepEqual(
+    findPassage(["Dead", "locks and the lock"], 2, "lock", [false, false]),
+    [
+      [1, 14],
+      [1, 18],
+    ],
+    "inline, as a link in a word",
+  );
+});

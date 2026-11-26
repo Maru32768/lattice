@@ -239,10 +239,12 @@ function passageIn(from: Element, within: Element, quote: string) {
     }
     nodes.push(n);
   }
+  const boxes = nodes.map(boxOf);
   const found = findPassage(
     nodes.map((n) => n.data),
     own,
     quote,
+    boxes.map((box, i) => i > 0 && box !== boxes[i - 1]),
   );
   if (!found) {
     return null;
@@ -252,6 +254,15 @@ function passageIn(from: Element, within: Element, quote: string) {
   range.setStart(nodes[start]!, startAt);
   range.setEnd(nodes[end]!, endAt);
   return range;
+}
+
+/** The nearest element of `node`'s that is not laid out in a line with the text around it. */
+function boxOf(node: Node) {
+  let el = node.parentElement!;
+  while (el.parentElement && getComputedStyle(el).display.startsWith("inline")) {
+    el = el.parentElement;
+  }
+  return el;
 }
 
 /** The passages of each column's cards. Every Reader's are in the one highlight the page has. */

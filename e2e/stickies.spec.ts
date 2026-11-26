@@ -3188,6 +3188,20 @@ test("a child's passage is marked in the answer it is from, and a mark goes with
   await expect.poll(() => marked(shell)).toEqual([root]);
 });
 
+test("a term alone in a table's cell is marked there, not where it is a word of a later cell", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  const rows = [
+    ["Primitive", "Use"],
+    ["lock", "Guard a resource with a lock."],
+  ];
+  await startLong(shell, 1, `['table', ${JSON.stringify(rows.flat().join(" "))}, null, { rows: ${JSON.stringify(rows)} }]`);
+  await askElsewhere(shell, LONG_ID, paraId(80), "lock");
+  await expect(cards(shell)).toHaveCount(1);
+  await frames(shell);
+  const at = await shell.evaluate(() => [...(CSS.highlights.get("sticky") ?? [])].map((r) => (r as Range).startContainer.parentElement!.textContent));
+  expect(at).toEqual(["lock"]);
+});
+
 test("a passage over two paragraphs is marked over both, and the text's DOM is as it was", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);
