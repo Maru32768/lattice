@@ -3244,6 +3244,41 @@ test("a sticky folds to a line by its label and unfolds, and folded for one aske
   expect(await foldedOnes(shell)).toEqual([true, false]);
 });
 
+for (const narrow of [true, false]) {
+  test(`a card folded at the article's end moves no text${narrow ? ", in a narrow pane" : ""}, and one that goes takes the view up`, async ({ shell }) => {
+    if (narrow) {
+      await startNarrow(shell);
+    } else {
+      await shell.setViewportSize({ width: 1500, height: 900 });
+      await startLong(shell);
+    }
+    const toEnd = async () => {
+      await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
+      await frames(shell);
+    };
+    await toEnd();
+    await askAbout(shell, "詳しく", paraBlock(79));
+    const sticky = card(shell, "詳しく");
+    await expect(sticky.locator(".answer")).toBeVisible();
+    await toEnd();
+    const text = async () => (await boxOf(shell.locator(paraBlock(78)))).y;
+    const before = await text();
+    await sticky.getByRole("button", { name: "付箋をたたむ" }).click();
+    await frames(shell);
+    expect(await text()).toBeCloseTo(before, 0);
+    await unfold(sticky);
+    await frames(shell);
+    expect(await text()).toBeCloseTo(before, 0);
+    // A sticky that goes leaves no room for the view to stay in.
+    const end = await scrollTop(shell);
+    await sticky.getByRole("button", { name: "付箋を削除" }).click();
+    await shell.getByRole("alertdialog").getByRole("button", { name: "削除" }).click();
+    await expect(cards(shell)).toHaveCount(0);
+    await frames(shell);
+    expect(await scrollTop(shell)).toBeLessThan(end - 100);
+  });
+}
+
 test("a sticky opened on the text folds those there before it, and has its block's height however tall they were", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   await startLong(shell);

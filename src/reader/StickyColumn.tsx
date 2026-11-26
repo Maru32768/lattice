@@ -186,7 +186,12 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
     }
     return { ...s, height: talls.get(el) ?? s.height };
   });
-  column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(unfolded), unfolded), viewEnd))}px`);
+  // Under the blocks, what a card folds by comes off the text's end.
+  const folds = unfolded.reduce((px, u, i) => px + u.height - spots[i]!.height, 0);
+  const end = beside
+    ? Math.max(endOf(tops), Math.min(endOf(stack(unfolded), unfolded), viewEnd))
+    : Math.min(column.previousElementSibling!.getBoundingClientRect().bottom - top + folds, viewEnd);
+  column.style.setProperty("--sticky-end", `${end}px`);
   cards.forEach(({ el }, i) => {
     el.style.top = `${tops[i]}px`;
     if (held(el)) {
