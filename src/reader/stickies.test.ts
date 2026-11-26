@@ -160,3 +160,35 @@ test("a passage is found in the text nodes as the reader selected it, whitespace
     [0, 2],
   ]);
 });
+
+test("a passage of words is found where it is whole words before where it starts or ends inside one", () => {
+  assert.deepEqual(findPassage(["Deadlocks happen when a lock is held."], 1, "lock"), [
+    [0, 24],
+    [0, 28],
+  ]);
+  assert.deepEqual(findPassage(["This is the thesis."], 1, "is"), [
+    [0, 5],
+    [0, 7],
+  ]);
+  assert.deepEqual(
+    findPassage(["Bathe cats, not ", "the cat."], 2, "the cat"),
+    [
+      [1, 0],
+      [1, 7],
+    ],
+    "across text nodes",
+  );
+  assert.deepEqual(findPassage(["Locks"], 1, "lock"), null, "case as selected");
+  assert.deepEqual(findPassage(["Deadlocks"], 1, "lock"), [
+    [0, 4],
+    [0, 8],
+  ]);
+  assert.deepEqual(
+    findPassage(["デッドロックは、ロック"], 1, "ロック"),
+    [
+      [0, 3],
+      [0, 6],
+    ],
+    "Japanese, which has no spaces to tell a word's edge by",
+  );
+});

@@ -84,27 +84,40 @@ export function cardsOf(saved: Sticky[], asks: Ask[], blocks: { id: number }[]):
 /**
  * Where `quote` is in `texts`, the text nodes one after the other, starting in the first `own` of them: as [node, offset] at
  * its start and past its end. A selection gives the text with whitespace as it is laid out, so none counts. Of the same text
- * twice it is the first.
+ * twice it is the first, unless that starts or ends inside a word and another does not: a term selected is often part of others.
  */
 export function findPassage(texts: string[], own: number, quote: string): [[number, number], [number, number]] | null {
   const want = quote.replace(/\s+/g, "");
-  const at: [number, number][] = [];
+  const full: [number, number][] = [];
+  /** Where in `full` each character of `text` is. */
+  const at: number[] = [];
   let text = "";
   texts.forEach((t, i) => {
     for (let j = 0; j < t.length; j++) {
       if (!/\s/.test(t[j]!)) {
         text += t[j];
-        at.push([i, j]);
+        at.push(full.length);
       }
+      full.push([i, j]);
     }
   });
-  const i = want ? text.indexOf(want) : -1;
-  if (i < 0 || at[i]![0] >= own) {
+  const found: number[] = [];
+  for (let i = want ? text.indexOf(want) : -1; i >= 0 && full[at[i]!]![0] < own; i = text.indexOf(want, i + 1)) {
+    found.push(i);
+  }
+  const charAt = (k: number) => (full[k] ? texts[full[k][0]]![full[k][1]] : undefined);
+  const last = (i: number) => at[i + want.length - 1]!;
+  const whole = (i: number) => !(inWord(charAt(at[i]! - 1)) && inWord(want[0])) && !(inWord(want.at(-1)) && inWord(charAt(last(i) + 1)));
+  const i = found.find(whole) ?? found[0];
+  if (i == null) {
     return null;
   }
-  const [node, offset] = at[i + want.length - 1]!;
-  return [at[i]!, [node, offset + 1]];
+  const [node, offset] = full[last(i)]!;
+  return [full[at[i]!]!, [node, offset + 1]];
 }
+
+/** Japanese is written with no spaces between its words, so there a word's edge cannot be told. */
+const inWord = (c: string | undefined) => c != null && /[\p{L}\p{N}_]/u.test(c) && !/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]/u.test(c);
 
 /**
  * Where the cards go in the column, in order: each at its block's height, or below the card before where it would cover that.
