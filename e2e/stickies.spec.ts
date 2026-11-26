@@ -75,6 +75,8 @@ const asked = async (page: Page) =>
 
 const ANSWERED = /選んだ箇所の説明です/;
 
+const unfold = (sticky: Locator) => sticky.getByRole("button", { name: "付箋を広げる" }).click();
+
 const boxOf = async (l: Locator) => (await l.boundingBox())!;
 
 const selected = (page: Page) => page.evaluate(() => getSelection()!.toString().trim().replace(/\s+/g, " "));
@@ -352,6 +354,8 @@ test("a card that waits survives leaving the article, and an answer that comes m
   await open(shell, LONG_ID);
   await shell.evaluate(() => window.__e2e.release("sticky_ask", 1));
   await open(shell, SNAPSHOT_ID);
+  // Folded for the one asked after it.
+  await unfold(card(shell, "詳しく"));
   await expect(card(shell, "詳しく").locator(".answer")).toHaveText(ANSWERED);
   await expect(card(shell, "用語").getByRole("status")).toBeVisible();
   await shell.evaluate(() => window.__e2e.release("sticky_ask"));
@@ -614,7 +618,7 @@ test("the card just asked is at its block's height, and stays there with its ans
   // The next one takes the place.
   await askAbout(shell, "質問", paraBlock(33));
   expect(Math.abs(await off(7, paraBlock(33)))).toBeLessThan(1);
-  expect(await off(6, paraBlock(32))).toBeLessThan(0);
+  await expect(cards(shell).nth(6)).toHaveAttribute("data-folded");
   expect(await apart()).toBe(true);
   expect(await scrollTop(shell)).toBe(top);
   await shell.keyboard.press("Escape");
@@ -1421,10 +1425,12 @@ test("closing a question on the last paragraph, in a narrow pane, gives the view
   await doc(shell).evaluate((el) => (el.scrollTop = el.scrollHeight));
   await frames(shell);
   const top = await scrollTop(shell);
+  const text = async () => (await boxOf(shell.locator(paraBlock(79)))).y;
+  const before = await text();
   await askAbout(shell, "質問", paraBlock(79));
   await expect(field(shell)).toBeFocused();
   await frames(shell);
-  expect(await scrollTop(shell)).toBeGreaterThan(top + 50);
+  expect(await text(), "the field comes into view").toBeLessThan(before - 50);
   await shell.keyboard.press("Escape");
   await expect(cards(shell)).toHaveCount(1);
   await frames(shell);
@@ -2680,6 +2686,7 @@ async function startCrowded(shell: Page) {
     await shell.evaluate(() => window.__e2e.release("sticky_ask"));
     await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
   }
+  await unfold(cards(shell).first());
   const off = async (nth: number, block: number) => (await boxOf(cards(shell).nth(nth))).y - (await boxOf(shell.locator(paraBlock(block)))).y;
   expect(await off(0, 30), "gave way").toBeLessThan(-20);
   expect(Math.abs(await off(1, 31))).toBeLessThan(1);
@@ -2745,6 +2752,8 @@ test("a child, and a follow-up, move neither the cards above them nor the text a
   await scrollTo(shell, paraBlock(32), "center");
   await askAbout(shell, "質問", paraBlock(32));
   expect(Math.abs(await off(4, 32))).toBeLessThan(1);
+  await unfold(parent);
+  await unfold(child(shell, "用語"));
   // Then a question on the first child, and one in it, move neither it nor its parent, which no ask on them has held under
   // this pin yet. Scrolled to leave the question's field in view.
   const first = await boxOf(child(shell, "用語"));
@@ -2849,6 +2858,9 @@ async function startTall(shell: Page) {
     await release(shell, "sticky_ask")();
     await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
   }
+  for (let i = 0; i < 3; i++) {
+    await unfold(cards(shell).nth(i));
+  }
   await frames(shell);
 }
 
@@ -2866,12 +2878,14 @@ test("cards asked on stay where they were as what is asked on them is closed, in
   await cancel(at(2));
 
   await askAbout(shell, "質問", paraBlock(32));
+  await unfold(at(1));
   await followUp(at(1)).click();
   await staysStill(shell, 1, [() => cancel(cards(shell).last())], 31);
   await cancel(at(1));
   await askAbout(shell, "用語", paraBlock(32));
   await release(shell, "sticky_ask")();
   await expect(cards(shell)).toHaveCount(5);
+  await unfold(at(1));
   await frames(shell);
   await followUp(at(1)).click();
   await staysStill(shell, 1, [() => invoke(shell, "delete_sticky", { id: 5 }), () => expect(cards(shell)).toHaveCount(4)], 31);
@@ -3056,6 +3070,8 @@ const lines = (page: Page) =>
     }));
   });
 
+const foldedOnes = (page: Page) => cards(page).evaluateAll((els) => els.map((el) => el.hasAttribute("data-folded")));
+
 test("a passage is marked in the text, and beside it a line goes from the text's edge at its first line to the card's", async ({ shell }) => {
   await shell.setViewportSize({ width: 1500, height: 900 });
   // Of no sentence twice, which would have the first marked.
@@ -3111,4 +3127,142 @@ test("under its block a card has no line, and its passage is marked; beside the 
   await frames(shell);
   expect(await lines(shell)).toHaveLength(1);
   expect(await marked(shell)).toEqual(await quotes(shell));
+});
+
+test("a child's passage is marked in the answer it is from, and a mark goes with its sticky, its answer and the Reader", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const parent = card(shell, "詳しく");
+  await expect(parent.locator(".answer")).toBeVisible();
+  await askOn(shell, "用語", parent);
+  await expect(child(shell, "用語").locator(".answer")).toBeVisible();
+  const [root, of] = await quotes(shell);
+  expect(of, "without the number of its citation").not.toContain("[1]");
+  expect(await marked(shell)).toEqual([root, of]);
+  expect(await lines(shell), "a child has none").toHaveLength(1);
+  await parent.getByRole("button", { name: "付箋をたたむ" }).click();
+  await frames(shell);
+  expect(await marked(shell)).toEqual([root]);
+  await unfold(parent);
+  await frames(shell);
+  expect(await marked(shell)).toEqual([root, of]);
+  await invoke(shell, "delete_sticky", { id: 2 });
+  await expect(cards(shell)).toHaveCount(1);
+  await expect.poll(() => marked(shell)).toEqual([root]);
+  await open(shell, SNAPSHOT_ID);
+  expect(await marked(shell)).toEqual([]);
+  await open(shell, LONG_ID);
+  await expect.poll(() => marked(shell)).toEqual([root]);
+});
+
+test("a sticky folds to a line by its label and unfolds, and folded for one asked below, above the view, moves no text", async ({ shell }) => {
+  await startNarrow(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  const sticky = card(shell, "詳しく");
+  await expect(sticky.locator(".answer")).toBeVisible();
+  const tall = (await boxOf(sticky)).height;
+  const fold = sticky.getByRole("button", { name: "付箋をたたむ" });
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  const at = (await boxOf(sticky)).y;
+  await fold.click();
+  await frames(shell);
+  await expect(sticky.locator(".answer")).toHaveCount(0);
+  await expect(followUp(sticky)).toHaveCount(0);
+  await expect(sticky.getByRole("button", { name: "付箋を広げる" })).toHaveAttribute("aria-expanded", "false");
+  expect((await boxOf(sticky)).y).toBeCloseTo(at, 0);
+  expect((await boxOf(sticky)).height).toBeLessThan(40);
+  const head = await boxOf(sticky.locator(".sticky-h"));
+  const quote = await boxOf(sticky.locator(".sticky-quote"));
+  expect(quote.y, "beside the label").toBeGreaterThanOrEqual(head.y);
+  expect(quote.y + quote.height).toBeLessThanOrEqual(head.y + head.height);
+  await unfold(sticky);
+  await frames(shell);
+  await expect(sticky.locator(".answer")).toHaveText(ANSWERED);
+  expect((await boxOf(sticky)).height).toBeCloseTo(tall, 0);
+
+  // The card in view no more.
+  await scrollTo(shell, paraBlock(14), "start");
+  await doc(shell).evaluate((el) => (el.scrollTop -= 100));
+  await frames(shell);
+  const text = async () => (await boxOf(shell.locator(paraBlock(14)))).y;
+  const before = await text();
+  await askAbout(shell, "用語", paraBlock(14));
+  await expect(card(shell, "用語").locator(".answer")).toBeVisible();
+  await frames(shell);
+  await expect(sticky).toHaveAttribute("data-folded");
+  expect(await text()).toBeCloseTo(before, 0);
+
+  // Another window's sticky that gets its id once it is gone is not folded.
+  await card(shell, "用語").getByRole("button", { name: "付箋をたたむ" }).click();
+  await invoke(shell, "delete_sticky", { id: 2 });
+  await expect(cards(shell)).toHaveCount(1);
+  expect(await askElsewhere(shell, LONG_ID, paraId(10))).toMatchObject({ id: 2 });
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell)).toEqual([true, false]);
+});
+
+test("a sticky opened on the text folds those there before it, and has its block's height however tall they were", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  const off = async (nth: number, block: number) => (await boxOf(cards(shell).nth(nth))).y - (await boxOf(shell.locator(paraBlock(block)))).y;
+  for (let i = 0; i < 7; i++) {
+    await askAbout(shell, "詳しく", paraBlock(i));
+    await expect(cards(shell).nth(i).locator(".answer")).toBeVisible();
+    await frames(shell);
+    expect(Math.abs(await off(i, i)), `the ${i}th`).toBeLessThan(1);
+  }
+  expect(await foldedOnes(shell)).toEqual([true, true, true, true, true, true, false]);
+  const boxes = await Promise.all((await cards(shell).all()).map(boxOf));
+  expect(boxes.slice(1).every((b, i) => b.y >= boxes[i].y + boxes[i].height)).toBe(true);
+});
+
+test("an answer that comes after another is opened on the text comes folded, and one sent after that does not", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく")).toHaveAttribute("data-folded");
+  await askAbout(shell, "用語", paraBlock(14));
+  await field(shell).fill("なぜ？");
+  await field(shell).press("Control+Enter");
+  await expect.poll(async () => (await asked(shell)).length).toBe(3);
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "質問").locator(".answer")).toBeVisible();
+  await expect(card(shell, "用語").locator(".answer")).toBeVisible();
+  expect(await foldedOnes(shell)).toEqual([true, false, false]);
+});
+
+test("an ask on the text closed unsent unfolds what it folded, unless one has been folded or unfolded since", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askMany(shell, LONG_ID, paraId(10), 2);
+  await askAbout(shell, "質問", paraBlock(12));
+  expect(await foldedOnes(shell)).toEqual([true, true, false]);
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell)).toEqual([false, false]);
+  await askAbout(shell, "質問", paraBlock(12));
+  await unfold(cards(shell).first());
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  expect(await foldedOnes(shell)).toEqual([false, true]);
+});
+
+test("a follow-up, and a child, fold no other sticky", async ({ shell }) => {
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(10), "center");
+  await askMany(shell, LONG_ID, paraId(10), 2);
+  await followUp(cards(shell).first()).click();
+  await shell.keyboard.press("Escape");
+  await askOn(shell, "用語", cards(shell).first());
+  await expect(child(shell, "用語").locator(".answer")).toBeVisible();
+  expect(await foldedOnes(shell)).toEqual([false, false, false]);
 });

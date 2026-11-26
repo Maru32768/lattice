@@ -692,6 +692,8 @@ export const en = {
   "stickies.followUp": "Ask a follow-up",
   "stickies.followUpLabel": "Follow-up question on the sticky",
   "stickies.followUpPlaceholder": "Ask a follow-up on this sticky…",
+  "stickies.fold": "Fold the sticky",
+  "stickies.unfold": "Unfold the sticky",
   "stickies.delete": "Delete the sticky",
   "stickies.confirmDelete": "Delete the sticky?",
   "stickies.deleteDesc": "Its questions and answers go with it. This cannot be undone.",

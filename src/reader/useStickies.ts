@@ -8,11 +8,17 @@ interface Stickies {
   asks: Ask[];
   /** The stickies that have the answers to asks of this window, by the ask's key. */
   answers: ReadonlyMap<number, number>;
+  /** Those folded in this window, by `isSame`. */
+  folded: Sticky[];
+  /** The key of the last ask opened on the article's text, which folds the stickies there before it. */
+  latest: number;
+  /** As the last of those found them, and what it folded: closed unsent, it unfolds them, unless one has been since. */
+  undo: { ask: number; latest: number; folded: Sticky[]; made: Sticky[] } | null;
   /** Why the saved ones could not be read. */
   error: string | null;
 }
 
-const NONE: Stickies = { saved: [], asks: [], answers: new Map(), error: null };
+const NONE: Stickies = { saved: [], asks: [], answers: new Map(), folded: [], latest: 0, undo: null, error: null };
 // The Reader unmounts when another article, tab or screen is shown: what was asked outlives it here, by article id, and an
 // answer that comes meanwhile is put here too.
 const articles = new Map<number, Stickies>();
@@ -67,7 +73,9 @@ export const changeAsk = (article: number, key: number, change: { question: stri
   put(article, { asks: of(article).asks.map((a) => (a.key === key ? { ...a, ...change } : a)) });
 
 export function dropAsk(article: number, key: number) {
-  put(article, { asks: of(article).asks.filter((a) => a.key !== key) });
+  const { asks, folded, undo } = of(article);
+  const back = undo?.ask === key ? { latest: undo.latest, undo: null, ...(folded === undo.made && { folded: undo.folded }) } : {};
+  put(article, { asks: asks.filter((a) => a.key !== key), ...back });
 }
 
 function answerTo(article: number, ask: Ask) {
@@ -82,10 +90,11 @@ function answerTo(article: number, ask: Ask) {
 /** Sends it; the answer takes its place. One that failed can be sent again. */
 export async function sendAsk(article: number, ask: Ask) {
   const { key } = ask;
+  const { latest } = of(article);
   changeAsk(article, key, { step: "pending" });
   try {
     const sticky = await answerTo(article, ask);
-    const { saved, asks, answers } = of(article);
+    const { saved, asks, answers, folded } = of(article);
     // One that a list read since it was stored has is as new, or has another window's follow-up already: a sticky only gets
     // more messages.
     const newest = saved.find((s) => isSame(s, sticky) && s.messages.length >= sticky.messages.length) ?? sticky;
@@ -93,6 +102,8 @@ export async function sendAsk(article: number, ask: Ask) {
       saved: [...saved.filter((s) => s.id !== sticky.id), newest].toSorted((a, b) => a.id - b.id),
       asks: asks.filter((a) => a.key !== key),
       answers: new Map(answers).set(key, sticky.id),
+      // Had it been here as another was opened on the text, it would have folded then.
+      folded: !isFollowUp(ask) && of(article).latest !== latest ? [...folded, newest] : folded,
     });
   } catch (e) {
     changeAsk(article, key, { step: "failed", error: String(e) });
@@ -103,11 +114,20 @@ let keys = 0;
 /** Asks about a passage at once, or opens a card, or in a sticky, to write the question. Returns the ask's key. */
 export function openAsk(article: number, about: (Passage & { kind: StickyKind }) | { sticky: number }): number {
   const ask: Ask = { ...about, key: ++keys, question: "", step: "writing" };
-  put(article, { asks: [...of(article).asks, ask] });
+  const { asks, saved, folded, latest } = of(article);
+  // The stickies there make room for it at its block's height.
+  const made = [...saved];
+  const room = !isFollowUp(ask) && ask.parent == null ? { folded: made, latest: ask.key, undo: { ask: ask.key, latest, folded, made } } : {};
+  put(article, { asks: [...asks, ask], ...room });
   if (!isFollowUp(ask) && ask.kind !== "question") {
     void sendAsk(article, ask);
   }
   return ask.key;
+}
+
+export function foldSticky(article: number, sticky: Sticky, fold: boolean) {
+  const others = of(article).folded.filter((s) => !isSame(s, sticky));
+  put(article, { folded: fold ? [...others, sticky] : others });
 }
 
 export async function deleteSticky(article: number, id: number) {

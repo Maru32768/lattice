@@ -682,6 +682,8 @@ export const ja = {
   "stickies.followUp": "続けて質問",
   "stickies.followUpLabel": "付箋への続きの質問",
   "stickies.followUpPlaceholder": "この付箋について続けて質問…",
+  "stickies.fold": "付箋をたたむ",
+  "stickies.unfold": "付箋を広げる",
   "stickies.delete": "付箋を削除",
   "stickies.confirmDelete": "付箋を削除しますか？",
   "stickies.deleteDesc": "質問と回答も消えます。元に戻せません。",

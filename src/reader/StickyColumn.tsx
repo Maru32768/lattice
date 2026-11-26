@@ -6,8 +6,8 @@ import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
-import { GAP, ROOM, cardsOf, findPassage, isFollowUp, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
-import { deleteSticky, changeAsk, dropAsk, openAsk, sendAsk, useStickies } from "./useStickies";
+import { GAP, ROOM, cardsOf, findPassage, isFollowUp, isSame, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
+import { deleteSticky, changeAsk, dropAsk, foldSticky, openAsk, sendAsk, useStickies } from "./useStickies";
 import "./stickies.css";
 
 /** A pane narrower than this has no room for a column beside the text. */
@@ -126,6 +126,8 @@ function lineOf(k: Kept | null, scroller: HTMLElement): Pick<Kept, "line" | "off
 const offs = new WeakMap<Element, number>();
 /** The pin (the column's `data-pin`) that a card came to be held under: it stays held under it as what was asked on it closes. */
 const holds = new WeakMap<Element, string>();
+/** How tall a card was when it was last placed unfolded. */
+const talls = new WeakMap<Element, number>();
 
 /**
  * Puts the cards beside their blocks, or under them in a narrow pane, where the text makes room. The text at the view's top
@@ -169,13 +171,21 @@ function place(column: HTMLElement, kept: RefObject<Kept | null>, room = true) {
     at: el.hasAttribute("data-child") ? 0 : (beside ? (block?.getBoundingClientRect().top ?? top) : under(block)) - top,
     height: el.offsetHeight,
   }));
-  const endOf = (tops: number[]) => Math.max(0, ...tops.map((at, i) => at + spots[i]!.height)) + END;
+  const endOf = (tops: number[], of = spots) => Math.max(0, ...tops.map((at, i) => at + of[i]!.height)) + END;
   const pin = column.dataset.pin ?? "";
   const held = (el: HTMLElement) => offs.has(el) && (el.hasAttribute("data-held") || holds.get(el) === pin);
   const tops = beside ? topsBeside(cards, spots, held) : stack(spots);
-  // Cards that give way to the pinned one do not take a view at the column's end up with them, where it will be.
+  // Cards that give way to the pinned one, or fold, do not take a view at the column's end up with them, where it will be.
   const viewEnd = scroller.getBoundingClientRect().top + scroller.clientHeight + offsetOf(line, scroller) - offset - top;
-  column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(spots)), viewEnd))}px`);
+  const unfolded = spots.map((s, i) => {
+    const { el } = cards[i]!;
+    if (!el.hasAttribute("data-folded")) {
+      talls.set(el, s.height);
+      return s;
+    }
+    return { ...s, height: Math.max(s.height, talls.get(el) ?? 0) };
+  });
+  column.style.setProperty("--sticky-end", `${Math.max(endOf(tops), Math.min(endOf(stack(unfolded), unfolded), viewEnd))}px`);
   cards.forEach(({ el }, i) => {
     el.style.top = `${tops[i]}px`;
     if (held(el)) {
@@ -316,7 +326,7 @@ export function StickyColumn({
   const kept = useRef<Kept | null>(null);
   /** The line before the last card opened, and with it. */
   const moved = useRef<{ from: Kept | null; to: Line | undefined }>(null);
-  const { saved, asks, answers, error } = useStickies(article);
+  const { saved, asks, answers, folded, error } = useStickies(article);
   const cards = cardsOf(saved, asks, blocks);
   const followUps = new Map(asks.filter(isFollowUp).map((f) => [f.sticky, f]));
   /** The card that the ask, or the answer to it, is on. */
@@ -429,6 +439,7 @@ export function StickyColumn({
               article={article}
               sticky={c.sticky}
               hasChildren={cards.some((child) => child.parent === c.key)}
+              folded={folded.some((s) => isSame(s, c.sticky))}
               followUp={followUps.get(c.sticky.id)}
               opened={opened}
               blocks={blocks}
@@ -511,6 +522,7 @@ function SavedCard({
   article,
   sticky,
   hasChildren,
+  folded,
   followUp,
   opened,
   blocks,
@@ -522,6 +534,8 @@ function SavedCard({
   article: number;
   sticky: Sticky;
   hasChildren: boolean;
+  /** To its quote's first line, beside its label. */
+  folded: boolean;
   followUp: FollowUp | undefined;
   opened: number | null;
   blocks: Block[];
@@ -537,30 +551,44 @@ function SavedCard({
   // At once: the dialog holds the focus while it is there, and leaves it nowhere.
   const close = () => flushSync(() => setDeleting(false));
   return (
-    <section className="sticky" aria-label={label} {...spot}>
+    <section className="sticky" aria-label={label} data-folded={folded || undefined} {...spot}>
       <div className="sticky-h">
         <span className="sticky-kind">{label}</span>
+        {folded && <Quote text={sticky.quote} />}
+        <button
+          className="ib fold"
+          onClick={() => foldSticky(article, sticky, !folded)}
+          aria-expanded={!folded}
+          aria-label={t(folded ? "stickies.unfold" : "stickies.fold")}
+          title={t(folded ? "stickies.unfold" : "stickies.fold")}
+        >
+          <Icon name={folded ? "down" : "up"} size="sm" />
+        </button>
         <button className="ib" ref={remove} onClick={() => setDeleting(true)} aria-label={t("stickies.delete")} title={t("stickies.delete")}>
           <Icon name="x" size="sm" />
         </button>
       </div>
-      <Quote text={sticky.quote} />
-      {sticky.messages.map((m) => (
-        <div key={m.id}>
-          {m.question && <p className="sticky-q">{m.question}</p>}
-          <Answer m={m} blocks={blocks} onSource={onSource} />
-        </div>
-      ))}
-      {followUp ? (
-        <div className="sticky-ask" data-opened={followUp.key === opened || undefined}>
-          <AskBody article={article} ask={followUp} onCancel={onCancel} />
-        </div>
-      ) : (
-        <div className="sticky-acts">
-          <button className="btn sm" onClick={() => onOpen(openAsk(article, { sticky: sticky.id }))}>
-            {t("stickies.followUp")}
-          </button>
-        </div>
+      {!folded && (
+        <>
+          <Quote text={sticky.quote} />
+          {sticky.messages.map((m) => (
+            <div key={m.id}>
+              {m.question && <p className="sticky-q">{m.question}</p>}
+              <Answer m={m} blocks={blocks} onSource={onSource} />
+            </div>
+          ))}
+          {followUp ? (
+            <div className="sticky-ask" data-opened={followUp.key === opened || undefined}>
+              <AskBody article={article} ask={followUp} onCancel={onCancel} />
+            </div>
+          ) : (
+            <div className="sticky-acts">
+              <button className="btn sm" onClick={() => onOpen(openAsk(article, { sticky: sticky.id }))}>
+                {t("stickies.followUp")}
+              </button>
+            </div>
+          )}
+        </>
       )}
       {error && (
         <p className="error-text" role="alert">
