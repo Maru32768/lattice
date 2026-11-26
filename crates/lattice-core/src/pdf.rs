@@ -3551,7 +3551,7 @@ pub(crate) mod tests {
             no_table(&groups(&xs, 14., &[head, fruit, greens]));
         }
         // The same in Japanese, every column as wide as its widest line, so the first item of a group comes to its end.
-        let kana = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(3)[..4 * n]);
+        let kana = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
         let mut text = kana(78., 114., 2) + &kana(110., 114., 2) + &kana(202., 114., 2);
         for (top, items) in [(120., [8, 3]), (156., [6, 2])] {
             text += &(kana(78., top + 14., 2) + &kana(110., top + 14., items[0]) + &kana(202., top + 14., 2) + &kana(110., top + 30., items[1]));
@@ -3565,6 +3565,12 @@ pub(crate) mod tests {
             ops += &format!("BT /F3 10 Tf {}{}{}ET\n", kana(78., top + 14., 2), kana(120., top + 14., 8), kana(212., top + 14., 2));
             ops += &(shown(120., top + 30., latin) + &format!("BT /F3 10 Tf {}ET\n", kana(120. + wide(latin), top + 30., 3)));
         }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
+        // A Latin item with room before a Japanese one that wraps, beside a name of one line: the room ends a row.
+        let set = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf {}ET\n", kana(x, y, n));
+        let mut ops = ruled(&[72., 114., 246., 288.], &[100., 120., 172., 192.], "strokes") + &set(78., 114., 2) + &set(120., 114., 2) + &set(252., 114., 2);
+        ops += &(set(78., 134., 2) + &shown(120., 134., "Docker") + &set(252., 134., 2) + &set(120., 150., 12) + &set(120., 166., 3));
+        ops += &(set(78., 186., 2) + &set(120., 186., 5) + &set(252., 186., 2));
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
         // The scores set larger at the top of each row, their baselines 1.5pt under the methods'.
         let xs = [72., 122., 188., 238.];
@@ -3779,6 +3785,11 @@ pub(crate) mod tests {
         for top in [120., 170.] {
             ops += &(kana(78., top + 26., 2) + &kana(118., top + 12., 6) + &kana(118., top + 26., 6) + &kana(118., top + 40., 2));
         }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
+        // A line that ends in a Latin word at its column's end, onto Japanese.
+        let mut ops = ruled(&[72., 114., 246., 288.], &[100., 120., 156., 176.], "strokes") + &kana(78., 114., 2) + &kana(120., 114., 2) + &kana(252., 114., 2);
+        ops += &(kana(78., 134., 2) + &kana(120., 134., 9) + &shown(210., 134., "HTTP") + &kana(252., 134., 2) + &kana(120., 150., 3));
+        ops += &(kana(78., 170., 2) + &kana(120., 170., 5) + &kana(252., 170., 2));
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
         // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
         // larger one 1.5pt lower: two columns go on onto another's baseline.
