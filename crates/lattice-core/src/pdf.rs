@@ -538,7 +538,9 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
         lines.sort_by(|a, b| a.y.total_cmp(&b.y));
         lines.dedup_by(|next, kept| {
             let piece = next.y - kept.y < 0.3 * kept.size;
-            if piece {
+            // Copies drawn over each other a fraction of a point apart make a line bold: one copy's text is the line's.
+            let beside = kept.x1.min(next.x1) - kept.x0.max(next.x0) < 0.5 * kept.size;
+            if piece && beside {
                 let (first, second) = if next.x0 < kept.x0 {
                     (&next.text, &kept.text)
                 } else {
@@ -549,6 +551,8 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], fitted: bool, width
                 } else {
                     format!("{first} {second}")
                 };
+            }
+            if piece {
                 (kept.x0, kept.x1) = (kept.x0.min(next.x0), kept.x1.max(next.x1));
             }
             piece
@@ -3591,6 +3595,13 @@ pub(crate) mod tests {
             ops += &(shown(120., top + 46., latin) + &set(120. + wide(latin), top + 46., 5));
         }
         assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
+        // Names made bold by drawing each twice 0.3pt apart, as wide as their column of four letters.
+        let mut ops = ruled(&[72., 124., 176., 208.], &[100., 120., 188., 240.], "strokes") + &set(78., 114., 2) + &set(130., 114., 2) + &set(182., 114., 2);
+        ops += &(set(78., 134., 2) + &set(182., 134., 2) + &set(78., 202., 2) + &set(182., 202., 2));
+        for y in [134., 150., 166., 182., 202., 218., 234.] {
+            ops += &(set(130., y, 4) + &set(130.3, y, 4));
+        }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows, None);
         // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
         // larger one set lower: two columns go on onto another's baseline.
         for (size, drop) in [(10., 0.), (12., 1.5), (14., 3.)] {
@@ -3622,6 +3633,10 @@ pub(crate) mod tests {
         let second: &[&[&str]] = &[&["Gizmo", "1", "9.00"]];
         no_table(&groups(&xs, 14., &[first, second]));
         no_table(&groups(&xs, 14., &[&first[..2], second]));
+        // No rule under the head, and a price drawn twice 0.3pt apart, as a bold made by drawing again is.
+        let mut ops = ruled(&[72., 270., 340.], &[160., 188., 202.], "strokes") + &shown(78., 169.8, "Item") + &shown(276., 169.8, "Price");
+        ops += &(shown(78., 183.8, "Widget") + &shown(276., 183.8, "12.00") + &shown(276.3, 183.8, "12.00"));
+        no_table(&(ops + &shown(78., 197.8, "Gizmo") + &shown(276., 197.8, "9.00")));
         // With no number under another line, the first band is the head.
         let head: &[&[&str]] = &[&["Item", "Qty", "Price"], &["", "(units)", "(USD)"]];
         assert_eq!(texts_of(&groups(&xs, 14., &[head, second])), ["Item\tQty (units)\tPrice (USD)\nGizmo\t1\t9.00"]);
