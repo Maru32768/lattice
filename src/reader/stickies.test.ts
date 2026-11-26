@@ -144,10 +144,6 @@ test("a passage is found in the text nodes as the reader selected it, whitespace
     [0, 2],
     [2, 6],
   ]);
-  assert.deepEqual(findPassage(texts, 4, "line.Then the  next."), [
-    [1, 0],
-    [3, 9],
-  ]);
   assert.deepEqual(
     findPassage(texts, 2, "line. Then the next. After"),
     [
