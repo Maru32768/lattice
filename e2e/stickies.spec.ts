@@ -3925,9 +3925,11 @@ test("メモに下書き: a failed draft is asked again, Esc and キャンセル
   await expect(draftField(sticky), "not while a word is being composed").toHaveValue(DRAFTED);
   await draftField(sticky).press("Escape");
   await expect(draftField(sticky)).toHaveCount(0);
+  await expect(doc(shell), "the keyboard goes back to the article").toBeFocused();
   await draft.click();
   await sticky.getByRole("button", { name: "キャンセル" }).click();
   await expect(draftField(sticky)).toHaveCount(0);
+  await expect(doc(shell)).toBeFocused();
   expect(await callsOf(shell, "set_article_note")).toEqual([]);
   await expect(memoButton(shell)).not.toHaveClass(/\bon\b/);
 
