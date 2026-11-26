@@ -3810,7 +3810,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_band_beside_a_name_of_one_line_is_one_row_by_japanese_that_wraps_once() {
+    fn a_band_beside_a_name_of_one_line_is_one_row_by_japanese_that_wraps() {
         let kana = |x: f64, y: f64, n: usize| format!("BT /F3 10 Tf 1 0 0 1 {x} {} Tm <{}> Tj ET\n", 792. - y, &"034B034D034F".repeat(4)[..4 * n]);
         let table = |xs: [f64; 4]| {
             let mut ops = ruled(&xs, &[100., 120., 156., 176.], "strokes") + &kana(78., 114., 2) + &kana(xs[1] + 6., 114., 2) + &kana(xs[2] + 6., 114., 2);
