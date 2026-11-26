@@ -417,6 +417,12 @@ export function StickyColumn({
       scroller.scrollTop += offsetOf(from.line, scroller) - from.offset;
     }
   };
+  const fold = (sticky: Sticky, folds: boolean) => {
+    // From what the reader sees, as a scroll does: the line kept from before a card folded under the view's top would
+    // take the view back into it. As with the folding, an ask closed unsent does not give the view back then.
+    kept.current = keep(root.current!.parentElement!);
+    foldSticky(article, sticky, folds);
+  };
   return (
     // In the DOM without cards too: the text gets back what the last one took by the same way, which keeps the reader's place.
     <>
@@ -447,6 +453,7 @@ export function StickyColumn({
               blocks={blocks}
               onOpen={onOpen}
               onCancel={cancel}
+              onFold={fold}
               onSource={onSource}
             />
           ) : (
@@ -529,6 +536,7 @@ function SavedCard({
   blocks,
   onOpen,
   onCancel,
+  onFold,
   onSource,
 }: {
   spot: Spot;
@@ -542,6 +550,7 @@ function SavedCard({
   blocks: Block[];
   onOpen: (ask: number) => void;
   onCancel: (ask: number) => void;
+  onFold: (sticky: Sticky, folds: boolean) => void;
   onSource: (block: number) => void;
 }) {
   const t = useT();
@@ -558,7 +567,7 @@ function SavedCard({
         {folded && <Quote text={sticky.quote} />}
         <button
           className="ib fold"
-          onClick={() => foldSticky(article, sticky, !folded)}
+          onClick={() => onFold(sticky, !folded)}
           aria-expanded={!folded}
           aria-label={t(folded ? "stickies.unfold" : "stickies.fold")}
           title={t(folded ? "stickies.unfold" : "stickies.fold")}
