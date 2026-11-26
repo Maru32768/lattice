@@ -3765,6 +3765,12 @@ pub(crate) mod tests {
         for second in ["100", "API", "\\("] {
             assert_eq!(table([72., 114., 246., 288.], second), Some(3), "{second}");
         }
+        // A name set in the middle of its cell, on the second of the three lines beside it.
+        let mut ops = ruled(&[72., 112., 189.], &[100., 120., 170., 220.], "strokes") + &kana(78., 114., 2) + &kana(118., 114., 2);
+        for top in [120., 170.] {
+            ops += &(kana(78., top + 26., 2) + &kana(118., top + 12., 6) + &kana(118., top + 26., 6) + &kana(118., top + 40., 2));
+        }
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
         // Items of a group, the first to the end of its column, each with a price of its own, in the items' type or in a
         // larger one 1.5pt lower: two columns go on onto another's baseline.
         for (size, drop) in [(10., 0.), (12., 1.5)] {
