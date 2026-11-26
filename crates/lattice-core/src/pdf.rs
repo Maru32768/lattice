@@ -3763,6 +3763,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn japanese_terms_set_in_the_middle_of_wide_columns_stay_text() {
+        // A group of rows in columns 200pt wide, each term of eight letters 3pt right of the middle, as padding that differs
+        // at its two sides leaves it: the text is further in than the padding, so the lines leave room.
+        let set = |x: f64, y: f64, n: usize| format!("1 0 0 1 {x} {} Tm <{}> Tj ", 792. - y, &"034B034D034F".repeat(3)[..4 * n]);
+        let column = |x: f64| [(114., 2), (136., 8), (152., 8), (168., 8), (184., 8), (210., 2)].map(|(y, n)| set(x + 103. - 5. * n as f64, y, n)).concat();
+        let ops = ruled(&[72., 272., 472.], &[100., 120., 190., 220.], "strokes") + &format!("BT /F3 10 Tf {}{}ET\n", column(72.), column(272.));
+        let ir = to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap();
+        assert!(ir.blocks.iter().all(|b| b.attrs.rows.is_none()), "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn japanese_rows_in_columns_as_wide_as_their_text_are_not_put_in_one() {
         // Each of two columns' letters, line by line: a head, a band, and a row of two letters under it.
         let read = |lines: &[[usize; 2]], room: f64| {
