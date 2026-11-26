@@ -3824,8 +3824,11 @@ pub(crate) mod tests {
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 10], [12, 10]], 4.), None);
         assert_eq!(read(&[[2, 2], [12, 10], [8, 6]], 4.), None);
         assert_eq!(read(&[[2, 2], [24, 24], [20, 20], [24, 24]], 4.), None);
-        // As many as could be names of one length, in columns no wider than them.
+        // As many as could be names of one length, in columns no wider than them; there it takes twelve lines that come to
+        // their end, not eleven.
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 0.), None);
+        assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [12, 10], [12, 10], [12, 10], [12, 6], [8, 0]], 0.), None);
+        assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [12, 10], [12, 10], [12, 10], [12, 10], [8, 6]], 0.), Some(3));
         // A cell of each column that wraps, their last lines apart.
         assert_eq!(read(&[[2, 2], [12, 10], [12, 10], [8, 6]], 4.), Some(3));
         assert_eq!(read(&[[2, 2], [12, 10], [10, 10], [12, 10], [8, 6]], 4.), Some(3));
