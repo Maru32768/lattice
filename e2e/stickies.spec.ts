@@ -2760,8 +2760,8 @@ test("a child, and a follow-up, move neither the cards above them nor the text a
   expect(Math.abs(await off(4, 32))).toBeLessThan(1);
   await unfold(parent);
   await unfold(child(shell, "用語"));
-  // Then a question on the first child, and one in it, move neither it nor its parent, which no ask on them has held under
-  // this pin yet. Scrolled to leave the question's field in view.
+  // Then a question on the first child, and one in it, move neither it nor its parent, held as the reader unfolded them.
+  // Scrolled to leave the question's field in view.
   const first = await boxOf(child(shell, "用語"));
   await doc(shell).evaluate((el, by) => el.scrollBy(0, by), first.y - 200);
   await frames(shell);
