@@ -3426,6 +3426,23 @@ test("two asks on the text closed unsent, in either order, unfold what they fold
   }
 });
 
+test("an answer that waits as two asks on the text open and close unsent, the first first, comes unfolded", async ({ shell }) => {
+  await hold(shell, "sticky_ask");
+  await shell.setViewportSize({ width: 1500, height: 900 });
+  await startLong(shell);
+  await scrollTo(shell, paraBlock(12), "center");
+  await askAbout(shell, "詳しく", paraBlock(10));
+  await askAbout(shell, "質問", paraBlock(12));
+  await askAbout(shell, "質問", paraBlock(14));
+  await field(shell).first().press("Escape");
+  await expect(cards(shell)).toHaveCount(2);
+  await field(shell).press("Escape");
+  await expect(cards(shell)).toHaveCount(1);
+  await release(shell, "sticky_ask")();
+  await expect(card(shell, "詳しく").getByRole("button", { name: /^付箋を(たたむ|広げる)$/ })).toBeVisible();
+  expect(await foldedOnes(shell)).toEqual([false]);
+});
+
 test("an answer that comes as two asks on the text are open stays folded until both have closed unsent", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await shell.setViewportSize({ width: 1500, height: 900 });
