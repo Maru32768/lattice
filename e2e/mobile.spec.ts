@@ -993,6 +993,7 @@ test("a selected word can be saved with its sentence and source", async ({ page 
   const seen = await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("button", { name: "原文" }).click();
+  await expect(page.locator(".sent").getByText("Second sentence.", { exact: true })).toBeVisible();
   await page.evaluate(() => {
     const el = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!;
     const text = el.firstChild!;
@@ -1026,6 +1027,7 @@ test("a tap that collapses the selection first still saves the word", async ({ p
   const seen = await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("button", { name: "原文" }).click();
+  await expect(page.locator(".sent").getByText("Second sentence.", { exact: true })).toBeVisible();
   await page.evaluate(() => {
     const text = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!.firstChild!;
     const range = document.createRange();
@@ -1046,6 +1048,7 @@ test("a selection given up on takes its button with it", async ({ page }) => {
   await start(page);
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("button", { name: "原文" }).click();
+  await expect(page.locator(".sent").getByText("Second sentence.", { exact: true })).toBeVisible();
   await page.evaluate(() => {
     const text = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!.firstChild!;
     const range = document.createRange();
