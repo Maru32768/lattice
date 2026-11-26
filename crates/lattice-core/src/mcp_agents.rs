@@ -151,8 +151,8 @@ impl Failure {
     }
 }
 
-/// A CLI may repeat its arguments or a line of its settings, so any bearer token goes: this registration's, an older
-/// one's, or another server's.
+/// A CLI may repeat its arguments or a line of its settings, so any bearer token goes, and any 64 hex digits like Lattice's
+/// own tokens: this registration's, an older one's, or another server's.
 fn scrubbed(error: &str) -> String {
     static TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?i)\bbearer\s+[^\s"'\\]{16,}|[0-9a-f]{64}"#).expect("static regex"));
     let line: Vec<&str> = error.split_whitespace().collect();
