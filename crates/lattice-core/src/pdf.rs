@@ -4318,8 +4318,15 @@ pub(crate) mod tests {
         let clipped = each(&|(x0, x1), (y0, y1)| format!("q {x0} {} {} {} re W n Q\n", 792. - y1, x1 - x0, y1 - y0));
         let filled = each(&|(x0, x1), (y0, y1)| format!("{x0} {} {} {} re f\n", 792. - y1, x1 - x0, y1 - y0));
         let shaded = outlined(&[72., 172., 540.], &[110., 160., 200.], &|x, y| (x, 792. - y), "h f");
-        let hidden = format!("q 0 0 10 10 re W n\n{}Q\n", ruled(&[72., 172., 540.], &[110., 160., 200.], "strokes"));
-        for (shape, cells) in [("clipped", clipped), ("filled boxes", filled), ("shaded paths", shaded), ("stroked where a clip hides them", hidden)] {
+        let hidden = |how: &str| format!("q 0 0 10 10 re W n\n{}Q\n", ruled(&[72., 172., 540.], &[110., 160., 200.], how));
+        let (stroked, bars) = (hidden("strokes"), hidden("bars"));
+        for (shape, cells) in [
+            ("clipped", clipped),
+            ("filled boxes", filled),
+            ("shaded paths", shaded),
+            ("stroked where a clip hides them", stroked),
+            ("bars a clip hides", bars),
+        ] {
             assert_eq!(read(&(cells + rule + &text)), plain, "{shape}");
         }
     }
