@@ -3911,6 +3911,11 @@ pub(crate) mod tests {
         let room = kana(120., 134., 8) + &kana(120., 166., 3);
         assert_eq!(table([100., 120., 172., 192.], 186., &(room.clone() + &kana(120., 150., 12))), None);
         assert_eq!(table([100., 120., 172., 192.], 186., &(room + &kana(180., 150., 6) + &kana(120., 150., 6))), None);
+        // Japanese pieces join with no space: a line 28pt short of the end of a column of 128, before them, wraps.
+        let mut ops = ruled(&[72., 114., 254., 296.], &[100., 120., 172., 192.], "strokes") + &kana(78., 114., 2) + &kana(120., 114., 2) + &kana(260., 114., 2);
+        ops += &(kana(78., 134., 2) + &kana(260., 134., 2) + &kana(120., 134., 10) + &kana(180., 150., 6) + &kana(120., 150., 6) + &kana(120., 166., 3));
+        ops += &(kana(78., 186., 2) + &kana(120., 186., 5) + &kana(260., 186., 2));
+        assert_eq!(to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len), Some(3));
     }
 
     #[test]
@@ -3923,7 +3928,8 @@ pub(crate) mod tests {
             ops += &(kana(78., bottom + 14., 2) + &kana(120., bottom + 14., 5) + &kana(252., bottom + 14., 2));
             to_ir(&japanese(&[vec![]], "Identity-H", &ops), None).unwrap().blocks[0].attrs.rows.as_ref().map(Vec::len)
         };
-        // A line 70pt short of the end outweighs eight to the end, with a price beside the line after it or not.
+        // A line 70pt short of the end outweighs eight to the end. With a price beside the line after it, two columns go on
+        // as a group's rows do, and the evidence alone decides.
         for (long, priced) in [(4, false), (8, false), (8, true)] {
             let lines = std::iter::repeat_n(12, long).chain([5, 12, 3]);
             let mut description: String = lines.enumerate().map(|(i, n)| kana(120., 134. + 16. * i as f64, n)).collect();
@@ -3932,6 +3938,17 @@ pub(crate) mod tests {
             }
             assert_eq!(table(134. + 16. * (long + 2) as f64 + 6., &description), None, "{long} {priced}");
         }
+        // The line after it starts with a Latin word: its first word ends at a space, or at a Japanese comma.
+        let before = kana(120., 134., 12) + &kana(120., 150., 5);
+        let words = shown(120., 166., "Visual Studio Code");
+        assert_eq!(table(172., &(before.clone() + &words)), None);
+        assert_eq!(table(172., &(before.clone() + &words + &kana(120. + wide("Visual Studio Code"), 166., 2))), None);
+        let x = 120. + wide("USB");
+        let comma = (1..20000).find(|&c| crate::pdf_japan1::utf16(c) == Some(&[0x30, 0x01][..])).unwrap();
+        let usb = shown(120., 166., "USB") + &format!("BT /F3 10 Tf 1 0 0 1 {x} 626 Tm <{comma:04X}> Tj ET\n") + &shown(x + 10., 166., "HDMI");
+        assert_eq!(table(172., &(kana(120., 134., 12) + &kana(120., 150., 7) + &usb + &kana(x + 10. + wide("HDMI"), 166., 3))), None);
+        // Drawn from its middle, its words stay apart.
+        assert_eq!(table(172., &(before + &shown(120. + wide("Go "), 166., "Kubernetes") + &shown(120., 166., "Go"))), None);
         // The room is that of the letters of the line after it, here a Latin word.
         assert_eq!(table(172., &(kana(120., 134., 12) + &kana(120., 150., 5) + &shown(120., 166., "Python"))), None);
     }
