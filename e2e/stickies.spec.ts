@@ -3920,6 +3920,9 @@ test("メモに下書き: a failed draft is asked again, Esc and キャンセル
   await sticky.getByRole("button", { name: "再試行" }).click();
   await expect(draftField(sticky)).toHaveValue(DRAFTED);
   await expect(doc(shell)).toBeFocused();
+  await draftField(sticky).dispatchEvent("keydown", { key: "Escape", isComposing: true });
+  await frames(shell);
+  await expect(draftField(sticky), "not while a word is being composed").toHaveValue(DRAFTED);
   await draftField(sticky).press("Escape");
   await expect(draftField(sticky)).toHaveCount(0);
   await draft.click();
