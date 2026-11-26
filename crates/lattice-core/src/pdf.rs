@@ -517,14 +517,14 @@ fn runs_on(p: &Page, grid: &Grid, grids: &[Grid], cells: &[Vec<Vec<&Glyph>>], tw
 }
 
 /// Whether the lines of a band, which lies between two rules across, are those of one row: on one baseline, set down a
-/// page that `turns`, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one line set in the
-/// middle of the band, or Japanese lines that each come to the end of their column, as a cell's do where it wraps. A band
-/// that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns or a group of
-/// rows, leaves its table text: read as one row, it runs the values of each column together. A line wraps where it leaves
-/// no room for the first word under it, in the `widths` the columns' text has.
-// shortcut: Latin cells that wrap in two columns of a row, or in a name of two lines beside a cell on its first or last
-// line, tell of nothing, as the lines of the rows of a group start in either case and end in a hyphen too, so their table
-// stays text. Tell them apart if such tables turn up.
+/// page that `turns`, in the head, beside a name of one line, lists side by side, a cell that wraps beside cells of one
+/// line set between its lines, or Japanese lines that each come to the end of their column, as a cell's do where it
+/// wraps. A band that may hold rows no rule parts, as the one band under the head of a table ruled only round its columns
+/// or a group of rows, leaves its table text: read as one row, it runs the values of each column together. A line wraps
+/// where it leaves no room for the first word under it, in the `widths` the columns' text has.
+// shortcut: Latin cells that wrap in two columns of a row, or in a name beside a cell on one of its lines, tell of
+// nothing, as the lines of the rows of a group start in either case and end in a hyphen too, and a group's cells sit on
+// its rows' lines, so their table stays text. Tell them apart if such tables turn up.
 fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize, width: f64, turns: bool) -> bool {
     let band = &bands[row];
     let down = |g: &&Glyph| g.vertical || g.turned;
@@ -604,11 +604,15 @@ fn one_row(bands: &[Vec<Vec<&Glyph>>], row: usize, widths: &[f64], enough: isize
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
     // The first column with text names the row.
     let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
-    // The cells of the rows of a group are on their rows' baselines, so lines of one beside a cell that wraps, none on its
-    // first line or its last, are that row's.
-    let inside = |l: &Line| (1..baselines.len() - 1).contains(&(baselines.partition_point(|b| b.0 <= l.y) - 1));
+    // The cells of the rows of a group are on their rows' baselines, so lines of one set between the lines of a cell that
+    // wraps are that row's.
     let single: Vec<&Vec<Line>> = columns.iter().filter(|lines| lines.len() == 1).collect();
-    let centred = wrapped && columns.iter().filter(|lines| lines.len() > 1).count() == 1 && !single.is_empty() && single.iter().all(|lines| inside(&lines[0]));
+    let wraps: Vec<&Vec<Line>> = columns.iter().filter(|lines| lines.len() > 1).collect();
+    let between = |l: &Line| {
+        let lines = wraps[0];
+        lines[0].y < l.y && l.y < lines[lines.len() - 1].y && lines.iter().all(|w| (w.y - l.y).abs() >= 0.3 * w.size)
+    };
+    let centred = wrapped && wraps.len() == 1 && !single.is_empty() && single.iter().all(|lines| between(&lines[0]));
     head && !threes || one_name || listed || centred || evidence >= enough
 }
 
@@ -3523,9 +3527,10 @@ pub(crate) mod tests {
         let xs = [72., 84. + wide(name), 144. + wide(name), 204. + wide(name)];
         let names = [(194., name), (206., "PDF files")];
         assert_eq!(texts_of(&table(&xs, &names, Some(200.))), ["Feature\tFree\tPro\nCreate and edit PDF files\tx\tx\nSign\tx\tx"]);
-        // On the name's first line, the marks may be those of a group's first row alone; with none, the name's lines may each
-        // be a row's.
+        // On one of the name's lines, the marks may be those of a group's row alone, as on the middle one of three; with none,
+        // the name's lines may each be a row's.
         no_table(&table(&xs, &names, Some(194.)));
+        no_table(&table(&xs, &[(186., name), (198., "PDF files that"), (210., "you sign")], Some(198.)));
         no_table(&table(&xs, &names, None));
         // Lines with room after them may each be a row's.
         let names = [(192., "Order the parts"), (200., "Paint the door"), (208., "Call the office")];
