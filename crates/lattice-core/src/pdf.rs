@@ -604,8 +604,9 @@ fn one_row(band: &[Vec<&Glyph>], row: usize, widths: &[f64], enough: isize, widt
     // column.
     let head = row == 0 && !columns.iter().any(|lines| lines.iter().skip(1).any(|l| is_number(&l.text)));
     let threes = columns.iter().any(|lines| lines.len() > 2) && (parted || baselines.iter().all(|b| b.1 == filled));
-    // The first column with text names the row.
-    let one_name = tellers < 2 && columns.iter().find(|lines| !lines.is_empty()).is_some_and(|lines| lines.len() == 1);
+    // The first column with text names the row; a name set down it is one line.
+    let name = band.iter().zip(&columns).find(|(glyphs, _)| glyphs.iter().any(|g| !g.text.trim().is_empty()));
+    let one_name = tellers < 2 && name.is_some_and(|(_, lines)| lines.len() <= 1);
     // The cells of the rows of a group are on their rows' baselines, so lines of one set between the lines of a cell that
     // wraps are that row's.
     let single: Vec<&Vec<Line>> = columns.iter().filter(|lines| lines.len() == 1).collect();
@@ -6009,6 +6010,10 @@ pub(crate) mod tests {
         }
         let (blocks, _) = read(&groups);
         assert!(blocks.iter().all(|b| !b.starts_with("table: ")), "{blocks:?}");
+        // A row head set down names a value of two lines, as one set across would.
+        let (blocks, _) =
+            read(&form().replace(&shown(178., 280., "42 Main Street"), &(shown(178., 274., "42 Main Street") + &shown(178., 286., "Springfield"))));
+        assert!(blocks.iter().any(|b| b.starts_with("table: ") && b.contains("\t42 Main Street Springfield\n")), "{blocks:?}");
     }
 
     #[test]
