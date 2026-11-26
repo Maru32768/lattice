@@ -259,9 +259,10 @@ function mark(column: HTMLElement, cards: { el: HTMLElement; block: HTMLElement 
   const origin = lines.getBoundingClientRect();
   const ranges: Range[] = [];
   const paths: string[] = [];
+  const edge = article.getBoundingClientRect().right - origin.left;
   for (const { el, block } of cards) {
     const quote = el.querySelector(".sticky-quote")?.textContent ?? "";
-    const message = el.dataset.from;
+    const message = el.dataset.child;
     // A child's is in its parent's answer only: folded, that has none.
     const answer = message ? column.querySelector(`.answer[data-message="${message}"]`) : null;
     const range = message ? answer && passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
@@ -274,10 +275,10 @@ function mark(column: HTMLElement, cards: { el: HTMLElement; block: HTMLElement 
     // At its first line, as a card is at its block's first.
     const from = [...(range?.getClientRects() ?? [])].find((r) => r.width > 0) ?? block.getBoundingClientRect();
     const head = el.querySelector(".sticky-h")!.getBoundingClientRect();
-    const [x1, y1] = [article.getBoundingClientRect().right - origin.left, from.top + Math.min(from.height, 24) / 2 - origin.top];
+    const y1 = from.top + Math.min(from.height, 24) / 2 - origin.top;
     const [x2, y2] = [el.getBoundingClientRect().left - origin.left, (head.top + head.bottom) / 2 - origin.top];
-    const mid = (x1 + x2) / 2;
-    paths.push(`M${x1} ${y1}C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`);
+    const mid = (edge + x2) / 2;
+    paths.push(`M${edge} ${y1}C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`);
   }
   marks.set(column, ranges);
   paint();
@@ -427,10 +428,9 @@ export function StickyColumn({
         {cards.map((c) => {
           const spot: Spot = {
             "data-block": c.blockId ?? undefined,
-            "data-child": c.parent ? true : undefined,
+            "data-child": c.parent ? (("sticky" in c ? c.sticky.parent : c.ask.parent) ?? undefined) : undefined,
             "data-pinned": c.key === pinnedCard || undefined,
             "data-held": held.has(c.key) || undefined,
-            "data-from": c.parent ? (("sticky" in c ? c.sticky.parent : c.ask.parent) ?? undefined) : undefined,
             style: { left: INDENT * Math.min(c.depth, DEEPEST) },
           };
           return "sticky" in c ? (
@@ -463,11 +463,10 @@ export function StickyColumn({
 /** Where a card is to be, for `place`. */
 interface Spot {
   "data-block": number | undefined;
-  "data-child": true | undefined;
+  /** The message whose answer its passage is of. */
+  "data-child": number | undefined;
   "data-pinned": true | undefined;
   "data-held": true | undefined;
-  /** Of a child: the message whose answer its passage is of. */
-  "data-from": number | undefined;
   style: { left: number };
 }
 
