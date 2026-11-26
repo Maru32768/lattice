@@ -1085,7 +1085,8 @@ mod tests {
                 } else {
                     delete(&s, on.id).unwrap();
                 }
-                let x = ask(&s, &llm, a, None, StickyKind::Term, "X", "").await.unwrap();
+                // With an answer of its own: as the same answer, in the same millisecond, it would be the message it got the id of.
+                let x = ask(&s, &Fake::new("X-ANSWER"), a, None, StickyKind::Term, "X", "").await.unwrap();
                 assert_eq!((x.id, x.messages[0].id), (on.id, on.messages[0].id), "{case}: SQLite gives the last ids again");
                 drop(held);
                 x
