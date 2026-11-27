@@ -3997,6 +3997,30 @@ test("メモに下書き: a memo that cannot be saved says so in the sticky, and
   expect(await lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED), revision: 0 });
 });
 
+test("メモに足す after typing that cannot be saved adds the text, says why the typing is not, and saves it all again on the way out", async ({ shell }) => {
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(shell).click();
+  await memoField(shell).fill("the disk is full");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  expect(await storedMemo(shell)).toBe(draft);
+  const panel = shell.getByRole("complementary", { name: "メモ" });
+  await expect(panel.getByRole("alert")).toHaveCount(1);
+  await expect(panel.getByRole("alert"), "no other window saved it").not.toContainText("ほかのウィンドウ");
+  await expect(memoField(shell)).toHaveValue(`the disk is full\n\n${draft}`);
+  await shell.evaluate(() => void ((window as unknown as { __diskFreed: boolean }).__diskFreed = true));
+  await memoField(shell).focus();
+  await memoField(shell).blur();
+  await expect.poll(() => storedMemo(shell)).toBe(`the disk is full\n\n${draft}`);
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
 test("メモに足す after another window saved the memo puts the text after what it saved, though this window has not heard of that yet", async ({ app }) => {
   await openSnapshot(app);
   await askAbout(app, "詳しく", "#b-102");

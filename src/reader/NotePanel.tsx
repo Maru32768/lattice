@@ -106,9 +106,10 @@ function added(note: Note, shown: string, based: boolean) {
   const memo = memos.get(note.article_id)!;
   if (memo.theirs) {
     take(note);
-  } else if (note.body === shown) {
+  } else if (!based || note.body === shown) {
+    // When the save before it failed, its text is still unsent here, on top of the memo added to.
     memo.saved = note;
-  } else if (memo.text === shown && based) {
+  } else if (memo.text === shown) {
     // The copy was behind a save it had not heard of yet.
     memos.set(note.article_id, { text: note.body, saved: note, theirs: null });
     tellChanged(note.article_id);
@@ -151,9 +152,13 @@ export function addToNote(view: ArticleView, text: string) {
     })
     .then(
       ({ note, based }) => {
-        failedSaves.delete(id);
+        // Not based on what is stored only when the save before it failed: that error stands, and the panel tries again.
+        const error = based ? null : (failedSaves.get(id) ?? null);
+        if (error === null) {
+          failedSaves.delete(id);
+        }
         added(note, shown, based);
-        panels.forEach((tell) => tell(id, null, shown));
+        panels.forEach((tell) => tell(id, error, memos.get(id)!.text));
         return null;
       },
       (e: unknown) => {
