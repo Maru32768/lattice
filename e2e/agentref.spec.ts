@@ -39,6 +39,7 @@ test("the row's, the tab's and the Reader's menus copy the article's reference",
   const other = ARTICLES.find((a) => a.id !== article.id && a.title && a.fetch_status === "ok")!;
   await app.evaluate(() => navigator.clipboard.writeText(""));
   await list(app).locator(".row", { hasText: other.title! }).click({ button: "right" });
+  await expect(app.locator(".art-title")).toHaveText(article.title!);
   await menu(app).getByRole("menuitem", { name: "エージェント用にコピー" }).click();
   await expect.poll(() => clipboard(app)).toBe(`lattice:article/${other.id}`);
 });
