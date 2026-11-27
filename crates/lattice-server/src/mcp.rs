@@ -54,7 +54,10 @@ fn all_tools() -> Vec<(Role, Value)> {
             "get",
             "One saved article: metadata, stored summary and its text as Markdown, or its blocks with ids.",
             json!({
-                "id": article,
+                "id": {
+                    "type": ["integer", "string"],
+                    "description": "Article id, or a reference copied in Lattice: lattice:article/ID, lattice:article/ID#bBLOCK (that block) or                                     lattice:article/ID#bFROM-bTO (that run of blocks). A reference with blocks returns only those blocks, with ids",
+                },
                 "blocks": flag("Return the blocks with ids instead of the joined text"),
                 "translation": flag("Include the stored translation"),
                 "stickies": flag(
@@ -304,7 +307,7 @@ fn result_text(body: &str) -> String {
 mod tests {
     use super::*;
     use crate::ops::Op;
-    use clap::Subcommand;
+    use clap::{FromArgMatches, Subcommand};
 
     #[test]
     fn every_op_is_one_tool_with_its_arguments_and_role() {
@@ -325,10 +328,10 @@ mod tests {
             let sample: serde_json::Map<String, Value> = required
                 .iter()
                 .map(|p| {
-                    let v = if t["inputSchema"]["properties"][*p]["type"] == "integer" {
-                        json!(1)
-                    } else {
+                    let v = if t["inputSchema"]["properties"][*p]["type"] == "string" {
                         json!("x")
+                    } else {
+                        json!(1)
                     };
                     ((*p).to_string(), v)
                 })
@@ -348,6 +351,23 @@ mod tests {
         let parse = |arguments: Value| serde_json::from_value::<Op>(json!({ "name": "move_feed", "arguments": arguments }));
         assert!(parse(json!({ "id": 1, "folder_name": "News" })).is_err(), "would move the feed out of its folder");
         assert!(matches!(parse(json!({ "id": 1, "folder": "News" })), Ok(Op::MoveFeed { folder: Some(_), .. })));
+    }
+
+    #[test]
+    fn get_takes_a_copied_reference_from_the_command_line_and_from_an_agent() {
+        let cli = || Op::augment_subcommands(clap::Command::new("lattice-cli"));
+        let parsed = |arg: &str| cli().try_get_matches_from(["lattice-cli", "get", arg]).map(|m| format!("{:?}", Op::from_arg_matches(&m).unwrap()));
+        let ids = |blocks| format!("Get {{ id: ArticleRef {{ id: 12, blocks: {blocks} }}, blocks: false, translation: false, stickies: false }}");
+        assert_eq!(parsed("12").unwrap(), ids("None"));
+        assert_eq!(parsed("lattice:article/12").unwrap(), ids("None"));
+        assert_eq!(parsed("lattice:article/12#b345-b347").unwrap(), ids("Some((345, 347))"));
+        let forms = "use an article id or lattice:article/ID, lattice:article/ID#bBLOCK, lattice:article/ID#bFROM-bTO";
+        for bad in ["lattice:feed/3", "article/12", "lattice:article/12#b"] {
+            assert!(parsed(bad).unwrap_err().to_string().contains(forms), "{bad}");
+            let r = call("get", json!({ "id": bad }));
+            assert_eq!(r["result"]["isError"], true, "{bad}");
+            assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains(forms), "{bad}: {r}");
+        }
     }
 
     fn reply(line: &str, role: Role) -> Option<Value> {
@@ -425,13 +445,19 @@ mod tests {
     #[test]
     fn an_unknown_tool_is_invalid_params_but_bad_arguments_are_a_tool_error_the_model_reads() {
         assert_eq!(call("nope", json!({}))["error"]["code"], -32602);
-        for bad in [json!({}), json!({ "id": "seven" }), json!({ "id": 7, "blocks_please": true })] {
+        for bad in [json!({}), json!({ "id": "seven" }), json!({ "id": 0 }), json!({ "id": 7, "blocks_please": true })] {
             let r = call("get", bad.clone());
             assert_eq!(r["result"]["isError"], true, "{bad}");
             assert!(r["result"]["content"][0]["text"].as_str().unwrap().starts_with(UNTRUSTED), "{bad}");
         }
-        assert_eq!(call("get", json!({ "id": 7 }))["call"], "Get { id: 7, blocks: false, translation: false, stickies: false }");
-        assert_eq!(call("get", json!({ "id": 7, "stickies": true }))["call"], "Get { id: 7, blocks: false, translation: false, stickies: true }");
+        let get = |blocks| format!("Get {{ id: ArticleRef {{ id: 7, blocks: {blocks} }}, blocks: false, translation: false, stickies: false }}");
+        assert_eq!(call("get", json!({ "id": 7 }))["call"], get("None"));
+        assert_eq!(call("get", json!({ "id": "lattice:article/7" }))["call"], get("None"), "a reference without blocks is the id");
+        assert_eq!(call("get", json!({ "id": "lattice:article/7#b9-b8" }))["call"], get("Some((9, 8))"));
+        assert_eq!(
+            call("get", json!({ "id": 7, "stickies": true }))["call"],
+            "Get { id: ArticleRef { id: 7, blocks: None }, blocks: false, translation: false, stickies: true }"
+        );
         assert_eq!(call("tag", json!({ "id": 7, "name": "x" }))["call"], r#"Tag { id: 7, name: "x" }"#, "the transport decides whether a role may run it");
     }
 
