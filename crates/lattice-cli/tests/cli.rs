@@ -91,6 +91,7 @@ fn reads_the_library() {
     assert!(text.starts_with("## Intro\n\nEdge-triggered polling with EPOLLET"), "{text}");
     let blocks = ok(&dir, &["get", &id.to_string(), "--blocks"])["blocks"].clone();
     assert_eq!(blocks[0], json!({ "id": blocks[0]["id"], "kind": "heading", "text": "Intro" }));
+    assert_eq!(ok(&dir, &["get", &id.to_string(), "--stickies"])["stickies"], json!([]));
 
     // No embedding model in the data folder: full text, and the reason is in the JSON.
     let found = ok(&dir, &["search", "epollet"]);

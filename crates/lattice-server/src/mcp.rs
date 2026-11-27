@@ -430,6 +430,7 @@ mod tests {
             assert!(r["result"]["content"][0]["text"].as_str().unwrap().starts_with(UNTRUSTED), "{bad}");
         }
         assert_eq!(call("get", json!({ "id": 7 }))["call"], "Get { id: 7, blocks: false, translation: false, stickies: false }");
+        assert_eq!(call("get", json!({ "id": 7, "stickies": true }))["call"], "Get { id: 7, blocks: false, translation: false, stickies: true }");
         assert_eq!(call("tag", json!({ "id": 7, "name": "x" }))["call"], r#"Tag { id: 7, name: "x" }"#, "the transport decides whether a role may run it");
     }
 
