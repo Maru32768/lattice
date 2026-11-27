@@ -110,8 +110,8 @@ function answerTo(article: number, ask: Ask) {
   if (isFollowUp(ask)) {
     return api.stickyFollowUp({ id: ask.sticky, question });
   }
-  const { blockId, parent, kind, quote } = ask;
-  return api.stickyAsk({ articleId: article, blockId, parent, kind, quote, question });
+  const { blockId, parent, origin, kind, quote } = ask;
+  return api.stickyAsk({ articleId: article, blockId, parent, origin, kind, quote, question });
 }
 
 /** Sends it; the answer takes its place. One that failed can be sent again. */
@@ -151,7 +151,8 @@ export function openAsk(article: number, about: (Passage & { kind: StickyKind })
   const ask: Ask = { ...about, key: ++keys, question: "", step: "writing" };
   const { asks, saved, folded, latest, undo } = of(article);
   // The stickies there make room for it at its block's height.
-  const room = !isFollowUp(ask) && ask.parent == null ? { folded: saved, latest: ask.key, undo: [...undo, { ask: ask.key, latest, folded, made: saved }] } : {};
+  const room =
+    !isFollowUp(ask) && ask.origin === "text" ? { folded: saved, latest: ask.key, undo: [...undo, { ask: ask.key, latest, folded, made: saved }] } : {};
   put(article, { asks: [...asks, ask], ...room });
   if (!isFollowUp(ask) && ask.kind !== "question") {
     void sendAsk(article, ask);

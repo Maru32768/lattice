@@ -164,7 +164,18 @@ const ReaderBlock = memo(function ReaderBlock({
         }
       />
       {popped?.translation != null && (
-        <div className="pop" role="tooltip" onClick={() => onFlip(b, popPiece!)} onMouseEnter={onKeepPop} onMouseLeave={onLeave}>
+        <div
+          className="pop"
+          role="tooltip"
+          onClick={() => {
+            // Letting go after selecting in the tooltip is a click on it too, and flipping would take the selection away.
+            if (window.getSelection()?.isCollapsed !== false) {
+              onFlip(b, popPiece!);
+            }
+          }}
+          onMouseEnter={onKeepPop}
+          onMouseLeave={onLeave}
+        >
           <div className="pop-h">
             <span>{popShown ? t("reader.original") : t("reader.translated")}</span>
             <span className="r">{t.rich("reader.flipPop", { kbd: <Kbd>Enter</Kbd> })}</span>
@@ -1034,7 +1045,7 @@ export function Reader({
       }
     }
     const [first, last] = [taken[0] ?? block, taken.at(-1) ?? block];
-    return { passage: { blockId: block.id, parent: null, quote }, agentRef: articleRef(a.id, [first.id, last.id]), ...barAt(range, view) };
+    return { passage: { blockId: block.id, parent: null, origin: "text" as const, quote }, agentRef: articleRef(a.id, [first.id, last.id]), ...barAt(range, view) };
   }
 
   /** The passage selected in one answer of a sticky, and where to put the bar. */
@@ -1058,13 +1069,16 @@ export function Reader({
       return null;
     }
     const block = answer.closest<HTMLElement>(".sticky")!.dataset.block;
-    return { passage: { blockId: block ? Number(block) : null, parent: Number(answer.dataset.message), quote }, ...barAt(range, view) };
+    return {
+      passage: { blockId: block ? Number(block) : null, parent: Number(answer.dataset.message), origin: "answer" as const, quote },
+      ...barAt(range, view),
+    };
   }
 
   /** The word of a 用語 sticky on a prose block, in its sentence as shown, or else as written, with what the sticky says. */
   function stickyWord(s: Sticky): VocabCapture | null {
     const block = blocks.find((b) => b.id === s.block_id);
-    if (s.kind !== "term" || s.parent != null || !block || !TRANSLATABLE.has(block.kind) || !isWord(s.quote)) {
+    if (s.kind !== "term" || s.origin === "answer" || !block || !TRANSLATABLE.has(block.kind) || !isWord(s.quote)) {
       return null;
     }
     const shown = shownText(block.text, pieces.get(block.id)!, (j) => shows(block.id, j));
@@ -1111,7 +1125,7 @@ export function Reader({
     setCap(null);
     window.getSelection()?.removeAllRanges();
     const key = openAsk(a.id, { ...passage, kind });
-    if (passage.parent == null) {
+    if (passage.origin === "text") {
       setOpened({ pinned: key, on: [] });
     } else {
       onAsk(key);

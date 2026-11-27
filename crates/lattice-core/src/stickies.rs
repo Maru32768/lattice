@@ -15,7 +15,7 @@ use crate::store::{Store, from_json_col};
 use crate::summarize::unclosable;
 use ts_rs::TS;
 
-pub const PROMPT_VERSION: &str = "sticky-v2";
+pub const PROMPT_VERSION: &str = "sticky-v3";
 const MAX_QUOTE_CHARS: usize = 2_000;
 /// Every block kind but images: a reader asks about the code and the tables too.
 const SENT_KINDS: &[&str] = &["heading", "paragraph", "list_item", "blockquote", "caption", "code", "table"];
@@ -30,6 +30,17 @@ pub enum StickyKind {
     Detail,
     /// 用語
     Term,
+}
+
+/// Where the passage was selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum StickyOrigin {
+    /// The article's text, or the translation of it shown.
+    Text,
+    /// An answer of another sticky, which may be gone by now.
+    Answer,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -51,6 +62,7 @@ pub struct Sticky {
     pub block_id: Option<i64>,
     /// The message whose answer the passage was selected in; None for a passage of the article, and once the message is gone.
     pub parent: Option<i64>,
+    pub origin: StickyOrigin,
     pub kind: StickyKind,
     pub quote: String,
     pub messages: Vec<StickyMessage>,
@@ -63,6 +75,8 @@ pub struct Ask<'a> {
     /// Of a child it is its parent's, whatever is here.
     pub block_id: Option<i64>,
     pub parent: Option<i64>,
+    /// Of a child it is an answer, whatever is here: this says it of one whose parent went before it was asked.
+    pub origin: StickyOrigin,
     pub kind: StickyKind,
     pub quote: &'a str,
     /// Left out where the kind alone is the question.
@@ -70,9 +84,9 @@ pub struct Ask<'a> {
 }
 
 const RULES: &str = "You help a Japanese software engineer who is reading an article and asks about a passage they selected in it. \
-<sources> holds the article's numbered blocks. <passage> holds the selected text: the article's own text, the Japanese or English translation of it that the reader was shown, or an answer of yours on a note that is gone by now. \
+<sources> holds the article's numbered blocks. <passage> holds the selected text: the article's own text, or the Japanese or English translation of it that the reader was shown. \
 <conversation> holds what they asked before about the text right above it, and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
-<excerpt> holds text they selected in one of those answers, to ask about that. \
+<excerpt> holds text they selected in one of those answers, to ask about that; the first, when no <passage> comes before it, is of an answer of yours on a note that is gone by now. \
 Write the answer in Japanese as plain text (no Markdown, no HTML), briefly: it stays on a small note beside the passage. \
 Keep established technical terms and identifiers (e.g. MVCC, WAL, fsync) as they are. \
 Put markers like [3] right after each statement that the article supports, naming the sources that support it, and list every number you cite in \"citations\". \
@@ -101,8 +115,8 @@ fn request(kind: StickyKind, question: &str, levels: &[Level]) -> String {
 /// What the sticky is on: of a child the excerpt it came from, which its parents' levels only lead up to.
 fn about(levels: &[Level]) -> &'static str {
     match levels {
-        [passage] if passage.turns.is_empty() => "the passage",
-        [_] => "the passage and the conversation about it",
+        [passage] if passage.origin == StickyOrigin::Text && passage.turns.is_empty() => "the passage",
+        [passage] if passage.origin == StickyOrigin::Text => "the passage and the conversation about it",
         [.., excerpt] if excerpt.turns.is_empty() => "the last excerpt",
         _ => "the last excerpt and the conversation about it",
     }
@@ -111,6 +125,7 @@ fn about(levels: &[Level]) -> &'static str {
 /// A sticky on the way down to the one that is asked, as the model gets it.
 struct Level {
     quote: String,
+    origin: StickyOrigin,
     /// Oldest first.
     turns: Vec<String>,
 }
@@ -123,12 +138,13 @@ fn levels(c: &Connection, sticky: i64, message: i64) -> rusqlite::Result<Vec<Lev
              UNION ALL
              SELECT m.sticky_id, m.id, depth + 1 FROM up JOIN stickies s ON s.id = up.sticky JOIN sticky_messages m ON m.id = s.parent_message_id)
          SELECT s.quote, s.kind, (SELECT json_group_array(json_array(m.question, m.answer) ORDER BY m.id)
-             FROM sticky_messages m WHERE m.sticky_id = s.id AND m.id <= up.message)
+             FROM sticky_messages m WHERE m.sticky_id = s.id AND m.id <= up.message), s.origin
          FROM up JOIN stickies s ON s.id = up.sticky ORDER BY depth DESC",
     )?
     .query_map([sticky, message], |r| {
         let kind: StickyKind = from_json_col(r, 1, |kind| format!("\"{kind}\""))?;
         let turns: Vec<(String, String)> = from_json_col(r, 2, str::to_string)?;
+        let origin: StickyOrigin = from_json_col(r, 3, |origin| format!("\"{origin}\""))?;
         let turn = |(question, answer): &(String, String)| {
             let question = match (question.as_str(), kind) {
                 ("", StickyKind::Detail) => "詳しく",
@@ -137,7 +153,7 @@ fn levels(c: &Connection, sticky: i64, message: i64) -> rusqlite::Result<Vec<Lev
             };
             format!("Q: {question}\nA: {answer}")
         };
-        Ok(Level { quote: r.get(0)?, turns: turns.iter().map(turn).collect() })
+        Ok(Level { quote: r.get(0)?, origin, turns: turns.iter().map(turn).collect() })
     })?
     .collect()
 }
@@ -154,10 +170,9 @@ fn levels_text(levels: &[Level], max_chars: usize) -> String {
     let fit = turns.iter().rev().take_while(fits).count();
     let mut out = String::new();
     for (i, level) in levels.iter().enumerate() {
-        let tag = if i == 0 {
-            "passage"
-        } else {
-            "excerpt"
+        let tag = match level.origin {
+            StickyOrigin::Text => "passage",
+            StickyOrigin::Answer => "excerpt",
         };
         out.push_str(&format!("<{tag}>\n{}\n</{tag}>\n\n", unclosable(&level.quote)));
         let said: String = turns[turns.len() - fit..].iter().filter(|(of, _)| *of == i).map(|(_, t)| t.as_str()).collect();
@@ -193,8 +208,9 @@ pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: 
         None => (None, Vec::new()),
     };
     let block_id = parent.as_ref().map_or(new.block_id, |p| p.block_id);
-    let new = Ask { block_id, quote, question, ..new };
-    levels.push(Level { quote: quote.into(), turns: Vec::new() });
+    let origin = parent.as_ref().map_or(new.origin, |_| StickyOrigin::Answer);
+    let new = Ask { block_id, origin, quote, question, ..new };
+    levels.push(Level { quote: quote.into(), origin, turns: Vec::new() });
     let url = store.article_url(new.article_id).map_err(err)?;
     let prompt = prompt(store, new.article_id, block_id, &levels, &request(new.kind, question, &levels))?;
     let _turn = turn.acquire().await.map_err(err)?;
@@ -213,8 +229,8 @@ pub async fn follow_up<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore,
 }
 
 const NOTE_RULES: &str = "You help a Japanese software engineer who keeps a memo of plain text on an article they read. \
-<passage> holds the text they selected: the article's own text, the Japanese or English translation of it that they were shown, or an answer of yours on a note that is gone by now. \
-<excerpt> holds text they selected in one of your answers about it, and each <conversation> what they asked about the text right above it and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
+<passage> holds the text they selected: the article's own text, or the Japanese or English translation of it that they were shown. \
+<excerpt> holds text they selected in one of your answers about it (the first, when no <passage> comes before it, is of an answer on a note that is gone by now), and each <conversation> what they asked about the text right above it and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
 Write in Japanese, as plain text (no Markdown, no HTML), a short note for that memo of what they learned there, in a few lines, as they would write it for themselves. \
 Keep established technical terms and identifiers (e.g. MVCC, WAL, fsync) as they are. \
 Leave out the markers like [3] in the answers: they name parts of the article, which the memo does not have.\n\n\
@@ -386,13 +402,13 @@ fn add_message(tx: Transaction, sticky: i64, question: &str, answer: &Answer) ->
 fn save(store: &Store, new: &Ask, parent: Option<&Parent>, url: Option<&str>, answer: &Answer) -> rusqlite::Result<Option<Sticky>> {
     let mut c = store.conn();
     let tx = c.transaction()?;
-    let kind = json!(new.kind);
+    let (kind, origin) = (json!(new.kind), json!(new.origin));
     let mut id: Option<i64> = None;
     if let Some(p) = parent {
         id = tx
             .query_row(
-                "INSERT INTO stickies (article_id, block_id, parent_message_id, kind, quote)
-                 SELECT s.article_id, s.block_id, m.id, ?4, ?5 FROM sticky_messages m JOIN stickies s ON s.id = m.sticky_id
+                "INSERT INTO stickies (article_id, block_id, parent_message_id, origin, kind, quote)
+                 SELECT s.article_id, s.block_id, m.id, 'answer', ?4, ?5 FROM sticky_messages m JOIN stickies s ON s.id = m.sticky_id
                  WHERE m.id = ?1 AND m.answer = ?2 AND m.created_at = ?3
                  RETURNING id",
                 params![p.id, p.answer, p.created_at, kind.as_str(), new.quote],
@@ -403,10 +419,10 @@ fn save(store: &Store, new: &Ask, parent: Option<&Parent>, url: Option<&str>, an
     if id.is_none() {
         id = tx
             .query_row(
-                "INSERT INTO stickies (article_id, block_id, kind, quote)
-                 SELECT id, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?3, ?4 FROM articles WHERE id = ?1 AND original_url = ?5
+                "INSERT INTO stickies (article_id, block_id, origin, kind, quote)
+                 SELECT id, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?6, ?3, ?4 FROM articles WHERE id = ?1 AND original_url = ?5
                  RETURNING id",
-                params![new.article_id, new.block_id, kind.as_str(), new.quote, url],
+                params![new.article_id, new.block_id, kind.as_str(), new.quote, url, origin.as_str()],
                 |r| r.get(0),
             )
             .optional()?;
@@ -424,7 +440,8 @@ pub fn list(store: &Store, article_id: i64) -> Result<Vec<Sticky>, String> {
 
 /// Stickies (`s`), each as the JSON of a `Sticky`.
 const STICKY: &str = "SELECT json_object(
-        'id', s.id, 'article_id', s.article_id, 'block_id', s.block_id, 'parent', s.parent_message_id, 'kind', s.kind, 'quote', s.quote,
+        'id', s.id, 'article_id', s.article_id, 'block_id', s.block_id, 'parent', s.parent_message_id, 'origin', s.origin, 'kind', s.kind,
+        'quote', s.quote,
         'messages', json((SELECT json_group_array(json_object(
             'id', m.id, 'question', m.question, 'answer', m.answer, 'citations', json(m.citations))
             ORDER BY m.id) FROM sticky_messages m WHERE m.sticky_id = s.id)))
@@ -438,7 +455,7 @@ pub fn delete(store: &Store, id: i64) -> Result<Option<i64>, String> {
 /// An article's (`?1`) stickies as a JSON array for the export: the block as its ordinal, as in the article's `blocks`, and
 /// the parent as its sticky's index in the array and its own in the `messages` of that.
 pub(crate) const EXPORT: &str = "SELECT json_group_array(json_object(
-        'kind', s.kind, 'quote', s.quote, 'block_ordinal', b.ordinal, 'created_at', s.created_at,
+        'kind', s.kind, 'origin', s.origin, 'quote', s.quote, 'block_ordinal', b.ordinal, 'created_at', s.created_at,
         'messages', json((SELECT json_group_array(json_object(
             'question', m.question, 'answer', m.answer, 'citations', json(m.citations),
             'provider', m.provider, 'model', m.model, 'prompt_version', m.prompt_version, 'created_at', m.created_at)
@@ -540,13 +557,18 @@ mod tests {
         quote: &str,
         question: &str,
     ) -> Result<Sticky, String> {
-        super::ask(s, llm, &Semaphore::new(1), Ask { article_id, block_id, parent: None, kind, quote, question }).await
+        super::ask(s, llm, &Semaphore::new(1), Ask { article_id, block_id, parent: None, origin: StickyOrigin::Text, kind, quote, question }).await
     }
 
-    /// Asks about a passage of the answer `n` of `of`.
+    /// Asks about a passage of the answer `n` of `of`, with a block and an origin that `ask` must not take from the caller.
     async fn ask_on<L: LlmProvider>(s: &Store, llm: &L, of: &Sticky, n: usize, kind: StickyKind, quote: &str, question: &str) -> Result<Sticky, String> {
-        super::ask(s, llm, &Semaphore::new(1), Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), kind, quote, question })
-            .await
+        super::ask(
+            s,
+            llm,
+            &Semaphore::new(1),
+            Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), origin: StickyOrigin::Text, kind, quote, question },
+        )
+        .await
     }
 
     async fn follow_up<L: LlmProvider>(s: &Store, llm: &L, id: i64, question: &str) -> Result<Sticky, String> {
@@ -930,7 +952,15 @@ mod tests {
         }
         assert_eq!(follow_up(&s, &llm, 999, "q").await.unwrap_err(), msg!("stickies.gone"));
         let other = add(&s, "https://a.dev/other", "Other", &[(Paragraph, "Other text.")]);
-        let on = |article_id, parent| Ask { article_id, block_id: None, parent: Some(parent), kind: StickyKind::Term, quote: "q", question: "" };
+        let on = |article_id, parent| Ask {
+            article_id,
+            block_id: None,
+            parent: Some(parent),
+            origin: StickyOrigin::Answer,
+            kind: StickyKind::Term,
+            quote: "q",
+            question: "",
+        };
         for bad in [on(a, 999), on(other, term.messages[0].id)] {
             assert_eq!(super::ask(&s, &llm, &Semaphore::new(1), bad).await.unwrap_err(), msg!("stickies.gone"), "{bad:?}: no such answer on the article");
         }
@@ -1079,10 +1109,43 @@ mod tests {
                 store.conn().execute(add, params![message, sticky, answer, at]).unwrap();
             });
             let child = ask_on(&s, &llm, &root, 0, StickyKind::Question, "先に書く", "なぜ？").await.unwrap();
-            assert_eq!((child.article_id, child.block_id, child.parent), (a, Some(first), None), "{then}");
+            assert_eq!((child.article_id, child.block_id, child.parent, child.origin), (a, Some(first), None, StickyOrigin::Answer), "{then}");
             assert_eq!((child.quote.as_str(), child.messages[0].question.as_str()), ("先に書く", "なぜ？"));
             assert_eq!(list(&s, a).unwrap().last(), Some(&child));
         }
+    }
+
+    #[tokio::test]
+    async fn a_passage_of_an_answer_is_sent_as_an_excerpt_once_the_answer_is_gone() {
+        let s = Store::open_in_memory().unwrap();
+        let a = add_wal(&s);
+        let first = Some(block(&s, a, "The log"));
+        let root = ask(&s, &Fake::new("ROOT-A1"), a, first, StickyKind::Term, "ROOT", "").await.unwrap();
+        let child = ask_on(&s, &Fake::new("CHILD-A1"), &root, 0, StickyKind::Term, "A1", "").await.unwrap();
+        delete(&s, root.id).unwrap();
+
+        let llm = Fake::new("CHILD-A2");
+        follow_up(&s, &llm, child.id, "Q").await.unwrap();
+        let alone = "<excerpt>\nA1\n</excerpt>\n\n<conversation>\nQ: 用語\nA: CHILD-A1\n\n</conversation>\n\n";
+        let about = "the last excerpt and the conversation about it";
+        assert_eq!(llm.input(), format!("{WAL_SOURCES}{alone}<question>\nQ\n</question>\n\nAnswer the question above about {about}, in Japanese.\n"));
+        draft(&s, &llm, child.id).await.unwrap();
+        assert!(llm.input().starts_with("<excerpt>\nA1\n</excerpt>\n\n<conversation>\n"), "the memo draft too: {}", llm.input());
+
+        // As a question asked on an answer is sent again once its sticky is gone: with no parent, and of an answer.
+        let again = Ask { article_id: a, block_id: first, parent: None, origin: StickyOrigin::Answer, kind: StickyKind::Term, quote: "A1 again", question: "" };
+        let sent = super::ask(&s, &llm, &Semaphore::new(1), again).await.unwrap();
+        assert!(
+            llm.input().starts_with(&format!("{WAL_SOURCES}<excerpt>\nA1 again\n</excerpt>\n\nExplain in Japanese what the last excerpt above means")),
+            "{}",
+            llm.input()
+        );
+        assert_eq!((sent.block_id, sent.parent, sent.origin), (first, None, StickyOrigin::Answer));
+        assert!(!llm.input().contains("<passage>"));
+        // And a child of it: the orphan's passage above its own is still an excerpt, not the article's.
+        let llm = Fake::new("GRANDCHILD-A1");
+        ask_on(&s, &llm, &child, 0, StickyKind::Term, "C1", "").await.unwrap();
+        assert!(llm.input().starts_with(&format!("{WAL_SOURCES}{alone}<excerpt>\nC1\n</excerpt>\n\n")), "{}", llm.input());
     }
 
     #[tokio::test]
@@ -1141,11 +1204,25 @@ mod tests {
                 match case {
                     "follow-up" => super::follow_up(&s, &llm, &turn, on.id, "q").await,
                     "child" => {
-                        let new = Ask { article_id: a, block_id: None, parent: Some(on.messages[0].id), kind: StickyKind::Term, quote: "q", question: "" };
+                        let new = Ask {
+                            article_id: a,
+                            block_id: None,
+                            parent: Some(on.messages[0].id),
+                            origin: StickyOrigin::Answer,
+                            kind: StickyKind::Term,
+                            quote: "q",
+                            question: "",
+                        };
                         super::ask(&s, &llm, &turn, new).await
                     }
                     _ => {
-                        super::ask(&s, &llm, &turn, Ask { article_id: a, block_id: None, parent: None, kind: StickyKind::Term, quote: "q", question: "" }).await
+                        super::ask(
+                            &s,
+                            &llm,
+                            &turn,
+                            Ask { article_id: a, block_id: None, parent: None, origin: StickyOrigin::Text, kind: StickyKind::Term, quote: "q", question: "" },
+                        )
+                        .await
                     }
                 }
             };
@@ -1196,6 +1273,7 @@ mod tests {
                             article_id: mirror,
                             block_id: None,
                             parent: Some(on_mirror.messages[0].id),
+                            origin: StickyOrigin::Answer,
                             kind: StickyKind::Term,
                             quote: "q",
                             question: "",
@@ -1226,7 +1304,15 @@ mod tests {
                 let parent = (case == "child").then_some(on.messages[0].id);
                 match case {
                     "follow-up" => super::follow_up(&s, &llm, &turn, on.id, "q").await,
-                    _ => super::ask(&s, &llm, &turn, Ask { article_id: a, block_id: None, parent, kind: StickyKind::Term, quote: "q", question: "" }).await,
+                    _ => {
+                        super::ask(
+                            &s,
+                            &llm,
+                            &turn,
+                            Ask { article_id: a, block_id: None, parent, origin: StickyOrigin::Text, kind: StickyKind::Term, quote: "q", question: "" },
+                        )
+                        .await
+                    }
                 }
             };
             // The article goes, and its id to another.

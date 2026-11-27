@@ -28,7 +28,7 @@ use lattice_core::network;
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::srs::Grade;
-use lattice_core::stickies::{Sticky, StickyKind};
+use lattice_core::stickies::{Sticky, StickyKind, StickyOrigin};
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
@@ -1080,11 +1080,12 @@ async fn sticky_ask(
     article_id: i64,
     block_id: Option<i64>,
     parent: Option<i64>,
+    origin: StickyOrigin,
     kind: StickyKind,
     quote: String,
     question: String,
 ) -> Result<Sticky, String> {
-    let new = stickies::Ask { article_id, block_id, parent, kind, quote: &quote, question: &question };
+    let new = stickies::Ask { article_id, block_id, parent, origin, kind, quote: &quote, question: &question };
     let sticky = stickies::ask(&app.store, &app.providers.llm, &app.chat_llm, new).await?;
     let _ = handle.emit("stickies-changed", sticky.article_id);
     Ok(sticky)

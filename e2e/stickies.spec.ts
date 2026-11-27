@@ -71,7 +71,7 @@ const child = (page: Page, kind: Kind) => card(page, `${kind}(回答から)`);
 const followUp = (page: Page | Locator) => page.getByRole("button", { name: "続けて質問", exact: true });
 const followUpField = (page: Page | Locator) => page.getByRole("textbox", { name: "付箋への続きの質問" });
 const asked = async (page: Page) =>
-  (await callsOf(page, "sticky_ask")) as { blockId: number | null; parent: number | null; kind: string; quote: string; question: string }[];
+  (await callsOf(page, "sticky_ask")) as { blockId: number | null; parent: number | null; origin: string; kind: string; quote: string; question: string }[];
 
 const ANSWERED = /選んだ箇所の説明です/;
 
@@ -95,6 +95,9 @@ async function dragTo(page: Page, ...points: [number, number][]) {
 
 /** Drags from the start of `from`'s text to the end of `to`'s, and lets go `beyond` pixels past that. */
 async function drag(page: Page, from: string, to: string, beyond = 0) {
+  // A sentence's tooltip, up from where the pointer rested, lies over the next block's first line and would take the drag.
+  await page.mouse.move(0, 0);
+  await expect(page.locator(".pop")).toHaveCount(0);
   const [start, end] = await page.evaluate(
     (ids) =>
       ids.map((id, i) => {
@@ -170,7 +173,7 @@ const invoke = (page: Page, cmd: string, args: object) =>
     [cmd, args] as const,
   );
 const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere", parent: number | null = null) =>
-  invoke(page, "sticky_ask", { articleId, blockId, parent, kind: "term", quote, question: "" });
+  invoke(page, "sticky_ask", { articleId, blockId, parent, origin: "text", kind: "term", quote, question: "" });
 
 /** `n` more stickies on a block, there as it returns. */
 async function askMany(page: Page, articleId: number, blockId: number, n: number) {
@@ -706,7 +709,7 @@ test("in a narrow pane a card that comes under the paragraph at the top of the v
         el.scrollTop = start + px;
         await new Promise((done) => requestAnimationFrame(done));
         const y = p.getBoundingClientRect().top;
-        const { id } = await invoke("sticky_ask", { articleId: article, blockId: block, parent: null, kind: "term", quote: "q", question: "" });
+        const { id } = await invoke("sticky_ask", { articleId: article, blockId: block, parent: null, origin: "text", kind: "term", quote: "q", question: "" });
         await come(2);
         const by = p.getBoundingClientRect().top - y;
         if (Math.abs(by) >= 1) {
@@ -1950,9 +1953,6 @@ test("a press on a sticky takes the bar away, and the selection that stays does 
     },
     () => card(app, "詳しく").locator(".cite").click(),
   ]) {
-    // A tooltip of the paragraph above would cover it.
-    await app.locator(".art-title").hover();
-    await expect(app.locator(".pop")).toBeHidden();
     await drag(app, "#b-103", "#b-103");
     await expect(bar(app)).toBeVisible();
     await press();
@@ -2100,7 +2100,8 @@ test("a word in a sentence's tooltip can be saved, and not asked about", async (
   await app.locator("#b-103 .sent").hover();
   const pop = app.locator("#b-103 .pop");
   await expect(pop).toBeVisible();
-  const word = await pop.evaluate((el) => {
+  const sentence = await app.locator("#b-103 p").innerText();
+  const [start, end] = await pop.evaluate((el) => {
     const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const at = n.textContent!.indexOf("PostgreSQL");
@@ -2108,16 +2109,16 @@ test("a word in a sentence's tooltip can be saved, and not asked about", async (
         const r = document.createRange();
         r.setStart(n, at);
         r.setEnd(n, at + "PostgreSQL".length);
-        getSelection()!.removeAllRanges();
-        getSelection()!.addRange(r);
-        el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return getSelection()!.toString();
+        const box = r.getBoundingClientRect();
+        return [box.left + 1, box.right - 1].map((x): [number, number] => [x, box.top + box.height / 2]);
       }
     }
-    return null;
+    throw new Error("no PostgreSQL in the tooltip");
   });
-  expect(word).toBe("PostgreSQL");
+  await dragTo(app, start, end);
+  expect(await selected(app)).toBe("PostgreSQL");
   await expect(bar(app).getByRole("button")).toHaveText([/単語を登録/]);
+  await expect(app.locator("#b-103 p")).toHaveText(sentence);
 });
 
 test("letting go of the scrollbar brings no bar", async ({ shell }) => {
@@ -2636,15 +2637,15 @@ test("deleting a sticky says that those made from its answers stay, and they do,
   await card(app, "詳しく").getByRole("button", { name: "付箋を削除" }).click();
   await expect(dialog).toContainText("回答から作った付箋は残ります。");
   await dialog.getByRole("button", { name: "削除" }).click();
-  await expect(cards(app).locator(".sticky-kind")).toHaveText(["用語", "質問"]);
-  expect((await boxOf(card(app, "用語"))).x).toBe(x);
+  await expect(cards(app).locator(".sticky-kind")).toHaveText(["用語(回答から)", "質問(回答から)"]);
+  expect((await boxOf(child(app, "用語"))).x).toBe(x);
   await expect(field(app)).toHaveValue("half a question");
   await field(app).press("Control+Enter");
-  await expect(card(app, "質問").locator(".answer")).toHaveText(ANSWERED);
-  expect((await asked(app)).at(-1)).toMatchObject({ blockId: 102, parent: null, question: "half a question" });
+  await expect(child(app, "質問").locator(".answer")).toHaveText(ANSWERED);
+  expect((await asked(app)).at(-1)).toMatchObject({ blockId: 102, parent: null, origin: "answer", question: "half a question" });
 });
 
-test("a question on an answer whose sticky goes while it waits can be sent again, if it fails, as one on the article", async ({ shell }) => {
+test("a question on an answer whose sticky goes while it waits can be sent again, if it fails, as one of an answer that is gone", async ({ shell }) => {
   await hold(shell, "sticky_ask");
   await shell.goto("/");
   await openSnapshot(shell);
@@ -2656,7 +2657,7 @@ test("a question on an answer whose sticky goes while it waits can be sent again
   await field(shell).fill("なぜ？");
   await shell.keyboard.press("Control+Enter");
   await invoke(shell, "delete_sticky", { id: 1 });
-  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["質問"]);
+  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["質問(回答から)"]);
   await expect(cards(shell).getByRole("status")).toBeVisible();
   const other = askElsewhere(shell, SNAPSHOT_ID, 102);
   await shell.waitForFunction(() => window.__e2e.calls.filter((c) => c.cmd === "sticky_ask").length === 3);
@@ -2665,16 +2666,16 @@ test("a question on an answer whose sticky goes while it waits can be sent again
   await expect(cards(shell)).toHaveCount(2);
   await failing(["sticky_ask"]);
   await answer();
-  await expect(card(shell, "質問").getByRole("alert")).toHaveText(/sticky_ask failed/);
+  await expect(child(shell, "質問").getByRole("alert")).toHaveText(/sticky_ask failed/);
   await failing([]);
-  await card(shell, "質問").getByRole("button", { name: "再試行" }).click();
+  await child(shell, "質問").getByRole("button", { name: "再試行" }).click();
   await answer();
-  await expect(card(shell, "質問").locator(".answer")).toHaveText(ANSWERED);
-  expect((await asked(shell)).map((c) => [c.blockId, c.parent])).toEqual([
-    [102, null],
-    [102, 1],
-    [102, null],
-    [102, null],
+  await expect(child(shell, "質問").locator(".answer")).toHaveText(ANSWERED);
+  expect((await asked(shell)).map((c) => [c.blockId, c.parent, c.origin])).toEqual([
+    [102, null, "text"],
+    [102, 1, "answer"],
+    [102, null, "text"],
+    [102, null, "answer"],
   ]);
 });
 
@@ -2956,7 +2957,7 @@ test("a question on an answer whose sticky goes is at its block's height, as far
   const off = await startCrowded(shell);
   await askOn(shell, "質問", cards(shell).first());
   await invoke(shell, "delete_sticky", { id: 1 });
-  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["質問", "用語"]);
+  await expect(cards(shell).locator(".sticky-kind")).toHaveText(["質問(回答から)", "用語"]);
   await frames(shell);
   expect(Math.abs(await off(1, 31))).toBeLessThan(1);
   const [draft, pinned] = [await boxOf(cards(shell).first()), await boxOf(cards(shell).nth(1))];
@@ -3269,6 +3270,21 @@ test("a child whose parent is folded is marked nowhere and has no line, though i
   await frames(shell);
   expect(await marked(shell)).toEqual([root]);
   expect(await lines(shell)).toHaveLength(1);
+});
+
+test("a child whose parent is deleted is marked nowhere, has no line, offers no 単語を登録, and still says it is of an answer", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-106");
+  await expect(card(app, "詳しく").locator(".answer")).toHaveText(ANSWERED);
+  // A word of the answer that the block has too, as a 用語 sticky on the text would.
+  await askElsewhere(app, SNAPSHOT_ID, 106, "snapshot", 1);
+  await expect(child(app, "用語").locator(".answer")).toHaveText(ANSWERED);
+  await invoke(app, "delete_sticky", { id: 1 });
+  await expect(cards(app).locator(".sticky-kind")).toHaveText(["用語(回答から)"]);
+  await frames(app);
+  expect(await marked(app)).toEqual([]);
+  expect(await lines(app)).toEqual([]);
+  await expect(child(app, "用語").getByRole("button", { name: "単語を登録" })).toHaveCount(0);
 });
 
 test("a sticky folds to a line by its label and unfolds, and folded for one asked below, above the view, moves no text", async ({ shell }) => {

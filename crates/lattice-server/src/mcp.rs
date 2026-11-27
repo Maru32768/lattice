@@ -63,8 +63,10 @@ fn all_tools() -> Vec<(Role, Value)> {
                 "translation": flag("Include the stored translation"),
                 "stickies": flag(
                     "Include the user's stickies on it: passages they asked about, each with the questions and answers. A sticky's block ids \
-                     are those of blocks, and its parent is the id of the message whose answer its passage was selected in. Ask for blocks \
-                     in another call: they come before the stickies, and a long article's blocks fill the result by themselves"
+                     are those of blocks, and its parent is the id of the message whose answer its passage was selected in; its origin is \
+                     answer for such a passage, also once that message is gone, and text for one of the article (and for one whose \
+                     message was deleted before origins were kept). Ask for blocks in another call: they come before the stickies, \
+                     and a long article's blocks fill the result by themselves"
                 ),
             }),
             &["id"],

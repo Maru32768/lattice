@@ -422,7 +422,11 @@ fn lines<T>(items: &[T], f: impl Fn(&T) -> String) -> String {
 fn sticky_lines(s: &stickies::Sticky) -> String {
     let kind = json!(s.kind);
     let on = s.block_id.map(|b| format!(" on block {b}")).unwrap_or_default();
-    let from = s.parent.map(|m| format!(" from message {m}")).unwrap_or_default();
+    let from = match (s.parent, s.origin) {
+        (Some(m), _) => format!(" from message {m}"),
+        (None, stickies::StickyOrigin::Answer) => " from an answer".into(),
+        (None, stickies::StickyOrigin::Text) => String::new(),
+    };
     let mut out = format!("[sticky {} {}{on}{from}] {}", s.id, kind.as_str().unwrap_or_default(), s.quote);
     for m in &s.messages {
         out += &format!("\n  [message {}]", m.id);
@@ -553,7 +557,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                                 json!({ "id": m.id, "question": m.question, "answer": m.answer, "citations": citations })
                             })
                             .collect();
-                        json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "kind": s.kind, "quote": s.quote, "messages": messages })
+                        json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "origin": s.origin, "kind": s.kind, "quote": s.quote, "messages": messages })
                     })
                     .collect();
             }
@@ -792,7 +796,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use lattice_core::stickies::{Ask, StickyKind};
+    use lattice_core::stickies::{Ask, StickyKind, StickyOrigin};
 
     use super::*;
 
@@ -910,7 +914,7 @@ pub(crate) mod tests {
         let block = s.get_article(a, "ja").unwrap().unwrap().blocks[0].id;
         let turn = tokio::sync::Semaphore::new(1);
         let ask = |article_id, block_id, parent, kind, quote, question| {
-            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, kind, quote, question })
+            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, origin: StickyOrigin::Text, kind, quote, question })
         };
         ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         // The follow-ups keep the ids of stickies and of messages apart, so that neither passes for the other.
@@ -929,10 +933,10 @@ pub(crate) mod tests {
         assert_eq!(
             on_a,
             json!([
-                { "id": 1, "block_id": block, "parent": null, "kind": "question", "quote": "write skew",
+                { "id": 1, "block_id": block, "parent": null, "origin": "text", "kind": "question", "quote": "write skew",
                   "messages": [message(1, "なぜ?"), message(2, "ほかには?"), message(3, "例は?")] },
-                { "id": 2, "block_id": block, "parent": 3, "kind": "term", "quote": "答え", "messages": [message(4, "")] },
-                { "id": 3, "block_id": null, "parent": null, "kind": "detail", "quote": "SSI", "messages": [message(5, "")] },
+                { "id": 2, "block_id": block, "parent": 3, "origin": "answer", "kind": "term", "quote": "答え", "messages": [message(4, "")] },
+                { "id": 3, "block_id": null, "parent": null, "origin": "text", "kind": "detail", "quote": "SSI", "messages": [message(5, "")] },
             ])
         );
         let with_blocks = get(a, true, true).await.unwrap();
@@ -950,6 +954,11 @@ pub(crate) mod tests {
         assert_eq!(format!("{}{listed}", without.text), with.text, "the rest is as it was");
         let empty = get(none, false, true).await.unwrap();
         assert_eq!((&empty.json["stickies"], empty.text.ends_with("\n## Stickies\n\n(none)\n")), (&json!([]), true));
+
+        stickies::delete(s, root.id).unwrap();
+        let orphan = get(a, false, true).await.unwrap();
+        assert_eq!((&orphan.json["stickies"][0]["parent"], &orphan.json["stickies"][0]["origin"]), (&Value::Null, &json!("answer")));
+        assert!(orphan.text.contains(&format!("\n[sticky 2 term on block {block} from an answer] 答え\n")), "{}", orphan.text);
     }
 
     #[tokio::test]
@@ -964,7 +973,7 @@ pub(crate) mod tests {
         fetched(s, a, "A", &[SSI, wal]);
         let blocks = || s.get_article(a, "ja").unwrap().unwrap().blocks.into_iter().map(|b| (b.id, b.block.text)).collect::<Vec<_>>();
         let cited = blocks()[1].0;
-        let on = Ask { article_id: a, block_id: Some(cited), parent: None, kind: StickyKind::Detail, quote: "log", question: "" };
+        let on = Ask { article_id: a, block_id: Some(cited), parent: None, origin: StickyOrigin::Text, kind: StickyKind::Detail, quote: "log", question: "" };
         let sticky = stickies::ask(s, &Answers(2), &tokio::sync::Semaphore::new(1), on).await.unwrap();
         assert_eq!(sticky.messages[0].citations.iter().map(|c| (c.block_id, c.text.as_str())).collect::<Vec<_>>(), [(cited, wal)]);
         let citations = || async {
