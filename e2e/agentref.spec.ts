@@ -69,4 +69,21 @@ test("the bar over a selected passage copies the blocks it starts and ends in", 
   );
   await bar(app).getByRole("button", { name: "エージェント用にコピー" }).click();
   await expect.poll(() => clipboard(app)).toBe(`${ref}#b${first}-b${second}`);
+
+  // A drag from the blank space after a paragraph's last line starts at that paragraph's end, taking none of it.
+  await app.evaluate(
+    ([from, to]) => {
+      const [start, end] = [from, to].map((id) => document.querySelector(`#b-${id} p`)!);
+      const r = document.createRange();
+      r.setStart(start, start.childNodes.length);
+      r.setEnd(end, end.childNodes.length);
+      start.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(r);
+      end.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    },
+    [first, second],
+  );
+  await bar(app).getByRole("button", { name: "エージェント用にコピー" }).click();
+  await expect.poll(() => clipboard(app)).toBe(`${ref}#b${second}`);
 });

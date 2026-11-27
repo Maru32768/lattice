@@ -1010,23 +1010,28 @@ export function Reader({
     if (!block || beyond.toString().trim()) {
       return null;
     }
-    // The last block the selection takes text from: a triple click ends at the start of the next one.
-    let last = block;
-    for (const b of blocks.slice(blocks.indexOf(block) + 1)) {
+    // The blocks the selection takes text from: a drag from the blank after a line starts at that block's end, and a
+    // triple click ends at the start of the next one.
+    const taken: Block[] = [];
+    for (const b of blocks.slice(blocks.indexOf(block))) {
       const el = root.querySelector(`#b-${b.id}`);
       if (!el || !range.intersectsNode(el)) {
         break;
       }
       const part = document.createRange();
       part.selectNodeContents(el);
+      if (range.compareBoundaryPoints(Range.START_TO_START, part) > 0) {
+        part.setStart(range.startContainer, range.startOffset);
+      }
       if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0) {
         part.setEnd(range.endContainer, range.endOffset);
       }
       if (part.toString().trim()) {
-        last = b;
+        taken.push(b);
       }
     }
-    return { passage: { blockId: block.id, parent: null, quote }, agentRef: articleRef(a.id, [block.id, last.id]), ...barAt(range, view) };
+    const [first, last] = [taken[0] ?? block, taken.at(-1) ?? block];
+    return { passage: { blockId: block.id, parent: null, quote }, agentRef: articleRef(a.id, [first.id, last.id]), ...barAt(range, view) };
   }
 
   /** The passage selected in one answer of a sticky, and where to put the bar. */
