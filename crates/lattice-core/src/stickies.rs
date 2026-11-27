@@ -515,6 +515,13 @@ mod tests {
         s.save_fetched(id, Some(&fetched(url)), Ok(ir(title, blocks)), None).unwrap()
     }
 
+    /// An article given the id of one that was deleted. The store never gives an id again (`article_ids`); a sticky's
+    /// answer still checks that its article is the one it was asked on.
+    fn add_at(s: &Store, id: i64, url: &str, title: &str, blocks: &[(BlockKind, &str)]) {
+        s.conn().execute("INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (?1, ?2, ?2, 'a.dev')", params![id, url]).unwrap();
+        assert_eq!(add(s, url, title, blocks), id);
+    }
+
     /// A later extraction that failed, then the refetch that names the canonical URL.
     fn merge(s: &Store, mirror: i64, stays: i64, blocks: &[(BlockKind, &str)]) {
         s.save_fetched(mirror, None, Err("no text".into()), None).unwrap();
@@ -1114,7 +1121,7 @@ mod tests {
             llm.meanwhile = Box::new(move || {
                 store.delete_article(a).unwrap();
                 if !then.is_empty() {
-                    assert_eq!(add(&store, then, "Next", WAL), a, "SQLite gives the last id again");
+                    add_at(&store, a, then, "Next", WAL);
                 }
             });
             let e = if child {
@@ -1154,7 +1161,7 @@ mod tests {
                 tokio::task::yield_now().await;
                 if case == "root" {
                     s.delete_article(a).unwrap();
-                    assert_eq!(add(&s, "https://a.dev/next", "Next", WAL), a);
+                    add_at(&s, a, "https://a.dev/next", "Next", WAL);
                 } else {
                     delete(&s, on.id).unwrap();
                 }
@@ -1233,7 +1240,7 @@ mod tests {
             let meanwhile = async {
                 tokio::task::yield_now().await;
                 s.delete_article(a).unwrap();
-                assert_eq!(add(&s, "https://a.dev/next", "Next", &[(Paragraph, "Of another article.")]), a);
+                add_at(&s, a, "https://a.dev/next", "Next", &[(Paragraph, "Of another article.")]);
                 drop(held);
             };
             let (sent, ()) = tokio::join!(sent, meanwhile);

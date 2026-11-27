@@ -68,6 +68,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00047_sticky_parent.sql"),
     include_str!("../db/migrations/00048_vocab_explanation.sql"),
     include_str!("../db/migrations/00049_note_revision.sql"),
+    include_str!("../db/migrations/00050_article_ids.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -826,7 +827,7 @@ impl Store {
     pub fn upsert_pending(&self, original_url: &str, normalized_url: &str, domain: &str) -> Result<(i64, bool)> {
         let c = self.conn();
         c.execute(
-            "INSERT INTO articles (original_url, normalized_url, domain) VALUES (?1, ?2, ?3)
+            "INSERT INTO articles (id, original_url, normalized_url, domain) VALUES ((SELECT last + 1 FROM article_ids), ?1, ?2, ?3)
              ON CONFLICT(normalized_url) DO NOTHING",
             params![original_url, normalized_url, domain],
         )?;
@@ -1765,6 +1766,38 @@ mod tests {
         c.execute("DELETE FROM processing_jobs WHERE id = 7", []).unwrap();
         c.execute("INSERT INTO processing_jobs (type, dedup_key) VALUES ('y', 'b')", []).unwrap();
         assert_eq!(c.last_insert_rowid(), 8);
+    }
+
+    /// A window keeps a memo by article id: the next article must not take the deleted one's.
+    #[test]
+    fn a_deleted_articles_id_goes_to_no_later_article() {
+        let s = Store::open_in_memory().unwrap();
+        let save = |n: i64| s.upsert_pending(&format!("https://a.dev/{n}"), &format!("https://a.dev/{n}"), "a.dev").unwrap().0;
+        let (a, b) = (save(1), save(2));
+        assert!(s.delete_article(b).unwrap());
+        let c = save(3);
+        assert_eq!((a, b, c), (1, 2, 3));
+        assert_eq!(save(3), c, "saving it again finds it");
+        s.conn()
+            .execute("INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (9, 'https://a.dev/9', 'https://a.dev/9', 'a.dev')", [])
+            .unwrap();
+        assert!(s.delete_article(9).unwrap());
+        assert_eq!(save(10), 10, "after an article put in another way");
+    }
+
+    #[test]
+    fn the_article_id_migration_starts_after_the_articles_there() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("CREATE TABLE article_ids")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch("INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (5, 'https://a.dev/5', 'https://a.dev/5', 'a.dev');")
+            .unwrap();
+        let s = Store::init(conn).unwrap();
+        assert!(s.delete_article(5).unwrap());
+        assert_eq!(s.upsert_pending("https://a.dev/6", "https://a.dev/6", "a.dev").unwrap().0, 6);
     }
 
     /// Migration 4 rewrites the snapshots table; pre-existing raw HTML must survive it.
