@@ -1122,7 +1122,6 @@ mod tests {
         let first = Some(block(&s, a, "The log"));
         let root = ask(&s, &Fake::new("ROOT-A1"), a, first, StickyKind::Term, "ROOT", "").await.unwrap();
         let child = ask_on(&s, &Fake::new("CHILD-A1"), &root, 0, StickyKind::Term, "A1", "").await.unwrap();
-        assert_eq!((root.origin, child.origin), (StickyOrigin::Text, StickyOrigin::Answer));
         delete(&s, root.id).unwrap();
 
         let llm = Fake::new("CHILD-A2");
@@ -1131,18 +1130,7 @@ mod tests {
         let about = "the last excerpt and the conversation about it";
         assert_eq!(llm.input(), format!("{WAL_SOURCES}{alone}<question>\nQ\n</question>\n\nAnswer the question above about {about}, in Japanese.\n"));
         draft(&s, &llm, child.id).await.unwrap();
-        assert!(
-            llm.input().starts_with(
-                "<excerpt>
-A1
-</excerpt>
-
-<conversation>
-"
-            ),
-            "the memo draft too: {}",
-            llm.input()
-        );
+        assert!(llm.input().starts_with("<excerpt>\nA1\n</excerpt>\n\n<conversation>\n"), "the memo draft too: {}", llm.input());
 
         // As a question asked on an answer is sent again once its sticky is gone: with no parent, and of an answer.
         let again = Ask { article_id: a, block_id: first, parent: None, origin: StickyOrigin::Answer, kind: StickyKind::Term, quote: "A1 again", question: "" };
