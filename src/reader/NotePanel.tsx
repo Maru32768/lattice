@@ -31,7 +31,8 @@ const tellChanged = (id: number) => changed.forEach((f) => f(id));
 let queue: Promise<unknown> = Promise.resolve();
 
 // A blank memo is stored as "", whatever blank text was typed.
-const unsent = (memo: Memo) => memo.text !== memo.saved.body && !(memo.saved.body === "" && memo.text.trim() === "");
+const differs = (text: string, saved: Note) => text !== saved.body && !(saved.body === "" && text.trim() === "");
+const unsent = (memo: Memo) => differs(memo.text, memo.saved);
 
 /** This window's copy, unless it has nothing unsent and the view was read after a save the copy has not heard of. */
 function current(view: ArticleView): Memo {
@@ -101,21 +102,24 @@ function save(id: number, body: string): Promise<string | null> {
   return ended;
 }
 
-/** The memo added to with `text` as stored (`append_article_note`), as this window's copy then stands. */
-function added(note: Note, shown: string, based: boolean) {
+/**
+ * The memo added to with `text` as stored (`append_article_note`), as this window's copy then stands. `base` is the stored
+ * memo the copy went from when the add was sent, and `based` whether the copy's text was that memo.
+ */
+function added(note: Note, shown: string, base: Note, based: boolean) {
   const memo = memos.get(note.article_id)!;
   if (memo.theirs) {
     take(note);
-  } else if (!based || note.body === shown) {
-    // When the save before it failed, its text is still unsent here, on top of the memo added to.
+  } else if (memo.saved === base && note.revision === base.revision + 1) {
+    // Added right onto the memo the copy went from. When the save before it failed, that text is still unsent here, on top.
     memo.saved = note;
-  } else if (memo.text === shown) {
+  } else if (based && memo.text === shown) {
     // The copy was behind a save it had not heard of yet.
     memos.set(note.article_id, { text: note.body, saved: note, theirs: null });
     tellChanged(note.article_id);
   } else {
-    memo.theirs = note;
-    tellChanged(note.article_id);
+    // A save came between, or the copy changed meanwhile: the memo as stored is news to it.
+    take(note);
   }
 }
 
@@ -147,17 +151,17 @@ export function addToNote(view: ArticleView, text: string) {
   const ended = queue
     .then(async () => {
       // The text before the add is stored, or behind what is: the memo the text goes after holds all of it then.
-      const based = memos.get(id)!.saved.body === before;
-      return { note: await api.appendArticleNote(id, text), based };
+      const base = memos.get(id)!.saved;
+      return { note: await api.appendArticleNote(id, text), base, based: !differs(before, base) };
     })
     .then(
-      ({ note, based }) => {
-        // Not based on what is stored only when the save before it failed: that error stands, and the panel tries again.
+      ({ note, base, based }) => {
+        // Not based on what is stored when the save before it failed (that error stands, and the panel tries again) or the panel warns.
         const error = based ? null : (failedSaves.get(id) ?? null);
         if (error === null) {
           failedSaves.delete(id);
         }
-        added(note, shown, based);
+        added(note, shown, base, based);
         panels.forEach((tell) => tell(id, error, memos.get(id)!.text));
         return null;
       },

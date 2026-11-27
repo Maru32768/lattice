@@ -4091,6 +4091,82 @@ test("メモに足す while the memo warns of another window's save keeps the ty
   await expect(warning).toHaveCount(0);
 });
 
+test("メモに足す, then loading the saved memo before the add lands, shows the memo with the text added, and typing keeps it", async ({ shell }) => {
+  await hold(shell, "append_article_note");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(shell).click();
+  await expect(memoField(shell)).toBeFocused();
+  await typedAsAnotherSaves(shell, SNAPSHOT_ID, "mine", "theirs", 0);
+  const warning = shell.getByRole("complementary", { name: "メモ" }).getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(memoField(shell)).toHaveValue(`mine\n\n${draft}`);
+  await warning.getByRole("button", { name: "保存されたメモを読み込む" }).click();
+  await expect(memoField(shell)).toHaveValue("theirs");
+  await shell.evaluate(() => window.__e2e.release("append_article_note"));
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect(memoField(shell)).toHaveValue(`theirs\n\n${draft}`);
+  await expect(warning).toHaveCount(0);
+  await memoField(shell).press("Control+End");
+  await memoField(shell).pressSequentially("!");
+  await expect.poll(() => storedMemo(shell), "the sticky's text stays").toBe(`theirs\n\n${draft}!`);
+});
+
+test("メモに足す on a memo cleared to a space, after another window's save not heard of, shows that save with the text added", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const sticky = card(app, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(app).click();
+  await memoField(app).fill("first");
+  await expect.poll(async () => (await storedNote(app, SNAPSHOT_ID)).revision).toBe(1);
+  await memoField(app).fill(" ");
+  await expect.poll(async () => (await storedNote(app, SNAPSHOT_ID)).revision).toBe(2);
+  const letEventsGo = await holdEvents(app, "note-changed");
+  await invoke(app, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 2 });
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  expect(await storedMemo(app)).toBe(`X\n\n${draft}`);
+  await expect(memoField(app)).toHaveValue(`X\n\n${draft}`);
+  await letEventsGo();
+  await memoField(app).press("Control+End");
+  await memoField(app).pressSequentially("!");
+  await expect.poll(() => storedMemo(app), "the other window's X stays").toBe(`X\n\n${draft}!`);
+});
+
+test("メモに足す after typing that cannot be saved, and another window's save not heard of, keeps the typing under the warning", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const sticky = card(app, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(app).click();
+  const letEventsGo = await holdEvents(app, "note-changed");
+  await invoke(app, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 0 });
+  await memoField(app).fill("the disk is full");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  expect(await storedMemo(app)).toBe(`X\n\n${draft}`);
+  await letEventsGo();
+  const panel = app.getByRole("complementary", { name: "メモ" });
+  await expect(memoField(app)).toHaveValue(`the disk is full\n\n${draft}`);
+  await expect(panel.getByRole("alert").filter({ hasText: "ほかのウィンドウで保存されました" })).toHaveCount(1);
+  await app.evaluate(() => void ((window as unknown as { __diskFreed: boolean }).__diskFreed = true));
+  await memoField(app).focus();
+  await memoField(app).blur();
+  await frames(app);
+  expect(await storedMemo(app), "the other window's X stays until a button says otherwise").toBe(`X\n\n${draft}`);
+});
+
 test("メモに下書き: the draft of a sticky deleted meanwhile goes to no other, though a new one has its id", async ({ shell }) => {
   // Answered as it is asked, as the backend reads the sticky then, and delivered at its release.
   await shell.addInitScript(() => void (window.__e2eLate = ["sticky_note_draft"]));
