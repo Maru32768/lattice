@@ -59,7 +59,7 @@ The [user guide](docs/guide.md) explains every feature. Places you may want firs
 
 ## CLI and MCP
 
-AI agents such as Claude Code can search, read and change your saved articles through the MCP server built into Lattice. To connect an agent, turn the server on in **Settings › AI agents (MCP)** and make a registration for the agent. Then copy the registration's Claude Code command and run it. You can also search, read and change your saved articles from a terminal with the bundled `lattice-cli.exe`. Both the installer and the portable zip put it in the same folder as `Lattice.exe`.
+AI agents such as Claude Code and Codex can search, read and change your saved articles through the MCP server built into Lattice. To connect an agent, make a registration for it in **Settings › AI agents (MCP)**. For Claude Code and Codex, Lattice adds the registration to the agent's own settings. For another agent, copy the settings from the registration and paste them. With the bundled `lattice-cli.exe`, you can also search, read and change your saved articles from a terminal. Both the installer and the portable zip put it in the same folder as `Lattice.exe`.
 
 Saved articles are web pages written by other people. An agent that reads them can follow instructions planted in the text. Before you connect an agent, read [CLI and MCP](docs/guide.md#cli-and-mcp) in the user guide. That section covers the commands, what each role allows and how to keep risky tools away from the agent.
 

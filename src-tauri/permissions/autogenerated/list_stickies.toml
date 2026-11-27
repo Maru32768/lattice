@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-stickies"
+description = "Enables the list_stickies command without any pre-configured scope."
+commands.allow = ["list_stickies"]
+
+[[permission]]
+identifier = "deny-list-stickies"
+description = "Denies the list_stickies command without any pre-configured scope."
+commands.deny = ["list_stickies"]

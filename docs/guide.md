@@ -47,7 +47,7 @@ Once the library has articles, the ＋ at the top of the navigation (**Add artic
 
 ### Set up an AI provider
 
-Translation, summaries, classification, importance, quizzes, word meanings, the LLM feed filter and chat send text to an AI provider. To use them, set up at least one provider in **Settings › AI providers**. Saving, reading and full-text search work without one.
+Translation, summaries, classification, importance, quizzes, word meanings, the LLM feed filter, chat and stickies send text to an AI provider. To use them, set up at least one provider in **Settings › AI providers**. Saving, reading and full-text search work without one.
 
 These providers are supported:
 
@@ -295,9 +295,9 @@ When the server is not running (or is still loading the model), translation fail
 
 ### Summaries
 
-Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it.
+Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it. The summary stays at the top as you scroll the article.
 
-- In an open summary, the numbers after a sentence or key point refer to the passages it comes from. To go to a passage in the Reader, click its number. In the Page view's summary, a click also switches to the Reader.
+- In an open summary, the numbers after a sentence or key point refer to the passages it comes from. To go to a passage in the Reader, click its number. In the Page view's summary, a click also switches to the Reader and opens the summary there.
 - A number in the summary that the article does not contain gets a wavy underline and is listed below the summary. A number rounded from one in the article, or converted to another unit, is underlined and listed too.
 - For an article over 100,000 characters, Lattice sends the start and the end to the AI and leaves out the middle.
 - **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
@@ -425,7 +425,7 @@ When a tab moves to another window, its web page moves with it: it does not relo
 
 The chat pane also has **Open in a new window**. **Move back to the main window** returns it to its place. Closing the chat window closes the chat without returning it to the main window.
 
-Window positions and sizes are saved, and the windows that were open when you quit open again at the next start. Closing the main window quits Lattice.
+Window positions and sizes are saved, and the windows that were open when you quit open again at the next start. Closing the main window quits Lattice unless **Keep running in the tray when the window closes** is on ([Startup and taskbar](#startup-and-taskbar)).
 
 ## Organize your library
 
@@ -496,7 +496,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
-**Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
+**Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first**, **Most important first** or **Title, A to Z**. The same menu can divide the list into sections by source or by genre.
 
 **Where you left off.** Each list opens where you left it, for each set of filters and grouping. This holds when you come back from another list or the settings, open the closed list again, or start Lattice again.
 
@@ -585,7 +585,7 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 
 - Follow-up questions are answered with the last three exchanges in mind.
 - Chats are saved. The menu on the chat's title opens a saved chat, starts a **New chat** or runs **Delete this chat**.
-- **Ask** in the Reader starts a chat about that article.
+- **Ask** in the Reader's toolbar starts a chat about that article.
 - **Open in a new window** in the chat pane moves the chat to its own window (see [Open a tab in its own window](#open-a-tab-in-its-own-window)).
 
 **Chat settings** are in **Settings › Summaries & chat**.
@@ -593,8 +593,8 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 | Setting | What it does |
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
-| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. |
-| **Send key** | The key that sends a question from the chat box: **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Enter` in insert mode is a new line, and `Enter` in normal mode follows this setting. `Ctrl+Enter` and `:w` always send. |
+| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. [Stickies](#stickies) use this limit too. |
+| **Send key** | The key that sends a question from the chat box and from a [sticky](#stickies): **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. `Ctrl+Enter` always sends. In the chat box with Vim key bindings, `Enter` in insert mode is a new line, `Enter` in normal mode follows this setting, and `:w` always sends. |
 
 ## Learn from what you read
 
@@ -611,6 +611,25 @@ When you have answered every question, **Add to review** puts them in [Today's r
 - **Try again** starts over.
 - When the article's text or **About you** has changed, **Regenerate** writes new questions.
 - The panel keeps its state when you move to another screen or tab and come back. It is cleared when you quit Lattice.
+
+### Stickies
+
+When you don't understand a passage, select it in the Reader. Click **Ask**, **Explain** or **Term** in the bar that appears, and the answer stays beside the passage as a sticky. Your chats do not change.
+
+- **Ask**: type a question on the sticky and send it with the key set in **Send key** (`Ctrl+Enter` always sends). `Esc` closes the sticky without sending.
+- **Explain**: explains the passage in detail.
+- **Term**: explains what the selected words mean in this article.
+
+Stickies appear in a column to the right of the text, each at the height of the paragraph that its passage starts in. Where they would overlap, they move up or down. In a narrow pane, each sticky is directly under the paragraph that its passage starts in, and the text below moves down to make room. Each sticky's passage is underlined in the text. When the stickies are to the right of the text, a line joins the passage to its sticky.
+
+- **Ask a follow-up**: click **Ask a follow-up** on a sticky to type another question on it. The AI also gets the earlier questions and answers of that sticky.
+- When you don't understand something in an answer, select it and click **Ask**, **Explain** or **Term**. The new sticky appears below the sticky that you selected from (after any stickies already made from it), indented a little. The AI also gets the text that you selected for that earlier sticky, and its questions and answers up to the answer that you selected from. If that earlier sticky was also made from an answer, the AI gets the same from the sticky it came from, and so on up to the first sticky. The AI gets nothing from other stickies. The text that you selected in the answer is underlined too.
+- **Fold**: click **Fold the sticky** to show only its label and the first line of its passage. Click **Unfold the sticky** to show all of it again. When you open a new sticky on the text, the existing stickies fold, and the new one appears at the height of its paragraph. If you close the new sticky without sending, they go back to how they were, unless you have folded or unfolded a sticky since you opened it. If you open another sticky on the text while you wait for an answer, the answer arrives in a folded sticky. Which stickies are folded is kept only in the window, and only while Lattice runs.
+- The numbers in an answer are citations. Click a number to go to the passage it cites. The AI can add general knowledge, and it says which part goes beyond the article.
+- If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. A sticky or a follow-up without an answer is kept only in the window where you asked, and only while Lattice runs.
+- You can select up to 2,000 characters, and a question can have up to 4,000.
+- To delete a sticky, click **Delete the sticky** on it. Stickies made from its answers stay. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
+- Stickies are in the JSON export and in backups.
 
 ### Notes
 
@@ -759,6 +778,7 @@ Shortcuts are saved in the database, so they are in backups and move with the da
 ### Startup and taskbar
 
 - **Start Lattice when Windows starts**: opens Lattice when you sign in to Windows. Off by default. Turning Lattice off in Task Manager's Startup apps also turns this setting off.
+- **Keep running in the tray when the window closes**: closing the main window does not quit Lattice. Instead, Lattice hides its windows and leaves an icon in the notification area, so translations and other jobs, feed updates and the server for [reading on a phone](#read-on-a-phone) keep running. Click the icon to bring the windows back, or right-click it and choose **Quit Lattice**. Off by default. While this setting is on, **Start Lattice when Windows starts** starts Lattice in the tray, without a window.
 - **Show the unread count on the taskbar**: shows the number of unread articles on Lattice's taskbar button. It shows 99+ from 100 up, and nothing at zero.
 
 ### Updates
@@ -887,11 +907,11 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles or a collection), genre, tag, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images the PC has stored show in the text while the phone reads from the PC. Read from the snapshot, they appear as links, and the phone does not load them.
 
-Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
+Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, have the PC translate the article and copy its URL from the article's **Menu** (⋯), save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 
 The phone keeps your place. When it loads the page again, as phones do with pages left in the background, the list comes back with the same filters, where you left it. Each article opens where you left it on that phone.
 
-- The QR code contains a token. Anyone with the token and the address can read your library, change what is read and favorite, save URLs and add words, which spends your AI provider's usage. Don't show the code to others. **Regenerate the token** makes the old token stop working at once on the PC, and within a few minutes on a snapshot's Worker while the app is running. Then scan the new code. Articles already saved on the old phone stay readable there.
+- The QR code contains a token. Anyone with the token and the address can read your library, change what is read and favorite, save URLs, translate articles and add words. Translating and adding words spend your AI provider's usage. Don't show the code to others. **Regenerate the token** makes the old token stop working at once on the PC, and within a few minutes on a snapshot's Worker while the app is running. Then scan the new code. Articles already saved on the old phone stay readable there.
 - Serving to the network is not encrypted, so anyone on the same Wi-Fi may be able to read what is sent, the token included. Use it on a network you trust.
 
 ### Read away from home
@@ -920,7 +940,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 
 ## CLI and MCP
 
-`lattice-cli.exe` lets you search, read and change your saved articles from a terminal. AI agents such as Claude Code use the same library through the MCP server built into Lattice ([Use Lattice from Claude Code](#use-lattice-from-claude-code)).
+`lattice-cli.exe` lets you search, read and change your saved articles from a terminal. AI agents such as Claude Code and Codex use the same library through the MCP server built into Lattice ([Use Lattice from Claude Code or Codex](#use-lattice-from-claude-code-or-codex)).
 
 - Both the installer and the portable zip put it in the same folder as `Lattice.exe`. The installer's default location is `%LOCALAPPDATA%\Lattice`. It is not added to PATH, so run it by its full path.
 - It uses the same data as the app, including a portable copy's `data` folder or a folder chosen in **Settings › Logs & storage**. It works while the app is running.
@@ -962,7 +982,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | `collect COLLECTION ARTICLE`, `uncollect COLLECTION ARTICLE` | Add an article to a collection, or take it out. Need write permission. |
 | `add-feed URL` | Subscribes to an RSS or Atom feed, fetching it once to check it. `--folder NAME` puts it in that folder, made if missing. Needs write permission. |
 | `rename-feed ID [NAME]`, `move-feed ID [FOLDER]`, `rename-folder ID NAME` | Rename a feed (without a name, back to its own title), move it into a folder by name (without one, out of any folder) and rename a folder. Need write permission. |
-| `delete-article ID` | Deletes an article with its summary, translation, note and quiz. Needs delete permission. |
+| `delete-article ID` | Deletes an article with its summary, translation, note, stickies and quiz. Needs delete permission. |
 | `delete-collection ID`, `remove-feed ID`, `delete-folder ID` | Delete a collection, unsubscribe from a feed and delete a folder. Their articles and feeds stay. Need delete permission. |
 | `merge-genre FROM INTO` | Moves a genre's articles into another genre and deletes it. Needs delete permission. |
 
@@ -1002,13 +1022,15 @@ Options for every command:
 - Changes made with the CLI show in the app the next time it reloads the list.
 - With `--allow-delete`, the CLI deletes without asking you, because you run it yourself. An agent deletes through the MCP server, and Lattice asks you before each deletion.
 
-### Use Lattice from Claude Code
+### Use Lattice from Claude Code or Codex
 
 Agents connect to the MCP server built into Lattice, at `http://127.0.0.1:8788/mcp`. It is off by default, runs only while Lattice is running, and accepts connections only from this PC.
 
-1. In **Settings › AI agents (MCP)**, turn on **Run the MCP server**.
-2. In **New registration**, enter a name, choose a role and where to use it, and press **Register**.
-3. Press **Copy command** on the registration and run the copied command in a terminal. If the registration is for **One project**, run the command in that project's folder.
+1. In **Settings › AI agents (MCP)**, under **New registration**, choose a role and what to register for. If you leave the name empty for **All of Claude Code** or **Codex**, the registration takes the agent's name.
+2. Press **Register**. If **Run the MCP server** is off, Lattice turns it on. For **All of Claude Code** and **Codex**, Lattice also adds the registration to that agent's own settings. Open sessions can use the registration once they reconnect.
+3. For **One Claude Code project**, press **Copy command** on the registration. Then run the copied command from a terminal in that project's folder. For **Other**, press **Copy settings**. Then paste the copied settings into the agent's MCP settings.
+
+If Lattice cannot change the agent's settings, it shows why. After **Register** or **Regenerate token**, the registration stays in Lattice, so try again with **Add to Claude Code** or **Add to Codex**, or add the registration by hand with the text copied from it. After **Delete**, the registration is gone from Lattice, so remove it from the agent's settings with the command on the screen. If the agent's settings already have another registration named `lattice`, Lattice leaves that other registration as it is. To register, remove or rename that one first. Lattice also leaves the rest of the agent's settings as they are.
 
 Each registration has its own token, and its role decides what the agent can do:
 
@@ -1018,9 +1040,9 @@ Each registration has its own token, and its role decides what the agent can do:
 | **Edit** | Also use the commands that need write permission. |
 | **Delete** | Also use the commands that need delete permission. Lattice asks you before each deletion ([Approve deletions](#approve-deletions)). |
 
-- Only one registration can be for **All of Claude Code**, and every project uses it. A registration for **One project** is used in its project instead. In a Git repository, it applies to the whole repository. Elsewhere, it applies only to the project's folder.
+- **All of Claude Code** and **Codex** take one registration each, and every project uses that registration. If a project has a registration for **One Claude Code project**, Claude Code uses that one there instead. In a Git repository, the registration for one project applies to the whole repository. Elsewhere, it applies only to the project's folder.
 - A role change takes effect from the agent's next call, but the tools the agent sees change only when it reconnects.
-- After **Regenerate token** or **Delete**, the old token stops working from the next call, even for agents that are already connected. The confirmation dialog shows the `claude mcp remove` command that takes the old registration out of Claude Code.
+- After **Regenerate token** or **Delete**, the old token stops working from the next call, even for agents that are already connected. For **All of Claude Code** and **Codex**, Lattice also changes the token in the agent's settings or removes the registration from them. After you regenerate a token, reconnect open sessions. For **One Claude Code project**, the confirmation dialog shows the `claude mcp remove` command that takes the old registration out of Claude Code. For **Other**, change the agent's settings by hand.
 - **Activity** lists the sessions that agents have started and each registration's latest 20 calls. Turning the server off or quitting Lattice clears both.
 - Changes an agent makes show in the app at once.
 - Registrations are left out of backups. After you restore a backup, make them again.
@@ -1048,7 +1070,7 @@ Lattice starts every tool result with a notice that the content is untrusted out
 
 ### Where your data is
 
-All of Lattice's data is in one SQLite database file: articles, the fetched HTML, translations, summaries, images, search data, chats, quizzes, words and settings. For an installed copy, the default locations are:
+All of Lattice's data is in one SQLite database file: articles, the fetched HTML, translations, summaries, images, search data, chats, stickies, quizzes, words and settings. For an installed copy, the default locations are:
 
 | What | Where |
 |---|---|
@@ -1122,7 +1144,7 @@ To go back to the database from before the restore, first close every process th
 
 **Settings › Export** writes the library's contents as gzip-compressed JSON Lines to the `exports` folder, for using your data in other tools. **What to export** chooses the whole library or one collection.
 
-- **Included:** articles, paragraphs, translations, summaries, notes, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
+- **Included:** articles, paragraphs, translations, summaries, notes, stickies, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
 - **Not included:** API keys and other settings, saved words, the fetched HTML, images and search vectors
 
 To keep what is not included, use a [backup](#backup). Saved words can also be exported with **Export CSV** in Vocabulary.
@@ -1158,6 +1180,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 | Word meanings | The word and the sentence you saved it with |
 | LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |
 | Chat | Your question, the text of the articles in scope, the last three exchanges, **About you** and your chat instructions |
+| Stickies | The text you selected, your question, the sticky's earlier questions and answers (for a sticky made from an answer, also the selected text, the questions and the answers of all the stickies that it comes from), and the article's title and text (only the part of the text around the selection, or for a sticky made from an answer around the first sticky's selection, when all of this together is longer than **Context per question**) |
 
 Semantic search, reading aloud and text extraction run only on your computer. The Claude CLI and Codex CLI providers use the accounts you signed in to those CLIs with.
 

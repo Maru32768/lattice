@@ -1,0 +1,65 @@
+/* Stickies beside the Reader's text. Tokens from theme.css. */
+
+/* A scrollbar that comes with a long column must not narrow the text, which would move the cards again. */
+.doc-scroll:has(> .stickies > *) { position: relative; scrollbar-gutter: stable; container-type: inline-size; }
+/* In a pane of another width the browser holds no text: it does not where a style like this has changed. The text it would
+   hold is not the line at the view's top, and it would pass for a scroll of the reader's (StickyColumn). */
+.doc-scroll:has(> .stickies > *) > .reader { min-height: 1cqi; }
+/* The room the text makes for the cards in a narrow pane (StickyColumn): the one element's it is set on. */
+@property --sticky-room { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@media screen {
+  .reader .blocks { padding-top: var(--sticky-room); }
+  .reader .blk { margin-bottom: var(--sticky-room); }
+  /* The text and the column, centered together. The text's lines stay about as long as without the column. */
+  .doc-scroll:has(> .stickies[data-beside]) { display: grid; grid-template-columns: minmax(0, 660px) clamp(240px, 30%, 300px); justify-content: center; }
+  .doc-scroll:has(> .stickies[data-beside]) > .reader { align-self: start; margin: 0; padding-right: 28px; }
+}
+/* The browser keeps what it anchors on in place as heights above it change: the text, not a card. Out of the flow, or a
+   selection dragged past the text's edge would go on to the nearest card. */
+.stickies { overflow-anchor: none; position: absolute; top: 0; left: max(48px, 50% - 292px); right: max(48px, 50% - 292px); }
+.stickies > * { position: absolute; left: 0; right: 0; }
+.stickies[data-beside] { grid-column: 2 / 3; inset: 40px 20px auto 0; }
+/* Where the column goes on below the article, its end is off the view's edge; a card folded at the end keeps it there. */
+.stickies::after { content: ""; position: absolute; top: 0; width: 1px; height: var(--sticky-end); pointer-events: none; }
+/* A press held from the text selects no card it is dragged over, and one held from a card nothing but that card. One on a
+   card's button leaves what is selected. */
+.doc-scroll:active > .stickies:not(:active) { pointer-events: none; }
+:root:has(.stickies > :active):not(:has(.stickies button:active)) { user-select: none; }
+:root:has(.stickies > :active):not(:has(.stickies button:active)) .stickies > :active { user-select: text; }
+
+.sticky { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 8px 12px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raise); box-shadow: 0 1px 4px var(--shadow2); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.sticky-h { display: flex; align-items: center; min-height: 22px; }
+.sticky-h .ib { width: 22px; height: 22px; color: var(--ink3); }
+.sticky-h .fold { margin-left: auto; }
+.sticky-h .ib:last-child { margin-right: -6px; }
+/* Folded, a card is one line: cards that short leave the one opened last room at its block's height. */
+.sticky[data-folded] { padding-block: 4px; }
+.sticky-h .sticky-quote { flex: 1 0 4em; min-width: 0; margin-left: 8px; padding: 0; border: 0; -webkit-line-clamp: 1; }
+/* A label that wrapped would make two lines of it, and leave the passage no room, in a narrow column a child's is long for. */
+.sticky[data-folded] .sticky-kind { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sticky-kind { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--acc-ink); }
+.sticky-quote { margin: 0; padding-left: 8px; border-left: 2px solid var(--line2); font-size: 12px; line-height: 1.6; color: var(--ink3); white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.sticky-q { margin: 0 0 4px; font-weight: 600; color: var(--ink); white-space: pre-wrap; }
+.sticky .answer { font-size: 13px; line-height: 1.7; }
+.sticky textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--doc); font-size: 13px; line-height: 1.6; resize: vertical; }
+/* Brought into view to the card's edge. */
+.sticky-ask { display: flex; flex-direction: column; gap: 8px; scroll-margin-bottom: 11px; }
+/* Chromium sends no mouseup from a disabled field: a selection made over it is to get its bar too. */
+.sticky textarea:disabled { color: inherit; resize: none; pointer-events: none; }
+.sticky-acts { display: flex; justify-content: flex-end; gap: 6px; }
+/* As high as the buttons it is in the place of. */
+.sticky .pending { min-height: 24px; }
+.sticky .error-text { margin: 0; font-size: 12px; }
+
+/* While the passage to ask about is read from the selection: neither is the block's text. */
+.blocks[data-quoting] :is(.blk-label, .pop) { user-select: none; }
+
+/* Not the card's own color: a card of a paler one would leave no mark to see. */
+:root { --sticky-mark: var(--acc-ink2); }
+/* A highlight leaves the text's DOM as it is, which the find, the hints and the reading place go by. */
+::highlight(sticky) { text-decoration: underline 2px var(--sticky-mark); text-underline-offset: 3px; }
+/* Its paths are in the scroller's coordinates, from its corner. */
+.sticky-lines { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; overflow-anchor: none; }
+.sticky-lines path { fill: none; stroke: var(--sticky-mark); stroke-width: 1px; opacity: .6; }
+
+@media print { .stickies, .sticky-lines { display: none !important; } ::highlight(sticky) { text-decoration: none; } }

@@ -7,6 +7,7 @@ mod mobile;
 mod popout;
 mod renderer;
 mod tabdrag;
+mod tray;
 mod update;
 
 use std::collections::HashMap;
@@ -27,12 +28,13 @@ use lattice_core::network;
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::srs::Grade;
+use lattice_core::stickies::{Sticky, StickyKind};
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
 use lattice_core::{
-    backup, classify, export, favicons, feed_filter, feed_folders, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, summarize,
-    translate, vocab,
+    backup, classify, export, favicons, feed_filter, feed_folders, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, stickies,
+    summarize, translate, vocab,
 };
 use tauri::{Emitter, Manager, State, Webview};
 use tauri_plugin_autostart::ManagerExt as _;
@@ -45,7 +47,7 @@ use ts_rs::TS;
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
 const OVERLAY_LLM_CONCURRENCY: usize = 3;
-/// Chat questions in flight at once; also outside the job queue so they never wait behind it.
+/// Questions in flight at once, a chat's and the stickies'; also outside the job queue so they never wait behind it.
 const CHAT_LLM_CONCURRENCY: usize = 2;
 const OVERLAY_MAX_SNIPPETS: usize = 24;
 const OVERLAY_MAX_SNIPPET_BYTES: usize = 20_000;
@@ -127,11 +129,15 @@ fn get_ui_language(app: State<'_, App>) -> Result<Option<String>, String> {
 }
 
 #[tauri::command(async)]
-fn set_ui_language(app: State<'_, App>, lang: String) -> Result<(), String> {
+fn set_ui_language(app: State<'_, App>, handle: tauri::AppHandle, lang: String) -> Result<(), String> {
     if !matches!(lang.as_str(), "ja" | "en") {
         return Err(format!("unknown language {lang:?}"));
     }
-    app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)
+    app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)?;
+    if let Err(e) = tray::refresh(&handle, &app) {
+        log::warn!("relabeling the tray menu: {e}");
+    }
+    Ok(())
 }
 
 /// The settings row of a UI preference (`src/lib/prefs.ts`): `ui.` and its localStorage key. Only `lattice.` keys of
@@ -165,7 +171,7 @@ fn set_ui_prefs(app: State<'_, App>, prefs: HashMap<String, String>) -> Result<(
     Ok(())
 }
 
-/// A native dialog's title in the display language.
+/// Native text, such as a dialog's title or the tray menu, in the display language.
 fn ui_text(app: &App, ja: &'static str, en: &'static str) -> &'static str {
     if app.store.setting(UI_LANGUAGE).ok().flatten().as_deref() == Some("en") {
         en
@@ -1065,6 +1071,46 @@ fn chat_delete_thread(app: State<'_, App>, thread_id: i64) -> Result<(), String>
     app.store.delete_chat_thread(thread_id).map_err(err)
 }
 
+/// Asks about a passage of an article, or of a sticky's answer (`parent`); the answer is stored as a sticky.
+#[tauri::command]
+#[allow(clippy::too_many_arguments, reason = "Tauri's injected state, then the call's own arguments")]
+async fn sticky_ask(
+    handle: tauri::AppHandle,
+    app: State<'_, App>,
+    article_id: i64,
+    block_id: Option<i64>,
+    parent: Option<i64>,
+    kind: StickyKind,
+    quote: String,
+    question: String,
+) -> Result<Sticky, String> {
+    let new = stickies::Ask { article_id, block_id, parent, kind, quote: &quote, question: &question };
+    let sticky = stickies::ask(&app.store, &app.providers.llm, &app.chat_llm, new).await?;
+    let _ = handle.emit("stickies-changed", sticky.article_id);
+    Ok(sticky)
+}
+
+/// Asks on in a sticky; the answer is stored in it.
+#[tauri::command]
+async fn sticky_follow_up(handle: tauri::AppHandle, app: State<'_, App>, id: i64, question: String) -> Result<Sticky, String> {
+    let sticky = stickies::follow_up(&app.store, &app.providers.llm, &app.chat_llm, id, &question).await?;
+    let _ = handle.emit("stickies-changed", sticky.article_id);
+    Ok(sticky)
+}
+
+#[tauri::command(async)]
+fn list_stickies(app: State<'_, App>, article_id: i64) -> Result<Vec<Sticky>, String> {
+    stickies::list(&app.store, article_id)
+}
+
+#[tauri::command(async)]
+fn delete_sticky(handle: tauri::AppHandle, app: State<'_, App>, id: i64) -> Result<(), String> {
+    if let Some(article_id) = stickies::delete(&app.store, id)? {
+        let _ = handle.emit("stickies-changed", article_id);
+    }
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn get_chat_budget(app: State<'_, App>) -> Result<chat::Budget, String> {
     chat::budget(&app.store)
@@ -1214,9 +1260,14 @@ async fn set_data_dir(app: State<'_, App>, copy: bool) -> Result<String, String>
     Ok(target.display().to_string())
 }
 
+/// What `AppHandle::restart` does on the main thread, where a sync command runs, but without `--autostart`: a restart
+/// passes the arguments on, and a process started at sign-in would come back hidden in the tray.
 #[tauri::command]
 fn restart_app(handle: tauri::AppHandle) {
-    handle.restart()
+    let mut env = handle.env();
+    env.args_os.retain(|a| a != tray::AUTOSTART_ARG);
+    handle.cleanup_before_exit();
+    tauri::process::restart(&env)
 }
 
 /// Launch at sign-in. The OS registration is the only record, so turning it off in Task
@@ -1610,6 +1661,8 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // Before the main window would show: a launch at sign-in starts hidden only with the icon there.
+    tray::start(app.handle(), &app.state::<App>());
     popout::restore_main(app.handle(), &app.state::<App>());
     Ok(())
 }
@@ -1619,18 +1672,20 @@ pub fn run() {
     context.config_mut().identifier = location::APP_IDENTIFIER.into();
     tauri::Builder::default()
         // First, so a second launch exits before it opens the store: it would start a second set of job runners and schedulers.
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            // Still hidden while starting up: `restore_main` shows it.
-            if let Some(w) = app.get_webview_window(popout::MAIN)
-                && w.is_visible().unwrap_or(false)
-                && let Err(e) = w.unminimize().and_then(|()| w.set_focus())
-            {
-                log::warn!("focusing the main window for a second launch: {e}");
-            }
-        }))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| popout::bring_back(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        // The Run entry is keyed by this name, which would otherwise be the product name both builds share.
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name(if cfg!(debug_assertions) {
+                    "Lattice Dev"
+                } else {
+                    "Lattice"
+                })
+                .arg(tray::AUTOSTART_ARG)
+                .build(),
+        )
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
@@ -1642,6 +1697,7 @@ pub fn run() {
             tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
         })
         .on_window_event(popout::on_window_event)
+        .on_menu_event(tray::on_menu_event)
         .setup(|app| {
             if let Err(e) = start(app) {
                 // Returned from here it would be Tauri's panic, with no console to show it in a release build: the app would just never appear, at every launch.
@@ -1776,6 +1832,10 @@ pub fn run() {
             chat_threads,
             chat_messages,
             chat_delete_thread,
+            sticky_ask,
+            sticky_follow_up,
+            list_stickies,
+            delete_sticky,
             get_chat_budget,
             set_chat_budget,
             get_auto_summarize,
@@ -1824,6 +1884,8 @@ pub fn run() {
             badge::set_unread_badge,
             badge::get_taskbar_badge,
             badge::set_taskbar_badge,
+            tray::get_close_to_tray,
+            tray::set_close_to_tray,
             browser::browser_open,
             browser::browser_set_bounds,
             browser::browser_hide,

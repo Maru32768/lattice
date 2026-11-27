@@ -1,4 +1,4 @@
-import { test, expect, listRow, callsOf } from "./harness.ts";
+import { test, expect, list, listRow, callsOf } from "./harness.ts";
 import { ARTICLES, MARKDOWN_ID, SNAPSHOT_ID, blocksOf } from "./fixtures.ts";
 
 const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
@@ -57,6 +57,8 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
 });
 
 test("a summary's sentences and points go to the blocks they cite, and a number the article lacks is marked", async ({ app }) => {
+  // Short enough that going to the last cited block scrolls the text past where the summary would sit in it.
+  await app.setViewportSize({ width: 1440, height: 600 });
   await open(app, snapshot.title!);
   const summary = app.getByRole("region", { name: "要約" });
   await summary.getByRole("button").click();
@@ -67,15 +69,21 @@ test("a summary's sentences and points go to the blocks they cite, and a number 
   await summary.getByRole("button", { name: "出典3へ" }).click();
   await expect(app.locator("#b-106")).toHaveClass(/is-cite/);
   await expect(app.locator("#b-106 .blk-label")).toHaveText("要約の出典");
+  // The summary is pinned above the text, so it stays in view beside the block it cites.
+  await expect(app.locator("#b-106")).toBeInViewport();
+  await expect(summary.getByRole("button", { name: "出典3へ" })).toBeInViewport();
 
-  // From the Page view's strip, a citation opens the Reader at its block.
+  // From the Page view's strip, a citation opens the Reader at its block, with the summary open.
   await app.keyboard.press("g");
   await app.keyboard.press("v");
   await app.keyboard.press("g");
   await app.keyboard.press("y");
-  await app.locator(".page-summary").getByRole("button", { name: "出典2へ" }).click();
+  await app.locator(".summary-strip").getByRole("button", { name: "出典2へ" }).click();
   await expect(app.locator("#b-103")).toHaveClass(/is-cite/);
   await expect(app.locator("#b-103 .blk-label")).toHaveText("要約の出典");
+  await expect(app.locator(".summary-strip .summary-body")).toContainText("MVCCで実装する");
+  // Not the place this tab's Reader kept at the jump before.
+  await expect(app.locator("#b-103")).toBeInViewport({ ratio: 1 });
 });
 
 test("g y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
@@ -91,11 +99,58 @@ test("g y opens and closes the summary, in the Reader and as the Page view's str
   await expect(app.locator(".summary-body")).toHaveCount(0);
 
   await press("g", "v");
-  await expect(app.locator(".page-summary")).toHaveCount(0);
+  await expect(app.locator(".summary-strip")).toHaveCount(0);
   await press("g", "y");
-  await expect(app.locator(".page-summary .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
+  await expect(app.locator(".summary-strip .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
   await press("g", "y");
-  await expect(app.locator(".page-summary")).toHaveCount(0);
+  await expect(app.locator(".summary-strip")).toHaveCount(0);
+});
+
+const other = ARTICLES.find((a) => a.id !== SNAPSHOT_ID && a.fetch_status === "ok" && a.title)!;
+
+/** Starts the app with every article read held until `release`d. */
+async function holdingViews(shell: import("@playwright/test").Page) {
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["get_article"];
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  const reads = async (n: number) => expect.poll(async () => (await callsOf(shell, "get_article")).length).toBe(n);
+  return { reads, release: () => shell.evaluate(() => window.__e2e.release("get_article")) };
+}
+
+test("the Reader keeps the article before, toolbar and all, until the next one's view comes", async ({ shell }) => {
+  const views = await holdingViews(shell);
+  await (await listRow(shell, snapshot.title!)).click();
+  await views.reads(1);
+  await views.release();
+  await expect(shell.locator(".art-title")).toHaveText(snapshot.title!);
+
+  await (await listRow(shell, other.title!)).click();
+  await views.reads(2);
+  await expect(shell.locator(".art-title")).toHaveText(snapshot.title!);
+  await expect(shell.locator(".docbar")).toBeVisible();
+  await views.release();
+  await expect(shell.locator(".art-title")).toHaveText(other.title!);
+});
+
+test("the Page view keeps the summary strip until the next article's view comes", async ({ shell }) => {
+  const views = await holdingViews(shell);
+  await (await listRow(shell, snapshot.title!)).click();
+  await views.release();
+  await expect(shell.locator(".art-title")).toHaveText(snapshot.title!);
+  await shell.keyboard.press("g");
+  await shell.keyboard.press("v");
+  await shell.keyboard.press("g");
+  await shell.keyboard.press("y");
+  await expect(shell.locator(".summary-strip .summary-body")).toContainText("MVCCで実装する");
+
+  await (await listRow(shell, other.title!)).click();
+  await views.reads(2);
+  await expect(shell.locator(".summary-strip .summary-body"), "the article before's, beside its page").toContainText("MVCCで実装する");
+  await views.release();
+  await expect(shell.locator(".summary-strip"), "the next article's, which has no summary yet").not.toContainText("MVCCで実装する");
+  await expect(shell.locator(".summary-strip")).toBeVisible();
 });
 
 const untranslated = ARTICLES.find((a) => a.id % 3 === 0 && a.fetch_status === "ok" && a.title && a.language !== "ja")!;

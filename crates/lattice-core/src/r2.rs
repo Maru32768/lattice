@@ -298,13 +298,19 @@ fn unix_now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// The development build's backups go apart: pruning counts every backup under the prefix and would drop the release's.
 fn device_name() -> String {
+    let suffix = if cfg!(debug_assertions) {
+        "-dev"
+    } else {
+        ""
+    };
     let raw = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
     let name: String = raw.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(63).collect();
     if name.is_empty() {
-        "device".into()
+        format!("device{suffix}")
     } else {
-        name.to_ascii_lowercase()
+        format!("{}{suffix}", name.to_ascii_lowercase())
     }
 }
 

@@ -200,7 +200,7 @@ test("a saved article's summary shows in a strip above its page; it can be gener
   const toggle = app.locator(".docbar").getByRole("button", { name: "要約", exact: true });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  const strip = app.locator(".page-summary");
+  const strip = app.locator(".summary-strip");
   // Closed at first: the summary's first line, opened to the whole on a click.
   const row = strip.locator(".summary-row");
   await expect(row).toHaveAttribute("aria-expanded", "false");
@@ -211,7 +211,7 @@ test("a saved article's summary shows in a strip above its page; it can be gener
 
   await openPage(app, ARTICLES.find((a) => a.id !== SNAPSHOT_ID && a.fetch_status === "ok" && !a.original_url.startsWith("local:"))!.title!);
   await expect(app.locator(".docbar").getByRole("button", { name: "要約", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await app.locator(".page-summary").getByRole("button", { name: "要約を作成" }).click();
+  await app.locator(".summary-strip").getByRole("button", { name: "要約を作成" }).click();
   await expect.poll(async () => (await callsOf(app, "summarize_article")).length).toBe(1);
 });
 
@@ -219,7 +219,7 @@ test("an unsaved page has no summary (H13)", async ({ app }) => {
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
   await expect(app.locator(".docbar").getByRole("button", { name: "ライブラリに保存" })).toBeVisible();
   await expect(app.locator(".docbar").getByRole("button", { name: "要約", exact: true })).toHaveCount(0);
-  await expect(app.locator(".page-summary")).toHaveCount(0);
+  await expect(app.locator(".summary-strip")).toHaveCount(0);
 });
 
 /** The right end of the toolbar, and the ⋯ menu's items, by name. */

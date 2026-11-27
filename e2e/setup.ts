@@ -1,7 +1,7 @@
 // Runs in the page before the app: the real frontend over the mock backend.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import { handle, mcpActivity, mcpApprovals } from "./mock.ts";
+import { handle, mcpActivity, mcpAgentError, mcpApprovals } from "./mock.ts";
 import { api } from "../src/api.ts";
 
 declare global {
@@ -13,6 +13,7 @@ declare global {
       fromPage: typeof emit;
       deleteArticle: typeof api.deleteArticle;
       mcpActivity: typeof mcpActivity;
+      mcpAgentError: typeof mcpAgentError;
       mcpApprovals: typeof mcpApprovals;
       /** Lets the oldest `n` waiting calls of `cmd` through (the newest `-n` when below 0), all of them by default; later calls wait again. */
       release: (cmd: string, n?: number) => void;
@@ -40,7 +41,7 @@ function release(cmd: string, n = Infinity) {
     go();
   }
 }
-const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle, mcpActivity, mcpApprovals, release };
+const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle, mcpActivity, mcpAgentError, mcpApprovals, release };
 window.__e2e = e2e;
 // `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
 mockWindows(new URLSearchParams(location.search).get("window") ?? "main");

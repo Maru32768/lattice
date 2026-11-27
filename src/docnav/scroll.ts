@@ -3,16 +3,19 @@
 const LINE = 60;
 // A page's own `scroll-behavior: smooth` would drag behind a held key.
 const behavior = "instant";
+// Steps of whole pixels: a scroller lands each step on one, so half of an odd height down and the same half up would
+// stop a pixel short of where they began.
+const half = (el: Element) => Math.round(el.clientHeight / 2);
 // As a browser's Space: the last lines of a screen stay on the next one.
-const screen = (el: Element) => (el.clientHeight * 7) / 8;
+const screen = (el: Element) => Math.round((el.clientHeight * 7) / 8);
 
 const MOVES = {
   scrollDown: (el: Element, n: number) => el.scrollBy({ top: n * LINE, behavior }),
   scrollUp: (el: Element, n: number) => el.scrollBy({ top: -n * LINE, behavior }),
   scrollLeft: (el: Element, n: number) => el.scrollBy({ left: -n * LINE, behavior }),
   scrollRight: (el: Element, n: number) => el.scrollBy({ left: n * LINE, behavior }),
-  halfDown: (el: Element, n: number) => el.scrollBy({ top: (n * el.clientHeight) / 2, behavior }),
-  halfUp: (el: Element, n: number) => el.scrollBy({ top: (-n * el.clientHeight) / 2, behavior }),
+  halfDown: (el: Element, n: number) => el.scrollBy({ top: n * half(el), behavior }),
+  halfUp: (el: Element, n: number) => el.scrollBy({ top: -n * half(el), behavior }),
   pageDown: (el: Element, n: number) => el.scrollBy({ top: n * screen(el), behavior }),
   pageUp: (el: Element, n: number) => el.scrollBy({ top: -n * screen(el), behavior }),
   docTop: (el: Element) => el.scrollTo({ top: 0, behavior }),

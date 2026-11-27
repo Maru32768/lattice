@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sticky-follow-up"
+description = "Enables the sticky_follow_up command without any pre-configured scope."
+commands.allow = ["sticky_follow_up"]
+
+[[permission]]
+identifier = "deny-sticky-follow-up"
+description = "Denies the sticky_follow_up command without any pre-configured scope."
+commands.deny = ["sticky_follow_up"]

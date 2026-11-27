@@ -112,6 +112,21 @@ test("open: a Reader in place of a page keeps its webview, and the tab's next pa
   assert.equal(theirs.kind === "page" && theirs.fromReader, false, "and it is not the Reader's page");
 });
 
+test("open: a jump in a Reader that was a page is a new request, not the one the tab's Reader had before", () => {
+  const jump = (articleId: number, block: number) => ({ ...reader(articleId), focus: { block, label: "", terms: [], tone: "cite" as const } });
+  const seqOf = (l: Workspace) => {
+    const t = activeTab(focusedPane(l))!;
+    return t.kind === "reader" ? t.focus?.seq : undefined;
+  };
+  let l = open(single(), jump(1, 106));
+  const first = seqOf(l);
+  l = open(l, { ...page("https://a.example/"), saved: 1 });
+  l = open(l, jump(1, 103));
+  // The tab's Reader keeps its place under the request's seq, and would go back there for an equal one.
+  assert.notEqual(seqOf(l), first);
+  assert.notEqual(seqOf(open(l, jump(1, 102))), seqOf(l), "and a jump in the same Reader");
+});
+
 test("open: the page a Reader kept comes back at the URL it moved on to; another article loads in its webview", () => {
   let l = open(single(), { ...page("http://a.example/"), saved: 1 });
   const p = activeTab(focusedPane(l))!;

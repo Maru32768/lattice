@@ -31,6 +31,14 @@ test("search groups hits by article, filters by match type, and Esc leaves it", 
   await expect(list(app)).toBeVisible();
 });
 
+test("the close button leaves the search", async ({ app }) => {
+  await app.keyboard.press("/");
+  const pane = app.getByRole("region", { name: "検索結果" });
+  await pane.getByRole("button", { name: "閉じる" }).click();
+  await expect(pane).toBeHidden();
+  await expect(list(app)).toBeVisible();
+});
+
 test("the arrows move through the hits and Enter opens the Reader at the hit block", async ({ app }) => {
   await app.keyboard.press("/");
   await app.keyboard.type("mvcc");

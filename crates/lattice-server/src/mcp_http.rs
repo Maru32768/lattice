@@ -4,7 +4,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -21,7 +20,7 @@ use futures_util::stream;
 use lattice_core::chain::LlmChain;
 use lattice_core::embed::LocalE5;
 use lattice_core::jobs::Providers;
-use lattice_core::mcp::{self, Registration, Role, Scope};
+use lattice_core::mcp::{self, ADDR, ENDPOINT, Registration, Role};
 use lattice_core::mobile::{Effects, blocking};
 use lattice_core::store::{Store, random_hex, sha256_hex};
 use serde::Serialize;
@@ -33,9 +32,6 @@ use crate::mcp::{Message, PROTOCOL_VERSIONS, Step, step, tool_reply};
 use crate::ops::{self, Ctx, Deletion, Op, Out};
 use crate::{OnApplied, bearer, error, internal_error, json};
 
-/// Loopback only: another machine on the network cannot even connect.
-pub const ADDR: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, mcp::PORT));
-const ENDPOINT: &str = "/mcp";
 const SESSION: &str = "mcp-session-id";
 const VERSION: &str = "mcp-protocol-version";
 /// More than one PC's agents keep open. Past it the session idle longest goes, and its client initializes again.
@@ -61,18 +57,6 @@ const STOPPED: &str = "The MCP server stopped before the user answered in Lattic
 const CANCELLED: &str = "This call was cancelled before the user answered in Lattice. Nothing was deleted.";
 const TOO_MANY: &str = "Too many deletions are waiting for the user's answer in Lattice. Nothing was deleted: ask again once they are answered.";
 const CHANGED: &str = "What this would delete changed while the user decided in Lattice. Nothing was deleted: look it up again.";
-
-/// What the settings screen copies for a registration. One name in every scope, so a project's own takes the place of the
-/// user-wide one there, and an agent's tools are `mcp__lattice__*` whichever it holds.
-pub fn add_command(token: &str, scope: Scope) -> String {
-    let scope = scope.as_str();
-    format!("claude mcp add --transport http --scope {scope} lattice http://{ADDR}{ENDPOINT} --header \"Authorization: Bearer {token}\"")
-}
-
-/// What takes a registration out of Claude Code again: Claude Code refuses a second `add` under the same name.
-pub fn remove_command(scope: Scope) -> String {
-    format!("claude mcp remove lattice -s {}", scope.as_str())
-}
 
 #[derive(Clone)]
 struct McpState {
@@ -619,8 +603,7 @@ mod tests {
 
     impl Fixture {
         fn register(&self, name: &str, role: Role) -> Registration {
-            mcp::edit(&self.store, &Edit::Create { name: name.into(), role, scope: Scope::Local }).unwrap();
-            self.reread(name)
+            mcp::edit(&self.store, &Edit::Create { name: name.into(), role, target: mcp::Target::Other }).unwrap().unwrap()
         }
 
         fn reread(&self, name: &str) -> Registration {
@@ -702,21 +685,6 @@ mod tests {
 
     async fn body_of(r: Response) -> Value {
         serde_json::from_slice(&axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap()).unwrap()
-    }
-
-    #[test]
-    fn it_listens_on_this_pc_only() {
-        assert!(ADDR.ip().is_loopback() && ADDR.port() == 8788);
-        assert_eq!(
-            add_command("t0k", Scope::User),
-            r#"claude mcp add --transport http --scope user lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t0k""#
-        );
-        assert_eq!(
-            add_command("t0k", Scope::Local),
-            r#"claude mcp add --transport http --scope local lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t0k""#
-        );
-        assert_eq!(remove_command(Scope::User), "claude mcp remove lattice -s user");
-        assert_eq!(remove_command(Scope::Local), "claude mcp remove lattice -s local");
     }
 
     #[tokio::test]

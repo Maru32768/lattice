@@ -1,8 +1,8 @@
 //! Pop-out windows (G52, design-review §26): document windows (`doc-<n>`, one pane tree of tabs)
 //! and the chat window (`chat`). Each loads the same frontend, which reads its own label to know
 //! what to show (`src/app/windows.ts`) and keeps what it holds in its own storage. This module creates
-//! the windows where they last were, keeps their page webviews alive while they close, and quits
-//! the app with the main window.
+//! the windows where they last were, keeps their page webviews alive while they close, and, when the
+//! main window closes, quits the app or, while the tray icon is there (`tray.rs`), hides every window in it.
 //!
 //! One document window is kept ready, hidden, with the frontend loaded (`Spare`): a tab torn off
 //! or popped out goes to it and shows at once. A new window takes 2-3 s to start WebView2 and load
@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 
 use crate::browser::lock;
 use crate::location::Location;
-use crate::{App, browser, err, tabdrag};
+use crate::{App, badge, browser, err, tabdrag, tray};
 
 pub const MAIN: &str = "main";
 const DEFAULT_SIZE: (f64, f64) = (960.0, 720.0);
@@ -128,7 +128,8 @@ fn place(app: &AppHandle, state: &App, w: &WebviewWindow) -> Result<(), String> 
     Ok(())
 }
 
-/// Shows the (hidden) main window where it last was; at tauri.conf.json's size until it has been closed once.
+/// Shows the (hidden) main window where it last was; at tauri.conf.json's size until it has been closed once. A launch
+/// at sign-in with the tray icon there leaves it hidden, in the tray.
 pub fn restore_main(app: &AppHandle, state: &App) {
     let Some(w) = app.get_webview_window(MAIN) else {
         return;
@@ -138,7 +139,9 @@ pub fn restore_main(app: &AppHandle, state: &App) {
     {
         log::warn!("restoring the main window's position: {e}");
     }
-    if let Err(e) = w.show() {
+    if tray::launched_at_sign_in() && tray::shown(app) {
+        *lock(&TRAYED) = Some(Vec::new());
+    } else if let Err(e) = w.show() {
         log::warn!("showing the main window: {e}");
     }
     prepare_spare(app);
@@ -273,6 +276,13 @@ pub async fn window_adopted(spare: State<'_, Spare>, webview: Webview) -> Result
 }
 
 fn show(app: &AppHandle, label: &str) {
+    // A pop-out the hidden main window's UI restores stays hidden with it, until the tray brings them back.
+    if let Some(held) = lock(&TRAYED).as_mut() {
+        if !held.iter().any(|l| l == label) {
+            held.push(label.to_string());
+        }
+        return;
+    }
     let Some(w) = app.get_window(label) else {
         return;
     };
@@ -311,43 +321,121 @@ pub async fn close_window(app: AppHandle, state: State<'_, App>, webview: Webvie
     Ok(())
 }
 
-/// Set once the main window's close began saving positions.
+/// Set once the quit began saving positions.
 static CLOSING: AtomicBool = AtomicBool::new(false);
 
-/// The main window's close quits the app, as before pop-outs existed; its position and the
-/// pop-outs' are saved first, since they go down with it (their contents are saved by the UI as they change).
+/// The Lattice windows on screen, with their places as settings rows. Not the spare: it never showed, and the place
+/// saved under its label is another window's.
+fn shown_windows(app: &AppHandle) -> (Vec<Window>, Vec<(String, String)>) {
+    let shown: Vec<Window> = app.windows().into_values().filter(|w| (w.label() == MAIN || is_popout(w.label())) && w.is_visible().unwrap_or(false)).collect();
+    let places = shown.iter().filter_map(|w| geometry_json(w).map(|json| (setting_key(w.label()), json))).collect();
+    (shown, places)
+}
+
+/// Begins quitting the app: the places of the shown windows are saved first, since they go down with it (their
+/// contents are saved by the UI as they change). False when it cannot begin: a quit already waits on its saves, or
+/// the store never opened.
+fn begin_quit(app: &AppHandle) -> bool {
+    // The saves wait for the store, which a job may hold for a while: not on the event loop, which would freeze the window.
+    if CLOSING.swap(true, Ordering::SeqCst) || app.try_state::<App>().is_none() {
+        return false;
+    }
+    let (_, places) = shown_windows(app);
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<App>();
+        for (key, json) in &places {
+            save_setting(&state, key, json);
+        }
+        if let Err(e) = state.store.release_running_jobs() {
+            log::warn!("putting running jobs back in the queue: {e}");
+        }
+        // destroy() raises no second CloseRequested; Destroyed then exits the app.
+        if let Some(main) = app.get_window(MAIN) {
+            let _ = main.destroy();
+        }
+    });
+    true
+}
+
+/// The tray's quit: as closing the main window without the tray, or at once while that waits on its saves.
+pub fn quit(app: &AppHandle) {
+    if !begin_quit(app) {
+        app.exit(0);
+    }
+}
+
+/// Some while Lattice is in the tray, its main window hidden: the pop-outs hidden with it, to show again with it.
+static TRAYED: Mutex<Option<Vec<String>>> = Mutex::new(None);
+
+pub fn in_tray() -> bool {
+    lock(&TRAYED).is_some()
+}
+
+/// Hides the shown windows into the tray, where the app goes on running; their places are saved as a quit saves them.
+fn put_away(app: &AppHandle) {
+    // A second close (a double click on ×, `taskkill`) finds nothing shown, and would forget the pop-outs held.
+    if in_tray() {
+        return;
+    }
+    let (shown, places) = shown_windows(app);
+    *lock(&TRAYED) = Some(shown.iter().map(|w| w.label().to_string()).filter(|l| l != MAIN).collect());
+    for w in &shown {
+        if let Err(e) = w.hide() {
+            log::warn!("hiding {}: {e}", w.label());
+        }
+    }
+    browser::sound(app);
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(state) = app.try_state::<App>() {
+            for (key, json) in &places {
+                save_setting(&state, key, json);
+            }
+        }
+    });
+}
+
+/// Shows the windows the tray holds, the main window last so it is in front, and focuses that. With nothing held, a
+/// hidden main window is still starting up, and `restore_main` shows it.
+pub fn bring_back(app: &AppHandle) {
+    let held = lock(&TRAYED).take();
+    if let Some(popouts) = &held {
+        for label in popouts.iter().map(String::as_str).chain([MAIN]) {
+            show(app, label);
+        }
+        browser::sound(app);
+        // The badge setting is in the store, which a job may hold; this runs on the main thread.
+        // shortcut: draws without waiting for TaskbarButtonCreated, which tao does not pass on and whose loss it does not
+        // report; the spawn and the store read have been enough for the button to exist. Redraw on that message if a
+        // badge goes missing after coming back.
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || badge::redraw(&app));
+    }
+    if let Some(main) = app.get_window(MAIN)
+        && main.is_visible().unwrap_or(false)
+        && let Err(e) = main.unminimize().and_then(|()| main.set_focus())
+    {
+        log::warn!("bringing the main window to the front: {e}");
+    }
+}
+
 pub fn on_window_event(w: &Window, e: &WindowEvent) {
     if w.label() != MAIN {
         return;
     }
     let app = w.app_handle();
     match e {
-        WindowEvent::CloseRequested { api, .. } => {
-            // The saves wait for the store, which a job may hold for a while: not on the event loop, which would
-            // freeze the window. A second close request while they wait closes at once (the saves are then lost).
-            if CLOSING.swap(true, Ordering::SeqCst) || app.try_state::<App>().is_none() {
-                return;
-            }
+        // Without the icon the app would run on with nothing to bring it back, so the setting alone does not keep it.
+        WindowEvent::CloseRequested { api, .. } if tray::shown(app) => {
             api.prevent_close();
-            let mut places = Vec::new();
-            for (label, win) in app.windows() {
-                // Not the spare: it never showed, and the place saved under its label is another window's.
-                if (label == MAIN || is_popout(&label)) && win.is_visible().unwrap_or(false) {
-                    places.extend(geometry_json(&win).map(|json| (setting_key(&label), json)));
-                }
+            put_away(app);
+        }
+        // A second close request while the saves wait closes at once (the saves are then lost).
+        WindowEvent::CloseRequested { api, .. } => {
+            if begin_quit(app) {
+                api.prevent_close();
             }
-            let (app, main) = (app.clone(), w.clone());
-            tauri::async_runtime::spawn_blocking(move || {
-                let state = app.state::<App>();
-                for (key, json) in &places {
-                    save_setting(&state, key, json);
-                }
-                if let Err(e) = state.store.release_running_jobs() {
-                    log::warn!("putting running jobs back in the queue: {e}");
-                }
-                // destroy() raises no second CloseRequested; Destroyed then exits the app.
-                let _ = main.destroy();
-            });
         }
         WindowEvent::Destroyed => app.exit(0),
         _ => {}

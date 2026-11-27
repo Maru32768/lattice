@@ -149,7 +149,7 @@ pub enum Op {
     },
     /// Rename a feed folder (needs --allow-write)
     RenameFolder { id: i64, name: String },
-    /// Delete an article with its summary, translation, note and quiz (needs --allow-delete)
+    /// Delete an article with its summary, translation, note, stickies and quiz (needs --allow-delete)
     DeleteArticle { id: i64 },
     /// Delete a collection; its articles stay (needs --allow-delete)
     DeleteCollection { id: i64 },

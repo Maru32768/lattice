@@ -41,12 +41,15 @@ import type {
   R2Settings,
   McpApproval,
   McpEdit,
+  McpEdited,
   McpStatus,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
   R2Status,
   SnapshotSettings,
+  Sticky,
+  StickyKind,
   Reevaluated,
   RejectedEntry,
   RelevanceStatus,
@@ -153,6 +156,13 @@ export const api = {
   chatThreads: () => invoke<ChatThread[]>("chat_threads"),
   chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
   chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),
+  /** Asks about a passage of an article, or of the answer of a sticky's message, and stores the answer as a sticky; `stickies-changed` with the article id follows. */
+  stickyAsk: (ask: { articleId: number; blockId: number | null; parent: number | null; kind: StickyKind; quote: string; question: string }) =>
+    invoke<Sticky>("sticky_ask", ask),
+  /** Asks on in a sticky and stores the answer there; `stickies-changed` follows. */
+  stickyFollowUp: (ask: { id: number; question: string }) => invoke<Sticky>("sticky_follow_up", ask),
+  listStickies: (articleId: number) => invoke<Sticky[]>("list_stickies", { articleId }),
+  deleteSticky: (id: number) => invoke<void>("delete_sticky", { id }),
   chatBudget: () => invoke<ChatBudget>("get_chat_budget"),
   setChatBudget: (budget: ChatBudget) => invoke<void>("set_chat_budget", { budget }),
   autoSummarize: () => invoke<AutoSummarize>("get_auto_summarize"),
@@ -191,6 +201,9 @@ export const api = {
   /** Whether Windows launches the app at sign-in (read from the OS, not the DB). */
   autostart: () => invoke<boolean>("get_autostart"),
   setAutostart: (on: boolean) => invoke<void>("set_autostart", { on }),
+  /** Whether closing the main window leaves Lattice running in the tray. */
+  closeToTray: () => invoke<boolean>("get_close_to_tray"),
+  setCloseToTray: (on: boolean) => invoke<void>("set_close_to_tray", { on }),
   /** The display language; null until the UI first stores the one it detected. */
   uiLanguage: () => invoke<Lang | null>("get_ui_language"),
   setUiLanguage: (lang: Lang) => invoke<void>("set_ui_language", { lang }),
@@ -354,7 +367,7 @@ export const r2 = {
 /** AI agents reaching the library over MCP (design-review §23). */
 export const mcp = {
   status: () => invoke<McpStatus>("mcp_status"),
-  edit: (edit: McpEdit) => invoke<McpStatus>("mcp_edit", { edit }),
+  edit: (edit: McpEdit) => invoke<McpEdited>("mcp_edit", { edit }),
   /** Deletions an agent asks for, waiting for the user's answer, oldest first. */
   approvals: () => invoke<McpApproval[]>("mcp_approvals"),
   answer: (id: number, allow: boolean) => invoke<void>("mcp_answer", { id, allow }),

@@ -189,6 +189,9 @@ export function SearchPane({
               </button>
             ))}
           </div>
+          <button className="ib" onClick={onExit} aria-label={t("common.close")} title={t("common.close")}>
+            <Icon name="x" />
+          </button>
         </div>
         <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groups} dims={["genres", "tags", "groups", "feeds"]}>
           <ScopeSelect scope={scope} onScope={onScope} filters={filters} importantMin={importantMin} />

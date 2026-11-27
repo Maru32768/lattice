@@ -131,6 +131,9 @@ struct TabState {
     /// the navigation it cancelled, which must leave the jump to it, or of its own when it makes no document (a 204, a
     /// download): then the jump waits for the next document.
     begun: bool,
+    /// A new webview whose first document has not begun loading: it would show WebView2's white, so it is parked
+    /// off-screen over the placeholder. Parked rather than hidden: a hidden WebView2 does not load or draw.
+    blank: bool,
     visibility: Visibility,
     /// (can go back, can go forward) of the current page, as the overlay last reported it.
     history: (bool, bool),
@@ -157,6 +160,7 @@ impl Default for TabState {
             jump: None,
             jumped: None,
             begun: false,
+            blank: false,
             visibility: Visibility::default(),
             history: (true, true),
             parked: None,
@@ -245,10 +249,8 @@ impl Snapshots {
     }
 }
 
-/// A webview is on screen only while the UI shows its tab and the current page has loaded; until
-/// then the placeholder underneath shows a loading state instead of the previous page. A loading
-/// page is parked off-screen rather than hidden: a hidden WebView2 stops rendering, and revealing
-/// it would first show the stale frame of the page before.
+/// A webview is on screen while the UI shows its tab, loading or not: as in Chrome, the page before stays until the next
+/// one draws, under the toolbar's progress bar.
 #[derive(Default)]
 struct Visibility {
     wanted: bool,
@@ -416,7 +418,7 @@ fn to_evict(tabs: &HashMap<String, TabState>) -> Vec<String> {
 }
 
 fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibility)) -> tauri::Result<()> {
-    let (on_screen, loading, muted) = browser.with_tab(wv.label(), |t| {
+    let (on_screen, blank, muted) = browser.with_tab(wv.label(), |t| {
         f(&mut t.visibility);
         let v = &t.visibility;
         t.parked = if v.wanted {
@@ -424,13 +426,14 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
         } else {
             t.parked.or_else(|| Some(Instant::now()))
         };
-        (v.on_screen(), v.loading, v.muted())
+        // A `Finished` with no document (a 204, a download) still shows the webview.
+        (v.on_screen(), t.blank && v.loading, v.muted())
     });
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
-    set_muted(wv, muted);
+    set_muted(wv, muted || crate::popout::in_tray());
     match on_screen {
         Some(b) => {
-            let (x, y) = if loading {
+            let (x, y) = if blank {
                 PARKED
             } else {
                 (b.x, b.y)
@@ -463,6 +466,17 @@ pub(crate) fn set_muted(wv: &Webview, muted: bool) {
 
 #[cfg(not(windows))]
 pub(crate) fn set_muted(_: &Webview, _: bool) {}
+
+/// Every page is muted while Lattice is in the tray, with no window to stop it from, and hears as its tab says again
+/// when the windows come back.
+pub(crate) fn sound(app: &AppHandle) {
+    let browser = app.state::<Browser>();
+    let away = crate::popout::in_tray();
+    for (label, wv) in browser.webviews(app) {
+        let muted = lock(&browser.tabs).get(&label).is_none_or(|t| t.visibility.muted());
+        set_muted(&wv, muted || away);
+    }
+}
 
 /// Runs `js` in the page as DevTools' `Runtime.evaluate`. `eval` (WebView2's `ExecuteScript`) counts as the user's
 /// input, after which the page may play sound: a page the app only scrolled, or every page when a window opened,
@@ -773,6 +787,7 @@ pub async fn browser_open(
     browser.with_tab(&label, |t| {
         t.open(jump);
         t.hidden_while_opening = false;
+        t.blank = true;
     });
     browser.evict(&app);
     let (popup_target, popup_label) = (app.clone(), label.clone());
@@ -803,11 +818,11 @@ pub async fn browser_open(
                 browser.with_tab(wv.label(), |t| {
                     t.history = (true, true); // until the new page's overlay reports
                     t.documents += 1;
+                    t.blank = false;
                     t.unowned.clear();
                     t.started(Instant::now());
                 });
             }
-            // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
             emit_page(&wv, &browser, p.url().to_string());
             if !loading && let Some(script) = browser.with_tab(wv.label(), |t| t.finished(Instant::now())) {

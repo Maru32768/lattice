@@ -38,6 +38,8 @@ Each build has its own saved data-folder selection, WebView2 profile, cache, and
 To tell them apart, a debug build's icon has blue bars instead of amber ones, in the taskbar and in the title bar.
 Logs use `%LOCALAPPDATA%\Lattice Dev\logs` in debug builds and `%LOCALAPPDATA%\Lattice\logs` in release builds, including when the library is in a custom folder. Historical logs remain in the old identifier folders. Tauri uses `dev.marulabs.lattice` for release and `dev.marulabs.lattice.debug` for debug. Browser profiles are separate, so sessions from older identifiers are not carried over.
 A debug CLI uses the development folder; a release CLI uses the installed app's folder.
+To reach both apps from the phone at once, give them different ports for the phone's server. Tailscale Serve then forwards `https://<name>.ts.net/` to the release build and `https://<name>.ts.net:8443/` to the debug build.
+The debug build also keeps these apart from the release build: its MCP server listens on `127.0.0.1:8789` and registers in agents as `lattice-dev`, it starts with Windows under the entry `Lattice Dev`, and its R2 backups go under `lattice/<PC name>-dev/`.
 Portable mode still uses `<exe dir>/data`, with logs in `data/logs`, and the CLI's `--data-dir` still overrides the default.
 
 ### API keys in development

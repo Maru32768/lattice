@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-close-to-tray"
+description = "Enables the get_close_to_tray command without any pre-configured scope."
+commands.allow = ["get_close_to_tray"]
+
+[[permission]]
+identifier = "deny-get-close-to-tray"
+description = "Denies the get_close_to_tray command without any pre-configured scope."
+commands.deny = ["get_close_to_tray"]

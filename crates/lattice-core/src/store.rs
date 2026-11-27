@@ -64,6 +64,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00043_content_hash_of_what_a_summary_reads.sql"),
     include_str!("../db/migrations/00044_summary_items.sql"),
     include_str!("../db/migrations/00045_blocks_heading_index.sql"),
+    include_str!("../db/migrations/00046_stickies.sql"),
+    include_str!("../db/migrations/00047_sticky_parent.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -279,6 +281,8 @@ pub enum ArticleSort {
     DifficultyAsc,
     /// Most important first; unscored articles come last.
     RelevanceDesc,
+    /// By the title the list shows, ignoring ASCII case.
+    TitleAsc,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -409,7 +413,7 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
 /// A not yet extracted article shows its feed entry's title.
 const ARTICLE_COLS: &str = concat!(
     "id, original_url, canonical_url, domain,
-    coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)), author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
+    coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)) AS shown_title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
     (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
@@ -612,7 +616,7 @@ fn json<T: Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("IR types always serialize")
 }
 
-fn from_json_col<T: serde::de::DeserializeOwned>(r: &rusqlite::Row, i: usize, wrap: impl Fn(&str) -> String) -> Result<T> {
+pub(crate) fn from_json_col<T: serde::de::DeserializeOwned>(r: &rusqlite::Row, i: usize, wrap: impl Fn(&str) -> String) -> Result<T> {
     let s: String = r.get(i)?;
     serde_json::from_str(&wrap(&s)).map_err(|e| rusqlite::Error::FromSqlConversionFailure(i, rusqlite::types::Type::Text, Box::new(e)))
 }
@@ -863,6 +867,7 @@ impl Store {
                      ON CONFLICT(article_id) DO UPDATE SET body = body || char(10, 10) || excluded.body",
                     [id, existing],
                 )?;
+                tx.execute("UPDATE stickies SET article_id = ?2 WHERE article_id = ?1", [id, existing])?;
                 tx.execute("UPDATE articles SET favorite = 1 WHERE id = ?2 AND (SELECT favorite FROM articles WHERE id = ?1)", [id, existing])?;
                 // A name the user gave the row, unless the article already has one of its own.
                 tx.execute(
@@ -995,6 +1000,7 @@ impl Store {
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
             ArticleSort::DifficultyAsc => "difficulty IS NULL, difficulty, saved_at DESC, id DESC",
             ArticleSort::RelevanceDesc => concat!(crate::relevance::score_sql!(), " DESC NULLS LAST, saved_at DESC, id DESC"),
+            ArticleSort::TitleAsc => "coalesce(shown_title, original_url) COLLATE NOCASE, id",
         };
         let (cond, arg) = filter_cond(filter);
         let c = self.conn();
@@ -2565,6 +2571,8 @@ mod tests {
         assert_eq!(ids(ArticleSort::PublishedDesc), [1, 3, 2], "undated last");
         s.exec_for_test("UPDATE articles SET difficulty = 4 WHERE id = 1; UPDATE articles SET difficulty = 2 WHERE id = 2;");
         assert_eq!(ids(ArticleSort::DifficultyAsc), [2, 1, 3], "unrated last");
+        s.exec_for_test("UPDATE articles SET title = 'beta' WHERE id = 1; UPDATE articles SET title = 'Alpha' WHERE id = 3;");
+        assert_eq!(ids(ArticleSort::TitleAsc), [3, 1, 2], "case-insensitive; untitled by its URL");
     }
 
     #[test]
