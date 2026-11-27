@@ -1045,7 +1045,11 @@ export function Reader({
       }
     }
     const [first, last] = [taken[0] ?? block, taken.at(-1) ?? block];
-    return { passage: { blockId: block.id, parent: null, origin: "text" as const, quote }, agentRef: articleRef(a.id, [first.id, last.id]), ...barAt(range, view) };
+    return {
+      passage: { blockId: block.id, parent: null, origin: "text" as const, quote },
+      agentRef: articleRef(a.id, [first.id, last.id]),
+      ...barAt(range, view),
+    };
   }
 
   /** The passage selected in one answer of a sticky, and where to put the bar. */
