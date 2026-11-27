@@ -907,13 +907,15 @@ pub(crate) mod tests {
                 { "id": 3, "block_id": null, "parent": null, "kind": "detail", "quote": "SSI", "messages": [message(5, "")] },
             ])
         );
-        assert_eq!(get(a, true, true).await.unwrap().json["stickies"], on_a, "with the blocks too");
+        let with_blocks = get(a, true, true).await.unwrap();
+        assert_eq!(with_blocks.json["stickies"], on_a, "with the blocks too");
         let listed = format!(
             "\n## Stickies\n\n[sticky 1 question on block {block}] write skew\n  [message 1] Q: なぜ?\n  A: 答え [1]\n  [message 2] Q: ほかには?\n  \
              A: 答え [1]\n  [message 3] Q: 例は?\n  A: 答え [1]\n[sticky 2 term on block {block} from message 3] 答え\n  [message 4] A: 答え [1]\n\
              [sticky 3 detail] SSI\n  [message 5] A: 答え [1]\n"
         );
         assert!(with.text.ends_with(&listed), "{}", with.text);
+        assert!(with_blocks.text.ends_with(&listed), "{}", with_blocks.text);
 
         let without = get(a, false, false).await.unwrap();
         assert_eq!((without.json.get("stickies"), without.text.contains("[sticky")), (None, false), "only when asked");
