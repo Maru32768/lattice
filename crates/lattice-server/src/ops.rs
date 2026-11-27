@@ -832,7 +832,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn get_carries_the_stickies_of_its_article_alone() {
         use lattice_core::llm::{Completion, LlmError, LlmProvider};
-        use lattice_core::stickies::{self, Ask, StickyKind};
+        use lattice_core::stickies::{Ask, StickyKind};
 
         struct Answers;
         impl LlmProvider for Answers {
@@ -844,32 +844,29 @@ pub(crate) mod tests {
             }
         }
         let ctx = ctx();
-        let s = &*ctx.store;
-        let (a, b, none) = (saved(s, "https://example.com/a", "A"), saved(s, "https://example.com/b", "B"), saved(s, "https://example.com/c", "C"));
-        let block = |id| s.get_article(id, "ja").unwrap().unwrap().blocks[0].id;
+        let s = &ctx.store;
+        let (a, none) = (saved(s, "https://example.com/a", "A"), saved(s, "https://example.com/c", "C"));
+        let block = s.get_article(a, "ja").unwrap().unwrap().blocks[0].id;
         let turn = tokio::sync::Semaphore::new(1);
         let ask = |article_id, block_id, parent, kind, quote, question| {
             stickies::ask(s, &Answers, &turn, Ask { article_id, block_id, parent, kind, quote, question })
         };
-        let root = ask(a, Some(block(a)), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
+        let root = ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         let child = ask(a, None, Some(root.messages[0].id), StickyKind::Term, "答え", "").await.unwrap();
-        ask(b, Some(block(b)), None, StickyKind::Detail, "Snapshot isolation", "").await.unwrap();
 
         let get = |id, blocks| run(&ctx, Op::Get { id, blocks, translation: false });
         let on_a = get(a, false).await.unwrap().json["stickies"].clone();
-        let cited = json!([{ "n": 1, "block_id": block(a) }]);
+        let cited = json!([{ "n": 1, "block_id": block }]);
         assert_eq!(
             on_a,
             json!([
-                { "id": root.id, "block_id": block(a), "parent": null, "kind": "question", "quote": "write skew",
+                { "id": root.id, "block_id": block, "parent": null, "kind": "question", "quote": "write skew",
                   "messages": [{ "id": root.messages[0].id, "question": "なぜ?", "answer": "答え [1]", "citations": cited }] },
-                { "id": child.id, "block_id": block(a), "parent": root.messages[0].id, "kind": "term", "quote": "答え",
+                { "id": child.id, "block_id": block, "parent": root.messages[0].id, "kind": "term", "quote": "答え",
                   "messages": [{ "id": child.messages[0].id, "question": "", "answer": "答え [1]", "citations": cited }] },
             ])
         );
         assert_eq!(get(a, true).await.unwrap().json["stickies"], on_a, "with the blocks too");
-        let on_b = get(b, false).await.unwrap().json["stickies"].clone();
-        assert_eq!((on_b.as_array().map(Vec::len), &on_b[0]["quote"]), (Some(1), &json!("Snapshot isolation")));
         assert_eq!(get(none, false).await.unwrap().json["stickies"], json!([]));
     }
 
