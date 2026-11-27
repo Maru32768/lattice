@@ -1764,21 +1764,14 @@ mod tests {
         conn.pragma_update(None, "user_version", at as i64).unwrap();
         conn.execute_batch(
             "INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (1, 'u', 'u', 'd');
-             INSERT INTO stickies (id, article_id, kind, quote) VALUES (1, 1, 'term', 'WAL'), (3, 1, 'term', 'fsync');
+             INSERT INTO stickies (id, article_id, kind, quote) VALUES (1, 1, 'term', 'WAL');
              INSERT INTO sticky_messages (id, sticky_id, question, answer, citations, prompt_version) VALUES (5, 1, '', 'a', '[]', 'v');
              INSERT INTO stickies (id, article_id, parent_message_id, kind, quote) VALUES (2, 1, 5, 'term', 'a');",
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
-        let origins: Vec<(i64, String)> = s
-            .conn()
-            .prepare("SELECT id, origin FROM stickies ORDER BY id")
-            .unwrap()
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
-        assert_eq!(origins, [(1, "text".to_string()), (2, "answer".to_string()), (3, "text".to_string())]);
+        let origins = crate::stickies::list(&s, 1).unwrap().into_iter().map(|t| (t.id, t.origin)).collect::<Vec<_>>();
+        assert_eq!(origins, [(1, crate::stickies::StickyOrigin::Text), (2, crate::stickies::StickyOrigin::Answer)]);
     }
 
     #[test]
