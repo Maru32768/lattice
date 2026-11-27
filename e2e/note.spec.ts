@@ -354,6 +354,37 @@ test("メモ: typing not yet saved when another window's save comes stays under 
   expect(await savedBodies(app), "this window's typing went where it said").toEqual(["theirs", "mine", "theirs again", "theirs again!"]);
 });
 
+test("メモ: a save waiting behind a refused one is dropped when the panel takes another window's memo, and does not save over it", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eHold = ["set_article_note"]));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await open(shell, SNAPSHOT_ID);
+  await shell.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(shell);
+  const sent = async () => (await callsOf(shell, "set_article_note")).length;
+  await note.fill("a");
+  await note.blur();
+  await expect.poll(sent).toBe(1);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect.poll(async () => (await stored(shell)).revision).toBe(1);
+  await note.fill("ab");
+  await note.blur();
+  await expect.poll(sent).toBe(2);
+  // Back to the memo as stored while "ab" is on its way: that save waits behind it.
+  await note.fill("a");
+  await note.blur();
+  void invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 1 });
+  await expect.poll(sent).toBe(3);
+  await shell.evaluate(() => window.__e2e.release("set_article_note", -1));
+  await expect.poll(async () => (await stored(shell)).body).toBe("X");
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect(note, "nothing unsent here, so the other window's memo comes in").toHaveValue("X");
+  expect(await savedBodies(shell), 'the waiting "a" is not sent').toEqual(["a", "ab", "X"]);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  expect((await stored(shell)).body).toBe("X");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
 test("Vim: a save refused for another window's that landed first comes back under the warning, and keeping it keeps the editor and its undo", async ({
   shell,
 }) => {

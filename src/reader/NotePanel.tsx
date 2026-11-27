@@ -72,12 +72,15 @@ listen<Note>("note-changed", (e) => {
 
 /** Saves after the saves before it, from the revision they leave; resolves to the error, or null. */
 function save(id: number, body: string): Promise<string | null> {
+  const copy = memos.get(id);
   const ended = queue
     .then(() => {
-      const { saved } = memos.get(id)!;
+      const memo = memos.get(id)!;
+      // A copy replaced while this waited (another window's memo taken in, the saved memo loaded) no longer holds what
+      // `body` was typed over: sent from its revision, it would save over that memo.
       // Text added from a sticky saves what was typed before it, which the panel may have sent already. Spaces over a
       // blank memo would only raise its revision, and another window with typing of its own would warn of a save.
-      return differs(body, saved) ? api.setArticleNote(id, body, saved.revision) : null;
+      return memo === copy && differs(body, memo.saved) ? api.setArticleNote(id, body, memo.saved.revision) : null;
     })
     .then(
       (r) => {
