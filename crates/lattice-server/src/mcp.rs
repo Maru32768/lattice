@@ -52,8 +52,16 @@ fn all_tools() -> Vec<(Role, Value)> {
         tool(
             Read,
             "get",
-            "One saved article: metadata, stored summary, the user's stickies on it (passages they asked about, with the answers; their block ids are those of blocks), and its text as Markdown, or its blocks with ids.",
-            json!({ "id": article, "blocks": flag("Return the blocks with ids instead of the joined text"), "translation": flag("Include the stored translation") }),
+            "One saved article: metadata, stored summary and its text as Markdown, or its blocks with ids.",
+            json!({
+                "id": article,
+                "blocks": flag("Return the blocks with ids instead of the joined text"),
+                "translation": flag("Include the stored translation"),
+                "stickies": flag(
+                    "Include the user's stickies on it: passages they asked about, each with the questions and answers. A sticky's block ids \
+                     are those of blocks, and its parent is the id of the message whose answer its passage was selected in"
+                ),
+            }),
             &["id"],
         ),
         tool(Read, "list", "The user's saved articles, newest first.", json!({ "scope": text(SCOPE), "limit": limit }), &[]),
@@ -421,7 +429,7 @@ mod tests {
             assert_eq!(r["result"]["isError"], true, "{bad}");
             assert!(r["result"]["content"][0]["text"].as_str().unwrap().starts_with(UNTRUSTED), "{bad}");
         }
-        assert_eq!(call("get", json!({ "id": 7 }))["call"], "Get { id: 7, blocks: false, translation: false }");
+        assert_eq!(call("get", json!({ "id": 7 }))["call"], "Get { id: 7, blocks: false, translation: false, stickies: false }");
         assert_eq!(call("tag", json!({ "id": 7, "name": "x" }))["call"], r#"Tag { id: 7, name: "x" }"#, "the transport decides whether a role may run it");
     }
 

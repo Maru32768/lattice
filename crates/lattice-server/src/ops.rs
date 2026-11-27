@@ -47,7 +47,7 @@ pub enum Op {
         #[serde(default = "search_limit")]
         limit: usize,
     },
-    /// One article: metadata, summary and text, and in JSON its stickies
+    /// One article: metadata, summary and text
     Get {
         id: i64,
         /// The blocks with their ids instead of the joined text
@@ -58,6 +58,10 @@ pub enum Op {
         #[arg(long)]
         #[serde(default)]
         translation: bool,
+        /// Include the stickies: passages the user asked about, with the questions and answers
+        #[arg(long)]
+        #[serde(default)]
+        stickies: bool,
     },
     /// Saved articles, newest first
     List {
@@ -411,6 +415,22 @@ fn lines<T>(items: &[T], f: impl Fn(&T) -> String) -> String {
     items.iter().map(f).collect::<Vec<_>>().join("\n")
 }
 
+/// `[sticky 2 term on block 11 from message 1] the passage`, then each message's question and answer.
+fn sticky_lines(s: &stickies::Sticky) -> String {
+    let kind = json!(s.kind);
+    let on = s.block_id.map(|b| format!(" on block {b}")).unwrap_or_default();
+    let from = s.parent.map(|m| format!(" from message {m}")).unwrap_or_default();
+    let mut out = format!("[sticky {} {}{on}{from}] {}", s.id, kind.as_str().unwrap_or_default(), s.quote);
+    for m in &s.messages {
+        out += &format!("\n  [message {}]", m.id);
+        if !m.question.is_empty() {
+            out += &format!(" Q: {}\n ", m.question);
+        }
+        out += &format!(" A: {}", m.answer);
+    }
+    out
+}
+
 fn tags_out(store: &Store, id: i64) -> Result<Out, String> {
     let a = article(store, id)?;
     Ok(Out { text: format!("{}\ntags: {}", row_line(&a), a.tags.join(", ")), json: json!({ "article_id": id, "tags": a.tags }) })
@@ -496,7 +516,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             });
             Ok(Out { json: json!({ "mode": mode, "semantic_error": r.semantic_error, "hits": r.hits }), text })
         }
-        Op::Get { id, blocks, translation } => {
+        Op::Get { id, blocks, translation, stickies: with_stickies } => {
             article(store, id)?;
             let target = translate::article_target(store, id)?;
             let mut v = store.get_article(id, &target.key()).map_err(err)?.ok_or_else(|| format!("no article {id}"))?;
@@ -507,22 +527,25 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                 text += &format!("\n{}\n", s.text);
             }
             let mut json = json!({ "article": a, "summary": v.summary });
-            // A citation keeps only its block's id, that of `blocks`: a copy of each cited block would push the article's text out
-            // under the MCP result's cap, before which `stickies` sorts.
-            json["stickies"] = stickies::list(store, id)?
-                .iter()
-                .map(|s| {
-                    let messages: Vec<Value> = s
-                        .messages
-                        .iter()
-                        .map(|m| {
-                            let citations: Vec<Value> = m.citations.iter().map(|c| json!({ "n": c.n, "block_id": c.block_id })).collect();
-                            json!({ "id": m.id, "question": m.question, "answer": m.answer, "citations": citations })
-                        })
-                        .collect();
-                    json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "kind": s.kind, "quote": s.quote, "messages": messages })
-                })
-                .collect();
+            // Only when asked: `stickies` sorts before `summary` and `text`, and an article's stickies can fill the MCP result's
+            // cap by themselves. For the same reason a citation keeps only its block's id, that of `blocks`.
+            let notes = with_stickies.then(|| stickies::list(store, id)).transpose()?;
+            if let Some(notes) = &notes {
+                json["stickies"] = notes
+                    .iter()
+                    .map(|s| {
+                        let messages: Vec<Value> = s
+                            .messages
+                            .iter()
+                            .map(|m| {
+                                let citations: Vec<Value> = m.citations.iter().map(|c| json!({ "n": c.n, "block_id": c.block_id })).collect();
+                                json!({ "id": m.id, "question": m.question, "answer": m.answer, "citations": citations })
+                            })
+                            .collect();
+                        json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "kind": s.kind, "quote": s.quote, "messages": messages })
+                    })
+                    .collect();
+            }
             if blocks {
                 json["blocks"] = v
                     .blocks
@@ -552,6 +575,16 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             } else {
                 format!("\n{}\n", joined(&v.blocks, pick))
             };
+            if let Some(notes) = &notes {
+                text += &format!(
+                    "\n## Stickies\n\n{}\n",
+                    if notes.is_empty() {
+                        "(none)".into()
+                    } else {
+                        lines(notes, sticky_lines)
+                    }
+                );
+            }
             Ok(Out { json, text })
         }
         Op::List { scope, limit } => {
@@ -813,10 +846,10 @@ pub(crate) mod tests {
         let listed = run(&ctx, Op::List { scope: Some(format!("collection:{g}")), limit: 10 }).await.unwrap();
         assert_eq!(listed.json["total"], 1);
 
-        let out = run(&ctx, Op::Get { id, blocks: true, translation: false }).await.unwrap();
+        let out = run(&ctx, Op::Get { id, blocks: true, translation: false, stickies: false }).await.unwrap();
         let first = out.json["blocks"][0]["id"].as_i64().unwrap();
         assert!(out.text.contains(&format!("[block {first}] heading: Why")), "{}", out.text);
-        assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false }).await.unwrap().text.contains("[block "));
+        assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false, stickies: false }).await.unwrap().text.contains("[block "));
     }
 
     /// An article Lattice fetched, titled `title`.
@@ -830,7 +863,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn get_carries_the_stickies_of_its_article_alone() {
+    async fn get_carries_the_stickies_of_its_article_alone_when_asked() {
         use lattice_core::llm::{Completion, LlmError, LlmProvider};
         use lattice_core::stickies::{Ask, StickyKind};
 
@@ -854,8 +887,9 @@ pub(crate) mod tests {
         let root = ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         let child = ask(a, None, Some(root.messages[0].id), StickyKind::Term, "答え", "").await.unwrap();
 
-        let get = |id, blocks| run(&ctx, Op::Get { id, blocks, translation: false });
-        let on_a = get(a, false).await.unwrap().json["stickies"].clone();
+        let get = |id, blocks, stickies| run(&ctx, Op::Get { id, blocks, translation: false, stickies });
+        let with = get(a, false, true).await.unwrap();
+        let on_a = with.json["stickies"].clone();
         let cited = json!([{ "n": 1, "block_id": block }]);
         assert_eq!(
             on_a,
@@ -866,14 +900,26 @@ pub(crate) mod tests {
                   "messages": [{ "id": child.messages[0].id, "question": "", "answer": "答え [1]", "citations": cited }] },
             ])
         );
-        assert_eq!(get(a, true).await.unwrap().json["stickies"], on_a, "with the blocks too");
-        assert_eq!(get(none, false).await.unwrap().json["stickies"], json!([]));
+        assert_eq!(get(a, true, true).await.unwrap().json["stickies"], on_a, "with the blocks too");
+        let (asked, answered) = (root.messages[0].id, child.messages[0].id);
+        let listed = format!(
+            "\n## Stickies\n\n[sticky {} question on block {block}] write skew\n  [message {asked}] Q: なぜ?\n  A: 答え [1]\n\
+             [sticky {} term on block {block} from message {asked}] 答え\n  [message {answered}] A: 答え [1]\n",
+            root.id, child.id
+        );
+        assert!(with.text.ends_with(&listed), "{}", with.text);
+
+        let without = get(a, false, false).await.unwrap();
+        assert_eq!((without.json.get("stickies"), without.text.contains("[sticky")), (None, false), "only when asked");
+        assert_eq!(format!("{}{listed}", without.text), with.text, "the rest is as it was");
+        let empty = get(none, false, true).await.unwrap();
+        assert_eq!((&empty.json["stickies"], empty.text.ends_with("\n## Stickies\n\n(none)\n")), (&json!([]), true));
     }
 
     fn reads(id: i64) -> Vec<Op> {
         vec![
             Op::Search { query: "wal".into(), scope: None, limit: 1 },
-            Op::Get { id, blocks: false, translation: false },
+            Op::Get { id, blocks: false, translation: false, stickies: false },
             Op::List { scope: None, limit: 10 },
             Op::Summary { id },
             Op::Tags {},
