@@ -204,6 +204,20 @@ fn merging_joins_the_memos_and_a_window_holding_the_kept_one_cannot_save_over_th
     }
 }
 
+/// The merge writes the kept article's first memo row without a revision: the column's default has to be past 0.
+#[test]
+fn merging_a_memo_into_an_article_without_one_refuses_a_window_that_saw_none() {
+    let s = Store::open_in_memory().unwrap();
+    let kept = saved(&s, "https://example.com/post");
+    let (failed, _) = s.upsert_pending("https://mirror.example.net/post", "https://mirror.example.net/post", "mirror.example.net").unwrap();
+    s.record_fetch_failure(failed, "fetch.timeout").unwrap();
+    s.set_note(failed, "moved", 0).unwrap();
+    store_fetched(&s, failed, &page("https://mirror.example.net/post", r#"<link rel="canonical" href="https://example.com/post">"#)).unwrap();
+    assert_eq!(s.get_article(kept, "ja").unwrap().unwrap().note.body, "moved");
+    let stale = s.set_note(kept, "from a window that saw no memo", 0).unwrap().unwrap();
+    assert!(matches!(stale, NoteSave::Newer(_)), "{stale:?}");
+}
+
 const AS_APP: &str = "LATTICE_AUDIT_AS_APP";
 
 /// `kill_on_drop(true)` is a destructor. Tauri leaves through `std::process::exit` (tauri app.rs `run`),
