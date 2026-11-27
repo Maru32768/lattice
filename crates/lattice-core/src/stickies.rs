@@ -1317,19 +1317,7 @@ A1
                             &s,
                             &llm,
                             &turn,
-                            Ask {
-                                article_id: a,
-                                block_id: None,
-                                parent,
-                                origin: if parent.is_some() {
-                                    StickyOrigin::Answer
-                                } else {
-                                    StickyOrigin::Text
-                                },
-                                kind: StickyKind::Term,
-                                quote: "q",
-                                question: "",
-                            },
+                            Ask { article_id: a, block_id: None, parent, origin: StickyOrigin::Text, kind: StickyKind::Term, quote: "q", question: "" },
                         )
                         .await
                     }

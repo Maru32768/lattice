@@ -170,7 +170,7 @@ const invoke = (page: Page, cmd: string, args: object) =>
     [cmd, args] as const,
   );
 const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere", parent: number | null = null) =>
-  invoke(page, "sticky_ask", { articleId, blockId, parent, origin: parent == null ? "text" : "answer", kind: "term", quote, question: "" });
+  invoke(page, "sticky_ask", { articleId, blockId, parent, origin: "text", kind: "term", quote, question: "" });
 
 /** `n` more stickies on a block, there as it returns. */
 async function askMany(page: Page, articleId: number, blockId: number, n: number) {

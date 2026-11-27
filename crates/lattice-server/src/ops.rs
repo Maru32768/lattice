@@ -902,24 +902,7 @@ pub(crate) mod tests {
         let block = s.get_article(a, "ja").unwrap().unwrap().blocks[0].id;
         let turn = tokio::sync::Semaphore::new(1);
         let ask = |article_id, block_id, parent, kind, quote, question| {
-            stickies::ask(
-                s,
-                &Answers(1),
-                &turn,
-                Ask {
-                    article_id,
-                    block_id,
-                    parent,
-                    origin: if parent.is_some() {
-                        StickyOrigin::Answer
-                    } else {
-                        StickyOrigin::Text
-                    },
-                    kind,
-                    quote,
-                    question,
-                },
-            )
+            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, origin: StickyOrigin::Text, kind, quote, question })
         };
         ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         // The follow-ups keep the ids of stickies and of messages apart, so that neither passes for the other.
