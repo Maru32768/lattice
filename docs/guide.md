@@ -631,7 +631,7 @@ Stickies appear in a column to the right of the text, each at the height of the 
 - If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. A sticky or a follow-up without an answer is kept only in the window where you asked, and only while Lattice runs.
 - You can select up to 2,000 characters, and a question can have up to 4,000.
 - To delete a sticky, click **Delete the sticky** on it. Stickies made from its answers stay. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
-- Stickies are in the JSON export and in backups.
+- Stickies are in the JSON export and in backups. `get` of the [CLI and MCP](#cli-and-mcp) returns an article's stickies in JSON.
 
 ### Notes
 
