@@ -2099,7 +2099,8 @@ test("a word in a sentence's tooltip can be saved, and not asked about", async (
   await app.locator("#b-103 .sent").hover();
   const pop = app.locator("#b-103 .pop");
   await expect(pop).toBeVisible();
-  const word = await pop.evaluate((el) => {
+  const sentence = await app.locator("#b-103 p").innerText();
+  const [start, end] = await pop.evaluate((el) => {
     const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const at = n.textContent!.indexOf("PostgreSQL");
@@ -2107,16 +2108,16 @@ test("a word in a sentence's tooltip can be saved, and not asked about", async (
         const r = document.createRange();
         r.setStart(n, at);
         r.setEnd(n, at + "PostgreSQL".length);
-        getSelection()!.removeAllRanges();
-        getSelection()!.addRange(r);
-        el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        return getSelection()!.toString();
+        const box = r.getBoundingClientRect();
+        return [box.left + 1, box.right - 1].map((x): [number, number] => [x, box.top + box.height / 2]);
       }
     }
-    return null;
+    throw new Error("no PostgreSQL in the tooltip");
   });
-  expect(word).toBe("PostgreSQL");
+  await dragTo(app, start, end);
+  expect(await selected(app)).toBe("PostgreSQL");
   await expect(bar(app).getByRole("button")).toHaveText([/単語を登録/]);
+  await expect(app.locator("#b-103 p")).toHaveText(sentence);
 });
 
 test("letting go of the scrollbar brings no bar", async ({ shell }) => {

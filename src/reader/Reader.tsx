@@ -163,7 +163,18 @@ const ReaderBlock = memo(function ReaderBlock({
         }
       />
       {popped?.translation != null && (
-        <div className="pop" role="tooltip" onClick={() => onFlip(b, popPiece!)} onMouseEnter={onKeepPop} onMouseLeave={onLeave}>
+        <div
+          className="pop"
+          role="tooltip"
+          onClick={() => {
+            // Letting go after selecting in the tooltip is a click on it too, and flipping would take the selection away.
+            if (window.getSelection()?.isCollapsed !== false) {
+              onFlip(b, popPiece!);
+            }
+          }}
+          onMouseEnter={onKeepPop}
+          onMouseLeave={onLeave}
+        >
           <div className="pop-h">
             <span>{popShown ? t("reader.original") : t("reader.translated")}</span>
             <span className="r">{t.rich("reader.flipPop", { kbd: <Kbd>Enter</Kbd> })}</span>
