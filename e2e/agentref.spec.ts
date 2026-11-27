@@ -34,6 +34,13 @@ test("the row's, the tab's and the Reader's menus copy the article's reference",
   await app.locator(".docbar [aria-haspopup=menu]").last().click();
   await menu(app).getByRole("menuitem", { name: "エージェント用にコピー" }).click();
   await expect.poll(() => clipboard(app)).toBe(ref);
+
+  // A right-click leaves the open article selected: the item copies the row's article, not that one.
+  const other = ARTICLES.find((a) => a.id !== article.id && a.title && a.fetch_status === "ok")!;
+  await app.evaluate(() => navigator.clipboard.writeText(""));
+  await list(app).locator(".row", { hasText: other.title! }).click({ button: "right" });
+  await menu(app).getByRole("menuitem", { name: "エージェント用にコピー" }).click();
+  await expect.poll(() => clipboard(app)).toBe(`lattice:article/${other.id}`);
 });
 
 test("the bar over a selected passage copies the blocks it starts and ends in", async ({ app }) => {
