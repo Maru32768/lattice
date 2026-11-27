@@ -1012,6 +1012,16 @@ pub(crate) mod tests {
         let one = get(&format!("lattice:article/{a}#b{}", ids[1]), true).await.unwrap();
         assert_eq!(one.json["blocks"], json!([all.json["blocks"][1]]), "with its id, as with blocks");
         assert_eq!(one.json["blocks"][0]["translation"], "先行書き込みログ");
+        assert!(
+            one.text.ends_with(&format!(
+                "
+[block {}] paragraph: 先行書き込みログ
+",
+                ids[1]
+            )),
+            "{}",
+            one.text
+        );
         assert_eq!((&one.json["article"], one.json.get("text")), (&by_id.json["article"], None));
         assert_eq!(
             one.text,
