@@ -95,6 +95,7 @@ import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest 
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
 import { DEFAULT_PREFIX, type DocActionId } from "../lib/keymap";
+import { articleRef } from "../lib/articleRef";
 import { getPrefix } from "../lib/keys";
 import { syncPrefs } from "../lib/prefs";
 import { placeStore } from "../lib/places";
@@ -526,6 +527,7 @@ export default function App() {
     popOut: IS_MAIN ? (a) => void win.popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
     page: (a) => openPage(pageUrl(a), undefined, a),
     copyUrl: (a) => copyUrl(a.original_url),
+    copyRef: (a) => copyUrl(articleRef(a.id)),
     remove: (a) => setDeleting({ article: a, page: false }),
   });
   const openRowMenu = (rows: ArticleRow[], from: HTMLElement) => setCtxItems(articleMenu(rows, articleActions(from), t));
@@ -1233,6 +1235,7 @@ export default function App() {
         onTranslateManual: (on) => vAct((id) => api.setTranslateManual(id, on))(),
         onSummarize: vAct(api.summarizeArticle),
         onCopyUrl: () => copyUrl(a.original_url),
+        onCopyRef: () => copyUrl(articleRef(a.id)),
         onDelete: () => setDeleting({ article: a, page }),
         onReviewChanged: () => void loadReview(),
         onFocusBlock: (block, from) =>

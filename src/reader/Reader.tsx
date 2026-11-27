@@ -321,6 +321,7 @@ export interface DocActions {
   onTranslateManual: (on: boolean) => void;
   onSummarize: () => void;
   onCopyUrl: () => void;
+  onCopyRef: () => void;
   /** Asks for confirmation, then removes the article from the Index. */
   onDelete: () => void;
   /** Shows a block in the Reader, marked as the source of a summary item, a quiz answer or a sticky's. */
@@ -448,6 +449,7 @@ export function ArticleTools({
           { label: view.summary ? t("reader.resummarize") : t("reader.summarize"), onSelect: act.onSummarize, disabled: failed || job("summarize") },
           "-",
           { label: t("articleMenu.copyUrl"), onSelect: act.onCopyUrl, disabled: local },
+          { label: t("articleMenu.copyRef"), onSelect: act.onCopyRef },
           "-",
           { label: t("browserView.remove"), onSelect: act.onDelete, danger: true },
         ]}
