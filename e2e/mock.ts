@@ -371,8 +371,7 @@ function view(id: number): ArticleView | null {
         ]
       : jobsOf(a),
     summary: summary ? { ...summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
-    note: noteOf(id).body || null,
-    note_revision: noteOf(id).revision,
+    note: noteOf(id),
   };
 }
 

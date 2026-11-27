@@ -2,6 +2,7 @@
 import type { ArticleRow } from "./ArticleRow";
 import type { Block } from "./Block";
 import type { JobRow } from "./JobRow";
+import type { Note } from "./Note";
 import type { SummaryView } from "./SummaryView";
 
 export type ArticleView = { article: ArticleRow, 
@@ -10,10 +11,6 @@ export type ArticleView = { article: ArticleRow,
  */
 target_language: "ja" | "en", blocks: Array<Block>, jobs: Array<JobRow>, summary: SummaryView | null, 
 /**
- * The user's memo (`set_note`); `None` when blank.
+ * The user's memo (`set_note`).
  */
-note: string | null, 
-/**
- * The memo's [`Note::revision`].
- */
-note_revision: number, };
+note: Note, };

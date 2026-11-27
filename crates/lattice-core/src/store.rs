@@ -348,10 +348,8 @@ pub struct ArticleView {
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
     pub summary: Option<SummaryView>,
-    /// The user's memo (`set_note`); `None` when blank.
-    pub note: Option<String>,
-    /// The memo's [`Note::revision`].
-    pub note_revision: i64,
+    /// The user's memo (`set_note`).
+    pub note: Note,
 }
 
 /// An article's memo as stored. `revision` grows with every save and is 0 for an article that never had one; blank is "".
@@ -1192,9 +1190,8 @@ impl Store {
                 |r| Ok(SummaryView { text: r.get(0)?, items: opt_json_col(r, 4)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
-        let Note { body, revision: note_revision, .. } = note_in(&c, id)?;
-        let note = (!body.is_empty()).then_some(body);
-        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary, note, note_revision }))
+        let note = note_in(&c, id)?;
+        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary, note }))
     }
 
     /// The user's memo on an article, written from the memo at `revision`: refused when another save landed since.
@@ -2050,8 +2047,8 @@ mod tests {
     }
 
     fn note_view(s: &Store, id: i64) -> (Option<String>, i64) {
-        let v = s.get_article(id, "ja").unwrap().unwrap();
-        (v.note, v.note_revision)
+        let Note { body, revision, .. } = s.get_article(id, "ja").unwrap().unwrap().note;
+        ((!body.is_empty()).then_some(body), revision)
     }
 
     #[test]

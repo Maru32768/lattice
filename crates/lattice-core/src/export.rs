@@ -228,7 +228,7 @@ mod tests {
         s.insert_segments("ja", "v1", None, &[(hash.as_str(), &newer[..], "fake", Some("m"))]).unwrap();
         s.insert_summary(id, "normal", "要約", None, "old-hash", "fake", None, "s1").unwrap();
         s.set_note(id, "SSI と比べる", 0).unwrap();
-        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("SSI と比べる"));
+        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.body, "SSI と比べる");
         s.set_setting(&format!("{SECRET_PREFIX}openai"), Some("sk-TOPSECRET")).unwrap();
         s.exec_for_test(&format!(
             "INSERT INTO chat_threads (id, title, llm) VALUES (1, 'q', '{{\"kind\":\"gemini\",\"model\":null}}');

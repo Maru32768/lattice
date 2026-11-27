@@ -3838,7 +3838,7 @@ const draftField = (sticky: Locator) => sticky.getByRole("textbox", { name: "メ
 const memoButton = (page: Page) => page.getByRole("button", { name: "メモ", exact: true });
 const memoField = (page: Page) => page.getByRole("complementary", { name: "メモ" }).getByRole("textbox", { name: "メモ" });
 const lastMemo = async (page: Page) => (await callsOf(page, "set_article_note")).at(-1);
-const storedMemo = async (page: Page) => ((await invoke(page, "get_article", { id: SNAPSHOT_ID })) as ArticleView).note;
+const storedMemo = async (page: Page) => ((await invoke(page, "get_article", { id: SNAPSHOT_ID })) as ArticleView).note.body;
 const DRAFTED = /^「.+」の下書き。答え1件から。$/;
 
 test("メモに下書き: the draft waits, stays through leaving the article, is changed in the sticky and goes to the end of the memo", async ({ shell }) => {

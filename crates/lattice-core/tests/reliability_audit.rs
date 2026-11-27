@@ -177,8 +177,8 @@ fn merging_a_refetched_article_into_an_existing_one_keeps_the_users_data() {
     let v = s.get_article(kept, "ja").unwrap().unwrap();
     let in_group = groups::list(&s).unwrap().iter().find(|g| g.id == group).unwrap().count;
     assert_eq!(
-        (v.article.tags.clone(), v.article.favorite, v.note.clone(), in_group),
-        (vec!["to-read".to_string()], true, Some("the part about write skew".to_string()), 1),
+        (v.article.tags.clone(), v.article.favorite, v.note.body.as_str(), in_group),
+        (vec!["to-read".to_string()], true, "the part about write skew", 1),
         "the user's tag, star, note and group membership survive the merge"
     );
 }
@@ -198,7 +198,7 @@ fn merging_joins_the_memos_and_a_window_holding_the_kept_one_cannot_save_over_th
         store_fetched(&s, failed, &page("https://mirror.example.net/post", r#"<link rel="canonical" href="https://example.com/post">"#)).unwrap();
         let v = s.get_article(kept, "ja").unwrap().unwrap();
         let changed = !moved.is_empty();
-        assert_eq!((v.note.as_deref(), v.note_revision), (joined, 2 + i64::from(changed)), "{moved:?} into {kept_memo:?}");
+        assert_eq!((v.note.body.as_str(), v.note.revision), (joined.unwrap_or(""), 2 + i64::from(changed)), "{moved:?} into {kept_memo:?}");
         let stale = s.set_note(kept, "from a window that loaded it before", 2).unwrap();
         assert_eq!(matches!(stale, NoteSave::Newer(_)), changed, "{moved:?} into {kept_memo:?}");
     }

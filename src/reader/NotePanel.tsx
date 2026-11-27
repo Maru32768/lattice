@@ -37,11 +37,10 @@ const unsent = (memo: Memo) => memo.text !== memo.saved.body && !(memo.saved.bod
 function current(view: ArticleView): Memo {
   const id = view.article.id;
   const memo = memos.get(id);
-  if (memo && (unsent(memo) || memo.theirs || view.note_revision <= memo.saved.revision)) {
+  if (memo && (unsent(memo) || memo.theirs || view.note.revision <= memo.saved.revision)) {
     return memo;
   }
-  const saved = { article_id: id, body: view.note ?? "", revision: view.note_revision };
-  return { text: saved.body, saved, theirs: null };
+  return { text: view.note.body, saved: view.note, theirs: null };
 }
 
 function memoOf(view: ArticleView) {
