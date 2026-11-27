@@ -1060,9 +1060,11 @@ pub(crate) mod tests {
         let now: Vec<i64> = s.get_article(a, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
         assert_eq!((now[0], now[2], now[3]), (ids[0], ids[1], ids[2]), "{now:?}");
         assert!(now[1] > ids[2], "{now:?}");
-        let out = get(&format!("lattice:article/{a}#b{}-b{}", ids[0], ids[1]), false).await.unwrap();
-        let got: Vec<i64> = out.json["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_i64().unwrap()).collect();
-        assert_eq!(got, now[..3], "by the article's order, not by id");
+        for (from, to, want) in [(ids[0], ids[1], &now[..3]), (ids[1], ids[2], &now[2..])] {
+            let out = get(&format!("lattice:article/{a}#b{from}-b{to}"), false).await.unwrap();
+            let got: Vec<i64> = out.json["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_i64().unwrap()).collect();
+            assert_eq!(got, want, "#b{from}-b{to}: by the article's order, not by id");
+        }
     }
 
     fn reads(id: i64) -> Vec<Op> {
