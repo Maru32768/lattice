@@ -1011,6 +1011,7 @@ export const ja = {
   "reader.quizHint": "この記事の理解度チェック(クイズ)",
   "reader.noteHint": "この記事にメモを書く",
   "reader.focus": "フォーカスモード",
+  "reader.refCopied": "参照をコピーしました",
   "reader.more2": "その他(再抽出・取り込み直す・自動分類・訳し直す・自動翻訳のオンとオフ・要約・URLをコピー・エージェント用にコピー・ライブラリから削除)",
   "reader.reextractFrom": "再抽出(保存済みの{x}から)",
   "reader.classifying": "分類中…",

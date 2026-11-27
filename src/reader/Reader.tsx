@@ -28,6 +28,7 @@ import { MAX_QUOTE, STICKY_KINDS, explanationOf, type Passage } from "./stickies
 import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
+import { articleRef } from "../lib/articleRef";
 import { useLatest } from "../lib/useLatest";
 import { captureIn, isWord, wordIn } from "../vocab/vocab";
 import { locale, useT } from "../i18n";
@@ -903,6 +904,8 @@ export function Reader({
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
     passage?: Passage;
+    /** What エージェント用にコピー copies: only for a passage of the article's blocks. */
+    agentRef?: string;
     capture?: VocabCapture;
     x: number;
     y: number;
@@ -1007,7 +1010,23 @@ export function Reader({
     if (!block || beyond.toString().trim()) {
       return null;
     }
-    return { passage: { blockId: block.id, parent: null, quote }, ...barAt(range, view) };
+    // The last block the selection takes text from: a triple click ends at the start of the next one.
+    let last = block;
+    for (const b of blocks.slice(blocks.indexOf(block) + 1)) {
+      const el = root.querySelector(`#b-${b.id}`);
+      if (!el || !range.intersectsNode(el)) {
+        break;
+      }
+      const part = document.createRange();
+      part.selectNodeContents(el);
+      if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0) {
+        part.setEnd(range.endContainer, range.endOffset);
+      }
+      if (part.toString().trim()) {
+        last = b;
+      }
+    }
+    return { passage: { blockId: block.id, parent: null, quote }, agentRef: articleRef(a.id, [block.id, last.id]), ...barAt(range, view) };
   }
 
   /** The passage selected in one answer of a sticky, and where to put the bar. */
@@ -1053,6 +1072,15 @@ export function Reader({
         setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
         onVocabChanged();
       })
+      .catch((e: unknown) => setCap({ ...c, error: String(e) }));
+    timers.current.cap = window.setTimeout(() => setCap(null), 2000);
+  }
+
+  function copyRef(c: NonNullable<typeof cap>, ref: string) {
+    clearTimeout(timers.current.cap);
+    navigator.clipboard
+      .writeText(ref)
+      .then(() => setCap({ ...c, status: t("reader.refCopied") }))
       .catch((e: unknown) => setCap({ ...c, error: String(e) }));
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
@@ -1155,6 +1183,7 @@ export function Reader({
   const local = isLocal(a.original_url);
   const passage = cap?.passage;
   const capture = cap?.capture;
+  const agentRef = cap?.agentRef;
   // Characters as the backend counts them, not UTF-16 units.
   const passageTooLong = !!passage && Array.from(passage.quote).length > MAX_QUOTE;
 
@@ -1443,6 +1472,11 @@ export function Reader({
                       {t(`stickies.${kind}`)}
                     </button>
                   ))}
+                {agentRef && (
+                  <button className="btn sm" onMouseDown={(e) => e.preventDefault()} onClick={() => copyRef(cap, agentRef)}>
+                    {t("articleMenu.copyRef")}
+                  </button>
+                )}
                 {capture && (
                   <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord({ ...cap, capture })}>
                     {t("vocab.save")}

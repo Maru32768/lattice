@@ -1025,6 +1025,7 @@ export const en = {
   "reader.quizHint": "Quiz yourself on this article",
   "reader.noteHint": "Write a note on this article",
   "reader.focus": "Focus mode",
+  "reader.refCopied": "Copied the reference",
   "reader.more2":
     "More (re-extract, import again, auto-classify, translate again, automatic translation on or off, summary, copy the URL, copy for an agent, remove from library)",
   "reader.reextractFrom": "Re-extract (from the saved {x})",
