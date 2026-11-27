@@ -961,10 +961,11 @@ pub(crate) mod tests {
         };
         assert_eq!(citations().await, json!([{ "n": 2, "block_id": cited }]));
 
-        // The cited block goes, and with it the highest id: the next block inserted gets that id.
+        // The cited block goes, and with it the highest id: the next block inserted gets that id, and the cited text
+        // comes back under another, so that neither the id nor the text alone names the cited block.
         fetched(s, a, "A", &[SSI]);
-        fetched(s, a, "A", &[SSI, mvcc]);
-        assert_eq!(blocks()[1], (cited, mvcc.to_string()));
+        fetched(s, a, "A", &[SSI, mvcc, wal]);
+        assert_eq!(blocks()[1..], [(cited, mvcc.to_string()), (cited + 1, wal.to_string())]);
         assert_eq!(citations().await, json!([]));
     }
 
