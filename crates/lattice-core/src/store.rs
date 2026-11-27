@@ -371,7 +371,6 @@ pub enum NoteSave {
     Newer(Note),
 }
 
-/// The memo as stored: blank at revision 0 without a row.
 fn note_in(c: &Connection, article_id: i64) -> Result<Note> {
     let row = c.query_row("SELECT body, revision FROM article_notes WHERE article_id = ?1", [article_id], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
     let (body, revision) = row.unwrap_or_default();
