@@ -453,6 +453,8 @@ mod tests {
             assert!(r["result"]["content"][0]["text"].as_str().unwrap().starts_with(UNTRUSTED), "{bad}");
         }
         let get = |blocks| format!("Get {{ id: ArticleRef {{ id: 7, blocks: {blocks} }}, blocks: false, translation: false, stickies: false }}");
+        let schema = tools(Role::Read).into_iter().find(|t| t["name"] == "get").unwrap();
+        assert_eq!(schema["inputSchema"]["properties"]["id"]["type"], json!(["integer", "string"]), "agents learn a copied reference is taken");
         assert_eq!(call("get", json!({ "id": 7 }))["call"], get("None"));
         assert_eq!(call("get", json!({ "id": "lattice:article/7" }))["call"], get("None"), "a reference without blocks is the id");
         assert_eq!(call("get", json!({ "id": "lattice:article/7#b9-b8" }))["call"], get("Some((9, 8))"));
