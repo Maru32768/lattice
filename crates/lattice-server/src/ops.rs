@@ -15,7 +15,7 @@ use lattice_core::mobile::Effects;
 use lattice_core::msg;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock};
 use lattice_core::url_norm::normalize;
-use lattice_core::{classify, feed_folders, feeds, groups, ingest, job_status, relevance, search, summarize, translate};
+use lattice_core::{classify, feed_folders, feeds, groups, ingest, job_status, relevance, search, stickies, summarize, translate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use ts_rs::TS;
@@ -507,6 +507,22 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                 text += &format!("\n{}\n", s.text);
             }
             let mut json = json!({ "article": a, "summary": v.summary });
+            // A citation keeps only its block's id: the block is in the article's text here, and a copy per citation would push
+            // that text out under the MCP result's cap (`stickies` sorts before `text`).
+            json["stickies"] = stickies::list(store, id)?
+                .iter()
+                .map(|s| {
+                    let messages: Vec<Value> = s
+                        .messages
+                        .iter()
+                        .map(|m| {
+                            let citations: Vec<Value> = m.citations.iter().map(|c| json!({ "n": c.n, "block_id": c.block_id })).collect();
+                            json!({ "id": m.id, "question": m.question, "answer": m.answer, "citations": citations })
+                        })
+                        .collect();
+                    json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "kind": s.kind, "quote": s.quote, "messages": messages })
+                })
+                .collect();
             if blocks {
                 json["blocks"] = v
                     .blocks
@@ -811,6 +827,50 @@ pub(crate) mod tests {
         );
         ingest::store_fetched(s, id, &lattice_core::fetch::Fetched { final_url: url.into(), status: 200, content_type: None, html }).unwrap();
         id
+    }
+
+    #[tokio::test]
+    async fn get_carries_the_stickies_of_its_article_alone() {
+        use lattice_core::llm::{Completion, LlmError, LlmProvider};
+        use lattice_core::stickies::{self, Ask, StickyKind};
+
+        struct Answers;
+        impl LlmProvider for Answers {
+            fn name(&self) -> &str {
+                "fake"
+            }
+            async fn complete_json(&self, _: &str, _: &str, _: &Value) -> Result<Completion, LlmError> {
+                Ok(Completion { value: json!({ "answer": "答え [1]", "citations": [1] }), model: None, provider: "fake".into() })
+            }
+        }
+        let ctx = ctx();
+        let s = &*ctx.store;
+        let (a, b, none) = (saved(s, "https://example.com/a", "A"), saved(s, "https://example.com/b", "B"), saved(s, "https://example.com/c", "C"));
+        let block = |id| s.get_article(id, "ja").unwrap().unwrap().blocks[0].id;
+        let turn = tokio::sync::Semaphore::new(1);
+        let ask = |article_id, block_id, parent, kind, quote, question| {
+            stickies::ask(s, &Answers, &turn, Ask { article_id, block_id, parent, kind, quote, question })
+        };
+        let root = ask(a, Some(block(a)), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
+        let child = ask(a, None, Some(root.messages[0].id), StickyKind::Term, "答え", "").await.unwrap();
+        ask(b, Some(block(b)), None, StickyKind::Detail, "Snapshot isolation", "").await.unwrap();
+
+        let get = |id, blocks| run(&ctx, Op::Get { id, blocks, translation: false });
+        let on_a = get(a, false).await.unwrap().json["stickies"].clone();
+        let cited = json!([{ "n": 1, "block_id": block(a) }]);
+        assert_eq!(
+            on_a,
+            json!([
+                { "id": root.id, "block_id": block(a), "parent": null, "kind": "question", "quote": "write skew",
+                  "messages": [{ "id": root.messages[0].id, "question": "なぜ?", "answer": "答え [1]", "citations": cited }] },
+                { "id": child.id, "block_id": block(a), "parent": root.messages[0].id, "kind": "term", "quote": "答え",
+                  "messages": [{ "id": child.messages[0].id, "question": "", "answer": "答え [1]", "citations": cited }] },
+            ])
+        );
+        assert_eq!(get(a, true).await.unwrap().json["stickies"], on_a, "with the blocks too");
+        let on_b = get(b, false).await.unwrap().json["stickies"].clone();
+        assert_eq!((on_b.as_array().map(Vec::len), &on_b[0]["quote"]), (Some(1), &json!("Snapshot isolation")));
+        assert_eq!(get(none, false).await.unwrap().json["stickies"], json!([]));
     }
 
     fn reads(id: i64) -> Vec<Op> {

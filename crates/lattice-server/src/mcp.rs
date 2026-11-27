@@ -52,7 +52,7 @@ fn all_tools() -> Vec<(Role, Value)> {
         tool(
             Read,
             "get",
-            "One saved article: metadata, stored summary and its text as Markdown, or its blocks with ids.",
+            "One saved article: metadata, stored summary, the user's stickies on it (passages they asked about, with the answers), and its text as Markdown, or its blocks with ids.",
             json!({ "id": article, "blocks": flag("Return the blocks with ids instead of the joined text"), "translation": flag("Include the stored translation") }),
             &["id"],
         ),
