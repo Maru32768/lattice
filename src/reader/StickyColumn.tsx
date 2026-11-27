@@ -483,7 +483,7 @@ export function StickyColumn({
           const spot: Spot = {
             "data-block": c.blockId ?? undefined,
             "data-child": c.parent ? (("sticky" in c ? c.sticky.parent : c.ask.parent) ?? undefined) : undefined,
-            "data-of-answer": originOf(c) === "answer" || undefined,
+            "data-of-answer": ("sticky" in c ? c.sticky : c.ask).origin === "answer" || undefined,
             "data-pinned": c.key === pinnedCard || undefined,
             "data-held": held.has(c.key) || undefined,
             style: { left: INDENT * Math.min(c.depth, DEEPEST) },
@@ -540,8 +540,6 @@ function useLabel({ kind, origin }: { kind: Sticky["kind"]; origin: Sticky["orig
   const label = t(`stickies.${kind}`);
   return origin === "text" ? label : t("stickies.ofAnswer", { kind: label });
 }
-
-const originOf = (c: { sticky: Sticky } | { ask: { origin: Sticky["origin"] } }) => ("sticky" in c ? c.sticky.origin : c.ask.origin);
 
 function Quote({ text }: { text: string }) {
   return (
