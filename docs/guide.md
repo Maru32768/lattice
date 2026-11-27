@@ -640,6 +640,7 @@ Click **Note** on the Reader or Page toolbar to open a note beside the article. 
 - An article with a note has **Note** highlighted on its toolbar.
 - With [Vim key bindings](#vim-key-bindings) on, the note takes Vim keys.
 - The note and the quiz open in the same place. Opening one closes the other.
+- An article open in two windows has one note. A window takes the note that another window saves at once. If you have typed something there that is not saved yet, the window keeps it and tells you that another window saved the note. Choose **Save mine over it** or **Load the saved note**.
 - Notes are in the JSON export and in backups. Clearing a note deletes it.
 
 ### Save words
