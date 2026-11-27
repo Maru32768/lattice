@@ -423,6 +423,48 @@ test("メモ: a save waiting when the saved memo is loaded is dropped, and does 
   await expect(note).toHaveValue("X");
 });
 
+test("メモ: a save waiting when the panel comes up again on a newer memo is dropped, and does not save over it", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eHold = ["set_article_note"]));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await open(shell, SNAPSHOT_ID);
+  const button = shell.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const { panel, note } = memoPanel(shell);
+  const sent = async () => (await callsOf(shell, "set_article_note")).length;
+  await note.fill("a");
+  await note.blur();
+  await expect.poll(sent).toBe(1);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect.poll(async () => (await stored(shell)).revision).toBe(1);
+  await note.fill("ab");
+  await note.blur();
+  await expect.poll(sent).toBe(2);
+  // Back to the memo as stored while "ab" is on its way: that save waits behind it.
+  await note.fill("a");
+  await note.blur();
+  void invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 1 });
+  await expect.poll(sent).toBe(3);
+  await shell.evaluate(() => window.__e2e.release("set_article_note", -1));
+  await expect.poll(async () => (await stored(shell)).body).toBe("X");
+  // The Reader reads the article again, and the panel comes up on that view.
+  const reads = (await callsOf(shell, "get_article")).length;
+  await shell.evaluate((id) => window.__e2e.emit("article-changed", id), SNAPSHOT_ID);
+  await expect.poll(async () => (await callsOf(shell, "get_article")).length).toBeGreaterThan(reads);
+  await shell.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))));
+  await button.click();
+  await expect(panel).toHaveCount(0);
+  await button.click();
+  await expect(note, "nothing unsent here, so the panel comes up on the memo read").toHaveValue("X");
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await shell.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))));
+  expect(await savedBodies(shell), 'the waiting "a" is not sent').toEqual(["a", "ab", "X"]);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  expect((await stored(shell)).body).toBe("X");
+  await expect(note).toHaveValue("X");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
 test("Vim: a save refused for another window's that landed first comes back under the warning, and keeping it keeps the editor and its undo", async ({
   shell,
 }) => {
