@@ -3270,7 +3270,7 @@ test("a child whose parent is folded is marked nowhere and has no line, though i
   expect(await lines(shell)).toHaveLength(1);
 });
 
-test("a child whose parent is deleted is marked nowhere, offers no 単語を登録, and still says it is of an answer", async ({ app }) => {
+test("a child whose parent is deleted is marked nowhere, has no line, offers no 単語を登録, and still says it is of an answer", async ({ app }) => {
   await openSnapshot(app);
   await askAbout(app, "詳しく", "#b-106");
   await expect(card(app, "詳しく").locator(".answer")).toHaveText(ANSWERED);
@@ -3281,6 +3281,7 @@ test("a child whose parent is deleted is marked nowhere, offers no 単語を登�
   await expect(cards(app).locator(".sticky-kind")).toHaveText(["用語(回答から)"]);
   await frames(app);
   expect(await marked(app)).toEqual([]);
+  expect(await lines(app)).toEqual([]);
   await expect(child(app, "用語").getByRole("button", { name: "単語を登録" })).toHaveCount(0);
 });
 
