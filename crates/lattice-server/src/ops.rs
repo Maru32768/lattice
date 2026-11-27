@@ -528,7 +528,8 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             }
             let mut json = json!({ "article": a, "summary": v.summary });
             // Only when asked: `stickies` sorts before `summary` and `text`, and an article's stickies can fill the MCP result's
-            // cap by themselves. For the same reason a citation keeps only its block's id, that of `blocks`.
+            // cap by themselves. For the same reason a citation keeps only its block's id, that of `blocks`, which sorts before
+            // `stickies` in turn: the MCP tool asks for the two in separate calls.
             let notes = with_stickies.then(|| stickies::list(store, id)).transpose()?;
             if let Some(notes) = &notes {
                 json["stickies"] = notes
