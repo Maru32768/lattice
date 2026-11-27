@@ -154,8 +154,9 @@ export function addToNote(view: ArticleView, text: string) {
   tellChanged(id);
   const ended = queue
     .then(async () => {
-      // The text before the add is stored, or behind what is: the memo the text goes after holds all of it then.
-      const base = memos.get(id)!.saved;
+      // The text before the add is stored, or behind what is: the memo the text goes after holds all of it then. Of the
+      // copy the add was shown in: one that replaced it meanwhile (the saved memo loaded) never showed the add.
+      const base = memo.saved;
       return { note: await api.appendArticleNote(id, text), base, based: !differs(before, base) };
     })
     .then(

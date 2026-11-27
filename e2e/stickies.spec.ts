@@ -4118,6 +4118,46 @@ test("メモに足す, then loading the saved memo before the add lands, shows t
   await expect.poll(() => storedMemo(shell), "the sticky's text stays").toBe(`theirs\n\n${draft}!`);
 });
 
+test("メモに足す, then loading the saved memo while a save ahead of the add is on its way, shows the memo with the text added, and typing keeps it", async ({
+  shell,
+}) => {
+  await hold(shell, "set_article_note");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(shell).click();
+  const sent = async () => (await callsOf(shell, "set_article_note")).length;
+  await memoField(shell).fill("mine");
+  await memoField(shell).blur();
+  await expect.poll(sent).toBe(1);
+  void invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 0 });
+  await expect.poll(sent).toBe(2);
+  await shell.evaluate(() => window.__e2e.release("set_article_note", -1));
+  await expect.poll(() => storedMemo(shell)).toBe("X");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(memoField(shell)).toHaveValue(`mine\n\n${draft}`);
+  // "mine" is refused for X; the save of "mine" before the add goes out next, and is held.
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  const warning = shell.getByRole("complementary", { name: "メモ" }).getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await expect.poll(sent).toBe(3);
+  await warning.getByRole("button", { name: "保存されたメモを読み込む" }).click();
+  await expect(memoField(shell)).toHaveValue("X");
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  expect(await storedMemo(shell)).toBe(`X\n\n${draft}`);
+  await expect(memoField(shell), "the panel shows the memo as stored").toHaveValue(`X\n\n${draft}`);
+  await memoField(shell).press("Control+End");
+  await memoField(shell).pressSequentially("!");
+  await expect.poll(sent).toBe(4);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect.poll(() => storedMemo(shell), "the sticky's text stays").toBe(`X\n\n${draft}!`);
+});
+
 test("メモに足す on a memo cleared to a space, after another window's save not heard of, shows that save with the text added", async ({ app }) => {
   await openSnapshot(app);
   await askAbout(app, "詳しく", "#b-102");
