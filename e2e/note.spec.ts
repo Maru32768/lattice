@@ -388,6 +388,41 @@ test("メモ: a save waiting behind a refused one is dropped when the panel take
   await expect(panel.getByRole("alert")).toHaveCount(0);
 });
 
+test("メモ: a save waiting when the saved memo is loaded is dropped, and does not save over it", async ({ shell }) => {
+  await shell.addInitScript(() => void (window.__e2eHold = ["set_article_note"]));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await open(shell, SNAPSHOT_ID);
+  await shell.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(shell);
+  const sent = async () => (await callsOf(shell, "set_article_note")).length;
+  await note.fill("a");
+  await note.blur();
+  await expect.poll(sent).toBe(1);
+  void invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 0 });
+  await expect.poll(sent).toBe(2);
+  await shell.evaluate(() => window.__e2e.release("set_article_note", -1));
+  await expect.poll(async () => (await stored(shell)).body).toBe("X");
+  await note.fill("ab");
+  await note.blur();
+  await note.fill("abc");
+  await note.blur();
+  // "a" is refused for X, "ab" goes out from the revision "a" was typed over, and "abc" waits behind it.
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect.poll(sent).toBe(3);
+  const warning = panel.getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await warning.getByRole("button", { name: "保存されたメモを読み込む" }).click();
+  await expect(note).toHaveValue("X");
+  await expect(warning).toHaveCount(0);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await shell.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))));
+  expect(await savedBodies(shell), 'the waiting "abc" is not sent').toEqual(["a", "X", "ab"]);
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  expect((await stored(shell)).body).toBe("X");
+  await expect(note).toHaveValue("X");
+});
+
 test("Vim: a save refused for another window's that landed first comes back under the warning, and keeping it keeps the editor and its undo", async ({
   shell,
 }) => {
