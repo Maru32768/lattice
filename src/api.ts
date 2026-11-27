@@ -44,6 +44,8 @@ import type {
   McpEdited,
   McpStatus,
   MobileSettings,
+  Note,
+  NoteSave,
   MobileStatus,
   TailscaleStatus,
   R2Status,
@@ -220,7 +222,10 @@ export const api = {
   /** The articles this window shows: the reserved job slot works on them first. */
   setArticlesOnScreen: (ids: number[]) => invoke<void>("set_articles_on_screen", { ids }),
   deleteGenre: (name: string) => invoke<void>("delete_genre", { name }),
-  setArticleNote: (id: number, body: string) => invoke<void>("set_article_note", { id, body }),
+  /** Refused, with the memo as stored, when another save landed since `revision`; `note-changed` follows a save that lands. */
+  setArticleNote: (id: number, body: string, revision: number) => invoke<NoteSave>("set_article_note", { id, body, revision }),
+  /** `text` after the memo as stored, a blank line between; `note-changed` follows. */
+  appendArticleNote: (id: number, text: string) => invoke<Note>("append_article_note", { id, text }),
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
   setRelevance: (id: number, score: number | null) => invoke<void>("set_relevance", { id, score }),
   /** 翻訳エンジン and the local translation server's URL. */

@@ -1,6 +1,7 @@
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, list, callsOf, holdEvents, invoke } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
+import type { ArticleView } from "../src/api.ts";
 
 async function open(page: Page, id: number) {
   const title = ARTICLES.find((a) => a.id === id)!.title!;
@@ -15,7 +16,7 @@ test("メモ: written beside the Reader, saved as you type, back when the articl
   const panel = app.getByRole("complementary", { name: "メモ" });
   await panel.getByRole("textbox", { name: "メモ" }).fill("2PLと比べる");
   await expect(panel.getByRole("status")).toHaveText("保存しました");
-  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる" });
+  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる", revision: 0 });
 
   // One panel at a time: the quiz takes the memo's place.
   await app.getByRole("button", { name: "理解度チェック", exact: true }).click();
@@ -51,7 +52,7 @@ test("メモ: a save that failed is sent again on the way out, says so when the 
   await note.blur();
   await expect(panel.getByRole("status"), "with nothing new typed").toHaveText("保存しました");
   await expect(panel.getByRole("alert")).toHaveCount(0);
-  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "the disk is full" });
+  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "the disk is full", revision: 0 });
   await button.click();
   await button.click();
   await expect(panel.getByRole("alert")).toHaveCount(0);
@@ -266,3 +267,104 @@ for (const vim of [false, true]) {
     await expect.poll(() => lastSaved(shell)).toBe("kept and new");
   });
 }
+
+const stored = async (page: Page) => (await invoke(page, "get_article", { id: SNAPSHOT_ID })) as ArticleView;
+const memoPanel = (page: Page) => {
+  const panel = page.getByRole("complementary", { name: "メモ" });
+  return { panel, note: panel.getByRole("textbox", { name: "メモ" }) };
+};
+
+test("メモ: what another window saves or adds comes in where nothing here is unsent, with the keyboard kept, and the toolbar marks it", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await expect(button).not.toHaveClass(/\bon\b/);
+  await invoke(app, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 0 });
+  await expect(button, "with the panel closed").toHaveClass(/\bon\b/);
+  await button.click();
+  const { panel, note } = memoPanel(app);
+  await expect(note).toHaveValue("X");
+  await expect(note).toBeFocused();
+  await invoke(app, "append_article_note", { id: SNAPSHOT_ID, text: "Y" });
+  await expect(note).toHaveValue("X\n\nY");
+  await expect(note).toBeFocused();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await note.press("Control+End");
+  await note.pressSequentially("!");
+  await expect.poll(async () => (await stored(app)).note, "saved from the memo it took, not refused").toBe("X\n\nY!");
+});
+
+test("Vim: the memo's own saves keep its editor and the cursor, and another window's save comes in with the keyboard kept", async ({ shell }) => {
+  await shell.addInitScript(() => localStorage.setItem("lattice.chatVim", "on"));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await open(shell, SNAPSHOT_ID);
+  await shell.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(shell);
+  await expect(note).toBeFocused();
+  // An editor made again is a new element, without this.
+  await note.evaluate((el) => void ((el as { first?: boolean }).first = true));
+  // Their events come after both saves, the first of them older than what the editor has then.
+  const letEventsGo = await holdEvents(shell, "note-changed");
+  await shell.keyboard.type("abc");
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await shell.keyboard.type("def");
+  await expect.poll(async () => (await stored(shell)).note).toBe("abcdef");
+  await letEventsGo();
+  await shell.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))));
+  await expect(note).toHaveText("abcdef");
+  expect(await note.evaluate((el) => (el as { first?: boolean }).first), "the same editor").toBe(true);
+
+  const { note_revision } = await stored(shell);
+  await invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "from the other window", revision: note_revision });
+  await expect(note).toHaveText("from the other window");
+  await expect(note).toBeFocused();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
+/** Types `text` at the end of the memo and, before that can be saved, another window saves `body` from `revision`. */
+const typedAsAnotherSaves = (page: Page, text: string, body: string, revision: number) =>
+  page.evaluate(
+    ([text, body, revision, id]) => {
+      const field = document.querySelector<HTMLTextAreaElement>("textarea.note-text")!;
+      // Past React's record of the value, as typing is.
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, field.value + text);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      type Invoke = (cmd: string, args: object) => Promise<unknown>;
+      return (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__.invoke("set_article_note", { id, body, revision });
+    },
+    [text, body, revision, SNAPSHOT_ID] as const,
+  );
+
+test("メモ: typing not yet saved when another window's save comes stays under a warning and saves over nothing, and each button does what it says", async ({
+  app,
+}) => {
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(app);
+  await expect(note).toBeFocused();
+  await typedAsAnotherSaves(app, "mine", "theirs", 0);
+  const warning = panel.getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await expect(note).toHaveValue("mine");
+  await note.blur();
+  expect(await savedBodies(app), "none from this window").toEqual(["theirs"]);
+  expect((await stored(app)).note).toBe("theirs");
+
+  await warning.getByRole("button", { name: "ここでの入力で上書き" }).click();
+  await expect(warning).toHaveCount(0);
+  await expect(note, "the keyboard goes back to the memo").toBeFocused();
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "mine", revision: 1 });
+  expect((await stored(app)).note).toBe("mine");
+
+  await typedAsAnotherSaves(app, " again", "theirs again", 2);
+  await expect(note).toHaveValue("mine again");
+  await warning.getByRole("button", { name: "保存されたメモを読み込む" }).click();
+  await expect(note).toHaveValue("theirs again");
+  await expect(warning).toHaveCount(0);
+  await expect(note).toBeFocused();
+  await note.press("Control+End");
+  await note.pressSequentially("!");
+  await expect.poll(async () => (await stored(app)).note).toBe("theirs again!");
+  expect(await savedBodies(app), "this window's typing went where it said").toEqual(["theirs", "mine", "theirs again", "theirs again!"]);
+});

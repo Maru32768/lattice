@@ -67,6 +67,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00046_stickies.sql"),
     include_str!("../db/migrations/00047_sticky_parent.sql"),
     include_str!("../db/migrations/00048_vocab_explanation.sql"),
+    include_str!("../db/migrations/00049_note_revision.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -347,8 +348,50 @@ pub struct ArticleView {
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
     pub summary: Option<SummaryView>,
-    /// The user's memo (`set_note`).
+    /// The user's memo (`set_note`); `None` when blank.
     pub note: Option<String>,
+    /// The memo's [`Note::revision`].
+    pub note_revision: i64,
+}
+
+/// An article's memo as stored. `revision` grows with every save and is 0 for an article that never had one; blank is "".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct Note {
+    pub article_id: i64,
+    pub body: String,
+    pub revision: i64,
+}
+
+/// What [`Store::set_note`] did with a memo written from a revision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
+pub enum NoteSave {
+    Saved(Note),
+    /// Another save landed since that revision: the memo as it stands, left as it was.
+    Newer(Note),
+}
+
+/// The memo as stored: blank at revision 0 without a row.
+fn note_in(c: &Connection, article_id: i64) -> Result<Note> {
+    let row = c.query_row("SELECT body, revision FROM article_notes WHERE article_id = ?1", [article_id], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+    let (body, revision) = row.unwrap_or_default();
+    Ok(Note { article_id, body, revision })
+}
+
+fn write_note(c: &Connection, article_id: i64, body: &str, revision: i64) -> Result<Note> {
+    let body = if body.trim().is_empty() {
+        ""
+    } else {
+        body
+    };
+    c.execute(
+        "INSERT INTO article_notes (article_id, body, revision) VALUES (?1, ?2, ?3)
+         ON CONFLICT(article_id) DO UPDATE SET body = excluded.body, revision = excluded.revision, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+        params![article_id, body, revision],
+    )?;
+    Ok(Note { article_id, body: body.into(), revision })
 }
 
 pub struct SummarySource {
@@ -864,8 +907,8 @@ impl Store {
                     [id, existing],
                 )?;
                 tx.execute(
-                    "INSERT INTO article_notes (article_id, body) SELECT ?2, body FROM article_notes WHERE article_id = ?1
-                     ON CONFLICT(article_id) DO UPDATE SET body = body || char(10, 10) || excluded.body",
+                    "INSERT INTO article_notes (article_id, body) SELECT ?2, body FROM article_notes WHERE article_id = ?1 AND body <> ''
+                     ON CONFLICT(article_id) DO UPDATE SET body = iif(body = '', excluded.body, body || char(10, 10) || excluded.body), revision = revision + 1",
                     [id, existing],
                 )?;
                 tx.execute("UPDATE stickies SET article_id = ?2 WHERE article_id = ?1", [id, existing])?;
@@ -1149,23 +1192,38 @@ impl Store {
                 |r| Ok(SummaryView { text: r.get(0)?, items: opt_json_col(r, 4)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
-        let note = c.query_row("SELECT body FROM article_notes WHERE article_id = ?1", [id], |r| r.get(0)).optional()?;
-        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary, note }))
+        let Note { body, revision: note_revision, .. } = note_in(&c, id)?;
+        let note = (!body.is_empty()).then_some(body);
+        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary, note, note_revision }))
     }
 
-    /// The user's memo on an article; a blank one is removed.
-    pub fn set_note(&self, article_id: i64, body: &str) -> Result<()> {
-        let c = self.conn();
-        if body.trim().is_empty() {
-            c.execute("DELETE FROM article_notes WHERE article_id = ?1", [article_id])?;
-        } else {
-            c.execute(
-                "INSERT INTO article_notes (article_id, body) VALUES (?1, ?2)
-                 ON CONFLICT(article_id) DO UPDATE SET body = excluded.body, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",
-                params![article_id, body],
-            )?;
+    /// The user's memo on an article, written from the memo at `revision`: refused when another save landed since.
+    pub fn set_note(&self, article_id: i64, body: &str, revision: i64) -> Result<NoteSave> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        let stored = note_in(&tx, article_id)?;
+        if stored.revision != revision {
+            return Ok(NoteSave::Newer(stored));
         }
-        Ok(())
+        let saved = write_note(&tx, article_id, body, revision + 1)?;
+        tx.commit()?;
+        Ok(NoteSave::Saved(saved))
+    }
+
+    /// `text` after the memo as stored, a blank line between (a sticky's メモに足す).
+    pub fn append_note(&self, article_id: i64, text: &str) -> Result<Note> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        let stored = note_in(&tx, article_id)?;
+        let was = stored.body.trim_end();
+        let body = if was.is_empty() {
+            text.to_string()
+        } else {
+            format!("{was}\n\n{text}")
+        };
+        let note = write_note(&tx, article_id, &body, stored.revision + 1)?;
+        tx.commit()?;
+        Ok(note)
     }
 
     /// Blocks of `kinds` of an article lacking a current translation in `target_language`.
@@ -1991,21 +2049,56 @@ mod tests {
         assert_eq!(etag, None, "the next poll fetches the feed in full");
     }
 
+    fn note_view(s: &Store, id: i64) -> (Option<String>, i64) {
+        let v = s.get_article(id, "ja").unwrap().unwrap();
+        (v.note, v.note_revision)
+    }
+
     #[test]
-    fn a_blank_note_is_removed() {
+    fn a_blank_note_reads_as_none_and_its_revision_keeps_growing() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
-        s.set_note(id, "first").unwrap();
-        s.set_note(id, "second").unwrap();
-        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("second"));
-        s.set_note(
-            id, "  
-",
-        )
-        .unwrap();
-        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note, None);
-        let rows: i64 = s.conn().query_row("SELECT count(*) FROM article_notes", [], |r| r.get(0)).unwrap();
-        assert_eq!(rows, 0);
+        assert_eq!(note_view(&s, id), (None, 0));
+        s.set_note(id, "first", 0).unwrap();
+        s.set_note(id, "second", 1).unwrap();
+        assert_eq!(note_view(&s, id), (Some("second".into()), 2));
+        assert_eq!(s.set_note(id, "  \n", 2).unwrap(), NoteSave::Saved(Note { article_id: id, body: String::new(), revision: 3 }));
+        assert_eq!(note_view(&s, id), (None, 3));
+        assert!(matches!(s.set_note(id, "from before the clear", 2).unwrap(), NoteSave::Newer(_)), "a copy from before the clear is behind it");
+        assert_eq!(s.set_note(id, "again", 3).unwrap(), NoteSave::Saved(Note { article_id: id, body: "again".into(), revision: 4 }));
+    }
+
+    /// Windows A and B load the memo at revision 0, and B saves first.
+    #[test]
+    fn a_save_from_an_older_revision_is_refused_and_writes_nothing() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        let x = Note { article_id: id, body: "X".into(), revision: 1 };
+        assert_eq!(s.set_note(id, "X", 0).unwrap(), NoteSave::Saved(x.clone()));
+        assert_eq!(s.set_note(id, "A's text", 0).unwrap(), NoteSave::Newer(x.clone()));
+        assert_eq!(s.set_note(id, "A's text", 2).unwrap(), NoteSave::Newer(x), "nor from one ahead of it");
+        assert_eq!(note_view(&s, id), (Some("X".into()), 1));
+    }
+
+    /// B saves X; A, which loaded the memo before that, adds Y from a sticky.
+    #[test]
+    fn text_added_goes_after_the_memo_as_stored() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.set_note(id, "X", 0).unwrap();
+        assert_eq!(s.append_note(id, "Y").unwrap(), Note { article_id: id, body: "X\n\nY".into(), revision: 2 });
+        assert_eq!(note_view(&s, id), (Some("X\n\nY".into()), 2));
+    }
+
+    #[test]
+    fn text_added_to_no_memo_or_a_blank_one_is_the_text_alone() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        assert_eq!(s.append_note(id, "Y").unwrap(), Note { article_id: id, body: "Y".into(), revision: 1 });
+        s.set_note(id, " \n", 1).unwrap();
+        assert_eq!(s.append_note(id, "Z").unwrap(), Note { article_id: id, body: "Z".into(), revision: 3 });
+        s.set_note(id, "Z \n\n", 3).unwrap();
+        assert_eq!(s.append_note(id, "W").unwrap().body, "Z\n\nW", "the memo's trailing blank lines make no wider gap");
     }
 
     /// A feed linking http:// saved its articles under http keys; the browser lands on https.

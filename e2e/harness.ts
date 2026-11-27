@@ -30,6 +30,27 @@ export const test = base.extend<{ shell: Page; app: Page }>({
 
 export { expect };
 
+/** As another window would: nothing in this one asked. */
+export const invoke = (page: Page, cmd: string, args: object) =>
+  page.evaluate(
+    ([cmd, args]) =>
+      (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke(cmd, args),
+    [cmd, args] as const,
+  );
+
+/** Holds the events named `name` as those from another window still on their way would be; resolves to what lets them go. */
+export async function holdEvents(page: Page, name: string) {
+  await page.evaluate((name) => {
+    type Invoke = (cmd: string, args?: { event?: string }, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; __letEventsGo: () => void };
+    const held = new Promise<void>((go) => (w.__letEventsGo = go));
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      cmd === "plugin:event|emit" && args?.event === name ? held.then(() => invoke(cmd, args, options)) : invoke(cmd, args, options);
+  }, name);
+  return () => page.evaluate(() => (window as unknown as { __letEventsGo: () => void }).__letEventsGo());
+}
+
 /** The arguments of every call of `cmd` so far. */
 export const callsOf = (page: Page, cmd: string) => page.evaluate((c) => window.__e2e.calls.filter((x) => x.cmd === c).map((x) => x.args), cmd);
 

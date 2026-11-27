@@ -10,6 +10,10 @@ export type ArticleView = { article: ArticleRow,
  */
 target_language: "ja" | "en", blocks: Array<Block>, jobs: Array<JobRow>, summary: SummaryView | null, 
 /**
- * The user's memo (`set_note`).
+ * The user's memo (`set_note`); `None` when blank.
  */
-note: string | null, };
+note: string | null, 
+/**
+ * The memo's [`Note::revision`].
+ */
+note_revision: number, };

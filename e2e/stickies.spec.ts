@@ -1,7 +1,8 @@
 // Stickies: asking about a passage in the Reader, and the answer that stays beside it.
-import { test, expect, callsOf, list, listRow, navItem, selectWord } from "./harness.ts";
+import { test, expect, callsOf, holdEvents, invoke, list, listRow, navItem, selectWord } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
+import type { ArticleView } from "../src/api.ts";
 
 // With scrollbars that take width, as in the app: the pane of its default window is too narrow for a column only with one.
 test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
@@ -162,13 +163,6 @@ async function askAbout(page: Page, kind: Kind, block: string) {
   await bar(page).getByRole("button", { name: kind, exact: true }).click();
 }
 
-/** As another window would: nothing in this one asked. */
-const invoke = (page: Page, cmd: string, args: object) =>
-  page.evaluate(
-    ([cmd, args]) =>
-      (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke(cmd, args),
-    [cmd, args] as const,
-  );
 const askElsewhere = (page: Page, articleId: number, blockId: number | null, quote = "elsewhere", parent: number | null = null) =>
   invoke(page, "sticky_ask", { articleId, blockId, parent, kind: "term", quote, question: "" });
 
@@ -3844,6 +3838,7 @@ const draftField = (sticky: Locator) => sticky.getByRole("textbox", { name: "メ
 const memoButton = (page: Page) => page.getByRole("button", { name: "メモ", exact: true });
 const memoField = (page: Page) => page.getByRole("complementary", { name: "メモ" }).getByRole("textbox", { name: "メモ" });
 const lastMemo = async (page: Page) => (await callsOf(page, "set_article_note")).at(-1);
+const storedMemo = async (page: Page) => ((await invoke(page, "get_article", { id: SNAPSHOT_ID })) as ArticleView).note;
 const DRAFTED = /^「.+」の下書き。答え1件から。$/;
 
 test("メモに下書き: the draft waits, stays through leaving the article, is changed in the sticky and goes to the end of the memo", async ({ shell }) => {
@@ -3875,10 +3870,11 @@ test("メモに下書き: the draft waits, stays through leaving the article, is
   await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
   await expect(draftField(sticky)).toHaveCount(0);
   await expect(memoField(shell), "the panel shows it").toHaveValue("2PLと比べる\n\n自分の言葉で直した下書き");
-  await expect.poll(() => lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる\n\n自分の言葉で直した下書き" });
+  expect(await callsOf(shell, "append_article_note")).toEqual([{ id: SNAPSHOT_ID, text: "自分の言葉で直した下書き" }]);
+  expect(await storedMemo(shell)).toBe("2PLと比べる\n\n自分の言葉で直した下書き");
   await memoField(shell).press("Control+End");
   await memoField(shell).pressSequentially("。");
-  await expect.poll(() => lastMemo(shell), "typing on keeps it").toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる\n\n自分の言葉で直した下書き。" });
+  await expect.poll(() => storedMemo(shell), "typing on keeps it").toBe("2PLと比べる\n\n自分の言葉で直した下書き。");
 });
 
 test("メモに下書き: a Vim memo open shows the text, a blank line before it, and typing on keeps it, with the keyboard left in the article", async ({
@@ -3900,15 +3896,15 @@ test("メモに下書き: a Vim memo open shows the text, a blank line before it
   await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
   await expect(doc(shell)).toBeFocused();
   await expect(memoField(shell), "the panel shows it").toContainText(draft);
-  await expect.poll(() => lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: `2PL\n\n${draft}` });
+  expect(await storedMemo(shell)).toBe(`2PL\n\n${draft}`);
   await memoField(shell).click();
   await shell.keyboard.press("Control+End");
   await shell.keyboard.type("!");
-  await expect.poll(() => lastMemo(shell), "typing on keeps it").toEqual({ id: SNAPSHOT_ID, body: `2PL\n\n${draft}!` });
+  await expect.poll(() => storedMemo(shell), "typing on keeps it").toBe(`2PL\n\n${draft}!`);
 });
 
 test("メモに下書き: text added from a sticky is saved after the memo's save before it, and before the next", async ({ shell }) => {
-  await hold(shell, "set_article_note");
+  await hold(shell, "set_article_note", "append_article_note");
   await shell.goto("/");
   await openSnapshot(shell);
   await askAbout(shell, "詳しく", "#b-102");
@@ -3916,23 +3912,31 @@ test("メモに下書き: text added from a sticky is saved after the memo's sav
   await sticky.getByRole("button", { name: "メモに下書き" }).click();
   await expect(draftField(sticky)).toHaveValue(DRAFTED);
   const draft = await draftField(sticky).inputValue();
-  const bodies = async () => (await callsOf(shell, "set_article_note")).map((c) => (c as { body: string }).body);
+  /** What the saves sent, and `+` the text of an add. */
+  const sent = () =>
+    shell.evaluate(() =>
+      window.__e2e.calls.flatMap(({ cmd, args }) => {
+        const { body, text } = args as { body?: string; text?: string };
+        return cmd === "set_article_note" || cmd === "append_article_note" ? [body ?? `+${text}`] : [];
+      }),
+    );
   await memoButton(shell).click();
   await memoField(shell).fill("2PL");
   await sticky.getByRole("button", { name: "メモに足す" }).click();
   await frames(shell);
-  expect(await bodies(), "the add waits for the save before it").toEqual(["2PL"]);
+  expect(await sent(), "the add waits for the save before it").toEqual(["2PL"]);
   await memoField(shell).press("Control+End");
   await memoField(shell).pressSequentially("!");
   await memoField(shell).blur();
   await shell.evaluate(() => window.__e2e.release("set_article_note", 1));
-  await expect.poll(bodies).toEqual(["2PL", `2PL\n\n${draft}`]);
+  await expect.poll(sent).toEqual(["2PL", `+${draft}`]);
   await frames(shell);
-  expect(await bodies(), "the next save waits for the add").toHaveLength(2);
-  await shell.evaluate(() => window.__e2e.release("set_article_note", 1));
-  await expect.poll(bodies).toEqual(["2PL", `2PL\n\n${draft}`, `2PL\n\n${draft}!`]);
+  expect(await sent(), "the next save waits for the add").toHaveLength(2);
+  await shell.evaluate(() => window.__e2e.release("append_article_note"));
+  await expect.poll(sent).toEqual(["2PL", `+${draft}`, `2PL\n\n${draft}!`]);
   await shell.evaluate(() => window.__e2e.release("set_article_note"));
   await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect.poll(() => storedMemo(shell)).toBe(`2PL\n\n${draft}!`);
 });
 
 test("メモに下書き: a failed draft is asked again, Esc and キャンセル leave the memo alone, and one added marks メモ", async ({ shell }) => {
@@ -3967,20 +3971,21 @@ test("メモに下書き: a failed draft is asked again, Esc and キャンセル
   await draftField(sticky).fill(" 下書き ");
   await sticky.getByRole("button", { name: "メモに足す" }).click();
   await expect(memoButton(shell), "with the panel closed too").toHaveClass(/\bon\b/);
-  expect(await callsOf(shell, "set_article_note")).toEqual([{ id: SNAPSHOT_ID, body: "下書き" }]);
+  expect(await callsOf(shell, "append_article_note")).toEqual([{ id: SNAPSHOT_ID, text: "下書き" }]);
+  expect(await callsOf(shell, "set_article_note")).toEqual([]);
   await memoButton(shell).click();
   await expect(memoField(shell)).toHaveValue("下書き");
 });
 
 test("メモに下書き: a memo that cannot be saved says so in the sticky, and the memo saves the text again", async ({ shell }) => {
-  await shell.addInitScript(() => void (window.__e2eFail = ["set_article_note"]));
+  await shell.addInitScript(() => void (window.__e2eFail = ["append_article_note", "set_article_note"]));
   await shell.goto("/");
   await openSnapshot(shell);
   await askAbout(shell, "詳しく", "#b-102");
   const sticky = card(shell, "詳しく");
   await sticky.getByRole("button", { name: "メモに下書き" }).click();
   await sticky.getByRole("button", { name: "メモに足す" }).click();
-  await expect(sticky.getByRole("alert")).toHaveText(/set_article_note failed/);
+  await expect(sticky.getByRole("alert")).toHaveText(/append_article_note failed/);
   await expect(draftField(sticky), "it is in the memo already, not to be added twice").toHaveCount(0);
   await memoButton(shell).click();
   const panel = shell.getByRole("complementary", { name: "メモ" });
@@ -3989,7 +3994,27 @@ test("メモに下書き: a memo that cannot be saved says so in the sticky, and
   await shell.evaluate(() => void (window.__e2eFail = []));
   await memoField(shell).blur();
   await expect(panel.getByRole("status")).toHaveText("保存しました");
-  expect(await lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED) });
+  expect(await lastMemo(shell)).toEqual({ id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED), revision: 0 });
+});
+
+test("メモに足す after another window saved the memo puts the text after what it saved, though this window has not heard of that yet", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const sticky = card(app, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  const letEventsGo = await holdEvents(app, "note-changed");
+  await invoke(app, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 0 });
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  expect(await storedMemo(app)).toBe(`X\n\n${draft}`);
+  await memoButton(app).click();
+  await expect(memoField(app), "this window shows it").toHaveValue(`X\n\n${draft}`);
+  await letEventsGo();
+  await frames(app);
+  await expect(memoField(app), "the events that come late change nothing").toHaveValue(`X\n\n${draft}`);
+  await expect(app.getByRole("complementary", { name: "メモ" }).getByRole("alert")).toHaveCount(0);
 });
 
 test("メモに下書き: the draft of a sticky deleted meanwhile goes to no other, though a new one has its id", async ({ shell }) => {
@@ -4048,10 +4073,8 @@ test("メモに下書き: the memo panel of another article in another pane keep
   await sticky.getByRole("button", { name: "メモに足す" }).click();
   await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
   await expect(memoField(app)).toHaveValue("長い記事のメモ");
-  expect(await callsOf(app, "set_article_note")).toEqual([
-    { id: LONG_ID, body: "長い記事のメモ" },
-    { id: SNAPSHOT_ID, body: expect.stringMatching(DRAFTED) },
-  ]);
+  expect(await callsOf(app, "set_article_note")).toEqual([{ id: LONG_ID, body: "長い記事のメモ", revision: 0 }]);
+  expect(await callsOf(app, "append_article_note")).toEqual([{ id: SNAPSHOT_ID, text: expect.stringMatching(DRAFTED) }]);
 });
 
 test("単語を登録 on a 用語 sticky saves its word in its sentence with what the sticky says, which the word list shows", async ({ app }) => {

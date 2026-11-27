@@ -30,7 +30,7 @@ use lattice_core::segments::{self, Unit};
 use lattice_core::srs::Grade;
 use lattice_core::stickies::{Sticky, StickyKind};
 use lattice_core::store::JobRow;
-use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
+use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, Note, NoteSave, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
 use lattice_core::{
     backup, classify, export, favicons, feed_filter, feed_folders, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, stickies,
@@ -746,10 +746,23 @@ fn set_favorite(app: State<'_, App>, id: i64, favorite: bool) -> Result<(), Stri
     app.store.set_favorite(id, favorite).map_err(err)
 }
 
-/// The memo beside the Reader; blank removes it. No `article-changed`: the panel holds the text.
+/// The memo beside the Reader, written from `revision` (`Store::set_note`). `note-changed` tells every window of a save
+/// that lands, not `article-changed`: that would reload the library too.
 #[tauri::command(async)]
-fn set_article_note(app: State<'_, App>, id: i64, body: String) -> Result<(), String> {
-    app.store.set_note(id, &body).map_err(err)
+fn set_article_note(handle: tauri::AppHandle, app: State<'_, App>, id: i64, body: String, revision: i64) -> Result<NoteSave, String> {
+    let save = app.store.set_note(id, &body, revision).map_err(err)?;
+    if let NoteSave::Saved(note) = &save {
+        let _ = handle.emit("note-changed", note);
+    }
+    Ok(save)
+}
+
+/// A sticky's メモに足す: `text` after the memo as stored, whichever revision the window holds; `note-changed` follows.
+#[tauri::command(async)]
+fn append_article_note(handle: tauri::AppHandle, app: State<'_, App>, id: i64, text: String) -> Result<Note, String> {
+    let note = app.store.append_note(id, &text).map_err(err)?;
+    let _ = handle.emit("note-changed", &note);
+    Ok(note)
 }
 
 #[tauri::command(async)]
@@ -1745,6 +1758,7 @@ pub fn run() {
             set_articles_on_screen,
             delete_genre,
             set_article_note,
+            append_article_note,
             set_difficulty,
             set_relevance,
             classify_article,

@@ -9,7 +9,7 @@ use lattice_core::fetch::{self, Fetched};
 use lattice_core::ingest::store_fetched;
 use lattice_core::jobs::{self, Providers};
 use lattice_core::llm::{Completion, LlmError, LlmProvider};
-use lattice_core::store::Store;
+use lattice_core::store::{NoteSave, Store};
 use lattice_core::{embed, groups, job_status, summarize};
 use serde_json::{Value, json};
 
@@ -165,7 +165,7 @@ fn merging_a_refetched_article_into_an_existing_one_keeps_the_users_data() {
     s.record_fetch_failure(failed, "fetch.timeout").unwrap();
     s.add_tag(failed, "to-read").unwrap();
     s.set_favorite(failed, true).unwrap();
-    s.set_note(failed, "the part about write skew").unwrap();
+    s.set_note(failed, "the part about write skew", 0).unwrap();
     let group = groups::create(&s, "thesis").unwrap();
     groups::add(&s, group, &[failed]).unwrap();
 
@@ -181,6 +181,27 @@ fn merging_a_refetched_article_into_an_existing_one_keeps_the_users_data() {
         (vec!["to-read".to_string()], true, Some("the part about write skew".to_string()), 1),
         "the user's tag, star, note and group membership survive the merge"
     );
+}
+
+/// A memo that was cleared is a row with a blank body: it adds nothing to the other, and the other replaces it.
+#[test]
+fn merging_joins_the_memos_and_a_window_holding_the_kept_one_cannot_save_over_them() {
+    for (moved, kept_memo, joined) in [("moved", "kept", Some("kept\n\nmoved")), ("", "kept", Some("kept")), ("moved", "", Some("moved")), ("", "", None)] {
+        let s = Store::open_in_memory().unwrap();
+        let kept = saved(&s, "https://example.com/post");
+        let (failed, _) = s.upsert_pending("https://mirror.example.net/post", "https://mirror.example.net/post", "mirror.example.net").unwrap();
+        s.record_fetch_failure(failed, "fetch.timeout").unwrap();
+        for (id, memo) in [(failed, moved), (kept, kept_memo)] {
+            s.set_note(id, "before", 0).unwrap();
+            s.set_note(id, memo, 1).unwrap();
+        }
+        store_fetched(&s, failed, &page("https://mirror.example.net/post", r#"<link rel="canonical" href="https://example.com/post">"#)).unwrap();
+        let v = s.get_article(kept, "ja").unwrap().unwrap();
+        let changed = !moved.is_empty();
+        assert_eq!((v.note.as_deref(), v.note_revision), (joined, 2 + i64::from(changed)), "{moved:?} into {kept_memo:?}");
+        let stale = s.set_note(kept, "from a window that loaded it before", 2).unwrap();
+        assert_eq!(matches!(stale, NoteSave::Newer(_)), changed, "{moved:?} into {kept_memo:?}");
+    }
 }
 
 const AS_APP: &str = "LATTICE_AUDIT_AS_APP";

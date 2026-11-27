@@ -64,6 +64,8 @@ export type * from "./MobileSettings";
 export type * from "./MobileStatus";
 export type * from "./NetworkMode";
 export type * from "./NetworkSettings";
+export type * from "./Note";
+export type * from "./NoteSave";
 export type * from "./OpmlFeed";
 export type * from "./OverlayLabels";
 export type * from "./PickedDir";

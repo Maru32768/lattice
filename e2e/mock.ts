@@ -35,6 +35,7 @@ import type {
   McpRegistration,
   McpStatus,
   McpTarget,
+  Note,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
@@ -316,8 +317,15 @@ function search(query: string, filter: ArticleFilter | null, ids: number[] | nul
   return { hits: hits.slice(0, 30), semantic_error: null };
 }
 
-/** Memos by article id. */
-const notes = new Map<number, string>();
+/** Memos by article id, as stored: a blank one keeps its revision. */
+const notes = new Map<number, Note>();
+const noteOf = (id: number): Note => notes.get(id) ?? { article_id: id, body: "", revision: 0 };
+function writeNote(id: number, body: string) {
+  const note = { article_id: id, body: body.trim() ? body : "", revision: noteOf(id).revision + 1 };
+  notes.set(id, note);
+  void emit("note-changed", note);
+  return note;
+}
 /** Through a reload of the page too. */
 const stickies = JSON.parse(sessionStorage.getItem("e2e.stickies") ?? "[]") as Sticky[];
 function stickiesChanged(article: number) {
@@ -363,7 +371,8 @@ function view(id: number): ArticleView | null {
         ]
       : jobsOf(a),
     summary: summary ? { ...summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
-    note: notes.get(id) ?? null,
+    note: noteOf(id).body || null,
+    note_revision: noteOf(id).revision,
   };
 }
 
@@ -814,11 +823,16 @@ export const handlers = {
   },
   set_articles_on_screen: none,
   add_genre: ({ name }: { name: string }) => void addedGenres.add(name.trim()),
-  set_article_note: ({ id, body }: { id: number; body: string }) => {
+  set_article_note: ({ id, body, revision }: { id: number; body: string; revision: number }) => {
     if (body.includes("the disk is full") && !(window as unknown as { __diskFreed?: boolean }).__diskFreed) {
       reject("file.tooLarge", { max: 1 });
     }
-    void (body.trim() ? notes.set(id, body) : notes.delete(id));
+    const stored = noteOf(id);
+    return stored.revision === revision ? { kind: "saved", ...writeNote(id, body) } : { kind: "newer", ...stored };
+  },
+  append_article_note: ({ id, text }: { id: number; text: string }) => {
+    const was = noteOf(id).body.trimEnd();
+    return writeNote(id, was ? `${was}\n\n${text}` : text);
   },
   set_genre: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);

@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "set_articles_on_screen",
     "delete_genre",
     "set_article_note",
+    "append_article_note",
     "set_difficulty",
     "set_relevance",
     "classify_article",

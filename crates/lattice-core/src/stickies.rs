@@ -587,7 +587,7 @@ mod tests {
         instructions::save(s, &custom).unwrap();
         let a = add(s, "https://a.dev/wal", "WAL", WAL);
         add(s, "https://a.dev/other", "OTHER", &[(Paragraph, "OTHER-TEXT")]);
-        s.set_note(a, "NOTE").unwrap();
+        s.set_note(a, "NOTE", 0).unwrap();
         s.exec_for_test(&format!(
             "INSERT INTO chat_threads (id, title) VALUES (1, 'THREAD');
              INSERT INTO chat_messages (thread_id, question, answer, citations, scope, mode, prompt_version)

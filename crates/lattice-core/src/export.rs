@@ -137,7 +137,7 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
             let c = store.conn();
             let q = |sql: &str| c.query_row(sql, [id], |r| r.get::<_, String>(0)).map_err(err);
             let note = c
-                .query_row("SELECT body, updated_at FROM article_notes WHERE article_id = ?1", [id], |r| {
+                .query_row("SELECT body, updated_at FROM article_notes WHERE article_id = ?1 AND body <> ''", [id], |r| {
                     Ok(json!({"text": r.get::<_, String>(0)?, "updated_at": r.get::<_, String>(1)?}))
                 })
                 .optional()
@@ -227,7 +227,7 @@ mod tests {
         s.insert_segments("ja", "v1", None, &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
         s.insert_segments("ja", "v1", None, &[(hash.as_str(), &newer[..], "fake", Some("m"))]).unwrap();
         s.insert_summary(id, "normal", "要約", None, "old-hash", "fake", None, "s1").unwrap();
-        s.set_note(id, "SSI と比べる").unwrap();
+        s.set_note(id, "SSI と比べる", 0).unwrap();
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("SSI と比べる"));
         s.set_setting(&format!("{SECRET_PREFIX}openai"), Some("sk-TOPSECRET")).unwrap();
         s.exec_for_test(&format!(
@@ -319,6 +319,19 @@ mod tests {
         let (n, lines) = export(None);
         assert_eq!((n, lines.iter().filter(|l| l["type"] == "group").count(), lines.last().unwrap()["type"].as_str()), (2, 2, Some("chat_thread")));
         assert!(export_to(&s, &mut Vec::new(), Some(999)).is_err());
+    }
+
+    #[test]
+    fn a_blank_memo_is_exported_as_none() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.set_note(id, "cleared later", 0).unwrap();
+        s.set_note(id, "", 1).unwrap();
+        let mut out = Vec::new();
+        export_to(&s, &mut out, None).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let article = text.lines().map(|l| serde_json::from_str::<Value>(l).unwrap()).find(|l| l["type"] == "article").unwrap();
+        assert_eq!(article["note"], Value::Null);
     }
 
     #[test]
