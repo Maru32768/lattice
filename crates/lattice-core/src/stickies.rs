@@ -86,7 +86,7 @@ pub struct Ask<'a> {
 const RULES: &str = "You help a Japanese software engineer who is reading an article and asks about a passage they selected in it. \
 <sources> holds the article's numbered blocks. <passage> holds the selected text: the article's own text, or the Japanese or English translation of it that the reader was shown. \
 <conversation> holds what they asked before about the text right above it, and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
-<excerpt> holds text they selected in one of those answers, to ask about that; one with no <passage> before it is of an answer of yours on a note that is gone by now. \
+<excerpt> holds text they selected in one of those answers, to ask about that; the first, when no <passage> comes before it, is of an answer of yours on a note that is gone by now. \
 Write the answer in Japanese as plain text (no Markdown, no HTML), briefly: it stays on a small note beside the passage. \
 Keep established technical terms and identifiers (e.g. MVCC, WAL, fsync) as they are. \
 Put markers like [3] right after each statement that the article supports, naming the sources that support it, and list every number you cite in \"citations\". \
@@ -230,7 +230,7 @@ pub async fn follow_up<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore,
 
 const NOTE_RULES: &str = "You help a Japanese software engineer who keeps a memo of plain text on an article they read. \
 <passage> holds the text they selected: the article's own text, or the Japanese or English translation of it that they were shown. \
-<excerpt> holds text they selected in one of your answers about it (one with no <passage> before it is of an answer on a note that is gone by now), and each <conversation> what they asked about the text right above it and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
+<excerpt> holds text they selected in one of your answers about it (the first, when no <passage> comes before it, is of an answer on a note that is gone by now), and each <conversation> what they asked about the text right above it and your answers, oldest first: of a Q: that is only 詳しく or 用語, they asked for more detail, or for what the text means as a term. \
 Write in Japanese, as plain text (no Markdown, no HTML), a short note for that memo of what they learned there, in a few lines, as they would write it for themselves. \
 Keep established technical terms and identifiers (e.g. MVCC, WAL, fsync) as they are. \
 Leave out the markers like [3] in the answers: they name parts of the article, which the memo does not have.\n\n\
