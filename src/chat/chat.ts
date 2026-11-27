@@ -3,13 +3,31 @@ import { type FilterGroup, parseFilterKey } from "../library/scopes.ts";
 import type { T } from "../i18n/index.ts";
 import type { PickOption, PickSection } from "../ui/pickRows.ts";
 
-/** Splits an answer into text and `[n]` markers; only numbers in `cited` become markers. */
+/**
+ * Splits an answer into text and `[n]` markers; only numbers in `cited` become markers. One right after a word (`argv[1]`)
+ * may be code: it is a marker only if its number is in no other.
+ */
 export function splitCitations(answer: string, cited: Set<number>): ({ n: number } | string)[] {
-  return answer
-    .split(/(\[\d+\])/)
-    .map((p) => {
-      const n = Number(/^\[(\d+)\]$/.exec(p)?.[1]);
-      return cited.has(n) ? { n } : p;
+  // Text and markers by turns.
+  const parts = answer.split(/\[(\d+)\]/);
+  const inWord: boolean[] = [];
+  const free = new Set<number>();
+  for (let i = 1; i < parts.length; i += 2) {
+    const before = parts[i - 1]!;
+    // Other brackets between (`dp[i][1]`) are the word's too.
+    const word = before.replace(/(\[[^[\]]*\])+$/, "");
+    inWord[i] = word === "" && i > 1 ? inWord[i - 2]! : /\w$/.test(word);
+    if (!inWord[i]) {
+      free.add(Number(parts[i]));
+    }
+  }
+  return parts
+    .map((p, i) => {
+      if (i % 2 === 0) {
+        return p;
+      }
+      const n = Number(p);
+      return cited.has(n) && !(inWord[i] && free.has(n)) ? { n } : `[${p}]`;
     })
     .filter((p) => p !== "");
 }

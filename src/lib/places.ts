@@ -112,14 +112,20 @@ export function blockOf<B extends { id: number; text: string }>(blocks: B[], pla
 
 /**
  * The place of a view whose top edge is at `top` (client px), among `els`, its blocks in document order: the first with
- * text that reaches below the edge. Null above the first block, where the view opens anyway.
+ * text that reaches below the edge. Null above the first block, where the view opens anyway. `boxOf` a block is in the
+ * same px as `top`.
  */
-export function placeIn(els: HTMLElement[], top: number, blockAt: (el: HTMLElement) => { id: number; text: string } | undefined): ReadingPlace | null {
-  if (!els[0] || els[0].getBoundingClientRect().top > top) {
+export function placeIn(
+  els: HTMLElement[],
+  top: number,
+  blockAt: (el: HTMLElement) => { id: number; text: string } | undefined,
+  boxOf: (el: HTMLElement) => Pick<DOMRect, "top" | "bottom" | "height"> = (el) => el.getBoundingClientRect(),
+): ReadingPlace | null {
+  if (!els[0] || boxOf(els[0]).top > top) {
     return null;
   }
   for (const el of els) {
-    const r = el.getBoundingClientRect();
+    const r = boxOf(el);
     const b = r.bottom > top ? blockAt(el) : undefined;
     const text = b && needle(b.text);
     if (b && text) {

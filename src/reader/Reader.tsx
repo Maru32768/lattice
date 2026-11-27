@@ -1,6 +1,6 @@
 import { Fragment, memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type SummaryItem, type VocabCapture } from "../api";
+import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type StickyKind, type SummaryItem, type VocabCapture } from "../api";
 import { citeNumbers, gapAfter, markNumbers, unverifiedNumbers } from "./summary";
 import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
@@ -11,6 +11,9 @@ import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
+import { StickyColumn, type Opened } from "./StickyColumn";
+import { MAX_QUOTE, STICKY_KINDS, type Passage } from "./stickies";
+import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
 import { useLatest } from "../lib/useLatest";
@@ -244,6 +247,28 @@ export function LangSeg({
   );
 }
 
+/** What the bar over a selection takes below its end. */
+const BAR_HEIGHT = 44;
+/** Where it goes in the view. */
+function barAt(range: Range, view: HTMLElement) {
+  const r = range.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: Math.min(r.bottom, view.getBoundingClientRect().bottom - BAR_HEIGHT) };
+}
+
+function selectedRange() {
+  const sel = window.getSelection();
+  return sel && !sel.isCollapsed ? sel.getRangeAt(0) : null;
+}
+const sameRange = (a: Range, b: Range) =>
+  a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
+
+/** The range's text without that of controls: the numbers of an answer's citations, and what is below it to ask on. */
+function textIn(range: Range) {
+  const text = range.cloneContents();
+  text.querySelectorAll("button, textarea").forEach((c) => c.remove());
+  return text.textContent.trim();
+}
+
 /** Re-translating more blocks than this asks first. */
 const RETRANSLATE_CONFIRM_BLOCKS = 50;
 
@@ -286,8 +311,8 @@ export interface DocActions {
   onCopyUrl: () => void;
   /** Asks for confirmation, then removes the article from the Index. */
   onDelete: () => void;
-  /** Shows a block in the Reader, marked as the source of a summary item or a quiz answer. */
-  onFocusBlock: (block: number, from: "summary" | "quiz") => void;
+  /** Shows a block in the Reader, marked as the source of a summary item, a quiz answer or a sticky's. */
+  onFocusBlock: (block: number, from: "summary" | "quiz" | "sticky") => void;
   /** Quiz cards were added to or removed from review. */
   onReviewChanged: () => void;
 }
@@ -858,8 +883,19 @@ export function Reader({
   const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
-  /** 単語を登録 over the selection, then what came of it. */
-  const [cap, setCap] = useState<{ capture: VocabCapture; x: number; y: number; status?: string; error?: string } | null>(null);
+  /** What was selected as the press that is held began, and none where it may select the same again: on the text, or the answer, it is of. */
+  const pressed = useRef<Range | null>(null);
+  /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
+  const [cap, setCap] = useState<{
+    passage?: Passage;
+    capture?: VocabCapture;
+    x: number;
+    y: number;
+    status?: string;
+    error?: string;
+  } | null>(null);
+  const [opened, setOpened] = useState<Opened>({ pinned: null, on: [] });
+  const onAsk = (ask: number) => setOpened((o) => ({ ...o, on: [...o.on, ask] }));
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
   const pieces = new Map(blocks.map((b) => [b.id, blockPieces(b)]));
@@ -928,6 +964,61 @@ export function Reader({
     };
   }
 
+  /** The passage selected in this article's blocks, by the block it starts in, and where to put the bar. */
+  function selectionPassage() {
+    const sel = window.getSelection();
+    const root = blocksEl.current;
+    const view = scrollEl.current;
+    if (!sel || sel.isCollapsed || !root || !view) {
+      return null;
+    }
+    root.toggleAttribute("data-quoting", true);
+    const quote = sel.toString().trim();
+    root.toggleAttribute("data-quoting", false);
+    if (!quote) {
+      return null;
+    }
+    const range = sel.getRangeAt(0);
+    const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+    const blk = start?.closest(".blk");
+    // A block's tooltip is its last child: from there on the passage is the next block's.
+    const el = start?.closest(".pop") ? blk?.nextElementSibling : blk;
+    const block = el && root.contains(el) ? blocks.find((b) => el.id === `b-${b.id}`) : undefined;
+    // Text after the article in the selection (Ctrl+Shift+End) is none of the passage. A triple click on the
+    // last paragraph ends there too, before any text.
+    const beyond = document.createRange();
+    beyond.setStartAfter(root);
+    beyond.setEnd(range.endContainer, range.endOffset);
+    if (!block || beyond.toString().trim()) {
+      return null;
+    }
+    return { passage: { blockId: block.id, parent: null, quote }, ...barAt(range, view) };
+  }
+
+  /** The passage selected in one answer of a sticky, and where to put the bar. */
+  function answerPassage() {
+    const range = selectedRange();
+    const view = scrollEl.current;
+    if (!range || !view) {
+      return null;
+    }
+    const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+    const answer = start?.closest<HTMLElement>(".sticky .answer");
+    if (!answer || !view.contains(answer)) {
+      return null;
+    }
+    const quote = textIn(range);
+    // A drag past the last line ends below the answer, where there may be no text.
+    const beyond = document.createRange();
+    beyond.setStartAfter(answer);
+    beyond.setEnd(range.endContainer, range.endOffset);
+    if (!quote || textIn(beyond)) {
+      return null;
+    }
+    const block = answer.closest<HTMLElement>(".sticky")!.dataset.block;
+    return { passage: { blockId: block ? Number(block) : null, parent: Number(answer.dataset.message), quote }, ...barAt(range, view) };
+  }
+
   async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
     clearTimeout(timers.current.cap);
     await api
@@ -940,10 +1031,30 @@ export function Reader({
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
 
-  const offerCapture = () => {
+  const offerBar = () => {
     clearTimeout(timers.current.cap);
-    setCap(selectionCapture());
+    const word = selectionCapture();
+    const selected = selectionPassage() ?? answerPassage();
+    // A word of a tooltip is no passage, but one to save.
+    setCap(selected ? { ...selected, capture: word?.capture } : word);
   };
+  /** On a sticky or its dialog, whose events come to the scroller too. */
+  const onSticky = (e: React.SyntheticEvent) => {
+    const at = e.target as Element;
+    return !!at.closest(".stickies") || !e.currentTarget.contains(at);
+  };
+  const onText = (e: React.SyntheticEvent) => !!blocksEl.current?.contains(e.target as Element);
+  const onAnswer = (e: React.SyntheticEvent) => !!(e.target as Element).closest(".sticky .answer") && !(e.target as Element).closest("button");
+  function ask(kind: StickyKind, passage: Passage) {
+    setCap(null);
+    window.getSelection()?.removeAllRanges();
+    const key = openAsk(a.id, { ...passage, kind });
+    if (passage.parent == null) {
+      setOpened({ pinned: key, on: [] });
+    } else {
+      onAsk(key);
+    }
+  }
   useEffect(() => {
     const collapsed = () => {
       if (window.getSelection()?.isCollapsed) {
@@ -1016,6 +1127,10 @@ export function Reader({
   );
   const fetched = a.fetch_status === "ok";
   const local = isLocal(a.original_url);
+  const passage = cap?.passage;
+  const capture = cap?.capture;
+  // Characters as the backend counts them, not UTF-16 units.
+  const passageTooLong = !!passage && Array.from(passage.quote).length > MAX_QUOTE;
 
   return (
     <div className="doc">
@@ -1062,7 +1177,31 @@ export function Reader({
       )}
 
       <div className="doc-body">
-        <div className="doc-scroll" ref={scrollEl} tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
+        <div
+          className="doc-scroll"
+          ref={scrollEl}
+          tabIndex={-1}
+          data-pane-target
+          onScroll={cap && !cap.status ? () => setCap(null) : undefined}
+          onPointerDown={(e) => {
+            pressed.current = onText(e) || (onAnswer(e) && answerPassage()) ? null : selectedRange();
+            if (onSticky(e)) {
+              setCap(null);
+            }
+          }}
+          // Not on the blocks alone: a drag over a passage often starts or ends in the margin. But a press on the scrollbar
+          // or a sticky leaves the selection, and no bar.
+          onMouseUp={() => {
+            const now = selectedRange();
+            if (!pressed.current || !now || !sameRange(pressed.current, now)) {
+              offerBar();
+            }
+            pressed.current = now;
+          }}
+          // Nor here: the text of a block that cannot take the focus leaves it to the scroller. Visual mode, which takes no
+          // Shift, goes on from a passage that has the bar.
+          onKeyUp={(e) => (e.shiftKey || (passage && !cap.status && !cap.error)) && !onSticky(e) && offerBar()}
+        >
           <article className="reader">
             <div className="art-meta">
               {a.feed_title && <span className="src">{a.feed_title}</span>}
@@ -1212,7 +1351,7 @@ export function Reader({
             )}
 
             <OpenLink.Provider value={onLink}>
-              <div className="prose blocks" ref={blocksEl} onMouseUp={offerCapture} onKeyUp={(e) => e.shiftKey && offerCapture()}>
+              <div className="prose blocks" ref={blocksEl}>
                 {blocks.map((b, i) => (
                   <ReaderBlock
                     key={b.id}
@@ -1236,22 +1375,41 @@ export function Reader({
               </div>
             </OpenLink.Provider>
           </article>
+          <StickyColumn article={a.id} blocks={blocks} opened={opened} onOpen={onAsk} onSource={(b) => act.onFocusBlock(b, "sticky")} />
         </div>
         {panel === "quiz" && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, "quiz")} onReviewChanged={act.onReviewChanged} onClose={closePanel} />}
         {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}
       </div>
       {cap &&
         createPortal(
-          <div className="vw-cap" style={{ left: cap.x, top: cap.y }} role={cap.status || cap.error ? "status" : undefined}>
+          // Half the bar's width from the window's edges, at least.
+          <div className="vw-cap" style={{ left: `clamp(190px, ${cap.x}px, 100vw - 190px)`, top: cap.y }} role={cap.status || cap.error ? "status" : undefined}>
             {cap.status ? (
               <span className="msg">{cap.status}</span>
             ) : cap.error ? (
               <span className="msg error-text">{t.msg(cap.error)}</span>
             ) : (
-              <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord(cap)}>
-                {t("vocab.save")}
-                <ActionKey id="saveWord" />
-              </button>
+              <>
+                {passage &&
+                  STICKY_KINDS.map((kind) => (
+                    <button
+                      key={kind}
+                      className="btn sm"
+                      disabled={passageTooLong}
+                      title={passageTooLong ? t("be.stickies.badQuote", { max: MAX_QUOTE }) : undefined}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => ask(kind, passage)}
+                    >
+                      {t(`stickies.${kind}`)}
+                    </button>
+                  ))}
+                {capture && (
+                  <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord({ ...cap, capture })}>
+                    {t("vocab.save")}
+                    <ActionKey id="saveWord" />
+                  </button>
+                )}
+              </>
             )}
           </div>,
           document.body,

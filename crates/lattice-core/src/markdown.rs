@@ -213,8 +213,7 @@ impl Conv {
             TagEnd::Table => {
                 let rows: Vec<Vec<String>> = self.table.take().unwrap_or_default().into_iter().filter(|r| !r.is_empty()).collect();
                 if !rows.is_empty() {
-                    let text = rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
-                    self.blocks.push(Block { kind: BlockKind::Table, text, inlines: Vec::new(), attrs: BlockAttrs { rows: Some(rows), ..Default::default() } });
+                    self.blocks.push(Block::table(rows));
                 }
             }
             TagEnd::Link => {

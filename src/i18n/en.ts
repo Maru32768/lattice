@@ -237,7 +237,7 @@ export const en = {
   "backupSection.location": "Location: {path}",
   "browserSettings.invalidTemplate": "Enter an http(s) URL containing {code}. Until then, DuckDuckGo is used.",
   "exportSection.jsonDesc":
-    "Writes gzip-compressed JSON Lines (one object per line) to the {code} folder: articles, blocks, translations, summaries, tags, genres, feeds and chats. Settings such as API keys and the fetched HTML are left out; to keep the HTML too, use a backup.",
+    "Writes gzip-compressed JSON Lines (one object per line) to the {code} folder: articles, blocks, translations, summaries, notes, stickies, tags, genres, feeds and chats. Settings such as API keys and the fetched HTML are left out; to keep the HTML too, use a backup.",
   "modelSettings.cliDefault": "CLI default",
   "modelSettings.haiku": "Haiku (fast, cheap)",
   "modelSettings.sonnet": "Sonnet (balanced)",
@@ -682,6 +682,23 @@ export const en = {
   "notePanel.placeholder": "Your note on this article. It is saved as you type.",
   "notePanel.saving": "Saving…",
   "notePanel.saved": "Saved",
+  "stickies.title": "Stickies",
+  "stickies.question": "Ask",
+  "stickies.detail": "Explain",
+  "stickies.term": "Term",
+  "stickies.questionLabel": "Question about the selected passage",
+  "stickies.placeholder": "Ask about the selected passage…",
+  "stickies.ofAnswer": "{kind} (from an answer)",
+  "stickies.followUp": "Ask a follow-up",
+  "stickies.followUpLabel": "Follow-up question on the sticky",
+  "stickies.followUpPlaceholder": "Ask a follow-up on this sticky…",
+  "stickies.fold": "Fold the sticky",
+  "stickies.unfold": "Unfold the sticky",
+  "stickies.delete": "Delete the sticky",
+  "stickies.confirmDelete": "Delete the sticky?",
+  "stickies.deleteDesc": "Its questions and answers go with it. This cannot be undone.",
+  "stickies.deleteKeeps": "Stickies made from its answers stay.",
+  "stickies.loadFailed": "Could not load the stickies: {error}",
   "quizPanel.intro":
     "Makes 3–8 questions (open and multiple choice) that check the article's key points. After answering, Add to review brings them back, spaced out, in Today's review.",
   "quizPanel.generating": "Generating…",
@@ -891,7 +908,6 @@ export const en = {
   "browserView.add": "Save to library",
   "browserView.addToGroup": "It also goes into the open collection “{name}”.",
   "browserView.loading": "Loading",
-  "browserView.loadingEllipsis": "Loading…",
   "chatPane.cite": "Source {n}: {where}",
   "chatPane.citations": (p) => plural(p.length, "citation", "citations"),
   "chatPane.newChat": "New chat",
@@ -1032,6 +1048,7 @@ export const en = {
   "reader.flipHint": "Enter switches between original and translation",
   "reader.flipPop": "Click / {kbd} to flip",
   "reader.quizSource": "Quiz source",
+  "reader.stickySource": "Sticky source",
   "reader.confirmRetranslate": "Translate again?",
   "reader.confirmRetranslateDesc":
     "Drops this article's {done} translated blocks and translates it again with the current provider and settings. Other articles and pages sharing the same paragraphs get the new translation too.",
@@ -1119,7 +1136,7 @@ export const en = {
   "app.markReadDesc": "Marks every unread article shown in “{title}” as read. To make one unread again, do it article by article.",
   "app.deleteWhat": "Deletes “{x}”.",
   "app.deleteDesc":
-    "Its saved HTML, text, the translations only it uses, summaries, tags, images and search index entries are deleted too, and this cannot be undone. Citations in chat answers stay.",
+    "Its saved HTML, text, the translations only it uses, summaries, notes, stickies, tags, images and search index entries are deleted too, and this cannot be undone. Citations in chat answers stay.",
   "app.localFeatures": "Saving, reading and full-text search work without configuring AI.",
   "app.needsProvider": "By default, AI features use Claude CLI. Install Claude CLI and sign in, or choose another provider in {link}.",
   "app.aiPrivacy": "AI features, including automatic classification, send article text to your configured AI providers.",
@@ -1133,6 +1150,10 @@ export const en = {
   "be.chain.noApiKey": "This provider takes no API key",
   "be.chat.noSources": "Nothing in the saved articles in this scope relates to the question. Try a wider scope, or ask it another way.",
   "be.chat.badQuestion": "The question is empty or too long",
+  "be.stickies.badQuote": "The selected passage is empty or over {max} characters",
+  "be.stickies.malformed": "The model returned an empty answer",
+  "be.stickies.gone": "The sticky has been deleted",
+  "be.stickies.articleGone": "The article was deleted, or merged into another, before the answer came",
   "be.chat.effortUnsupported": "The chosen provider does not support effort “{effort}”",
   "be.article.noContent": "The article has no extracted text",
   "be.summarize.malformed": "The model returned a malformed summary",
@@ -1400,13 +1421,13 @@ export const en = {
   "settingsView.mobile": "Read on a phone",
   "settingsView.mobileLead": "Read the article list and the original, mixed and translated text in a phone's browser.",
   "settingsView.mcp": "AI agents (MCP)",
-  "settingsView.mcpLead": "AI agents such as Claude Code read and edit this library over MCP.",
+  "settingsView.mcpLead": "AI agents such as Claude Code and Codex read and edit this library over MCP.",
   "mcpSettings.server": "MCP server",
   "mcpSettings.enabled": "Run the MCP server",
   "mcpSettings.enabledDesc": "Only this PC can connect. Other PCs and phones cannot.",
   "mcpSettings.registrations": "Registrations",
   "mcpSettings.registrationsDesc":
-    "Make a registration for each agent, press Copy command, and run the copied Claude Code command in a terminal. Only one registration can be for all of Claude Code, and every project uses it. Run the command of a registration for one project in that project's folder. Claude Code then uses it instead, across the whole repository in a Git repository and in that folder only elsewhere; each repository or folder holds one. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
+    "Make a registration for each agent. Registering turns the MCP server on. For all of Claude Code and for Codex, Lattice adds the registration to that agent's own settings too. Every project uses it, and each takes one registration. For one Claude Code project, press Copy command and run the copied command in that project's folder. Claude Code then uses it instead of the one for all of Claude Code, across the whole repository in a Git repository and in that folder only elsewhere; each repository or folder holds one. For another agent, press Copy settings and paste the copied settings into that agent's MCP settings. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
   "mcpSettings.rolesDesc":
     "Read lets an agent read articles and feeds and ask the AI about them; each question uses AI credits and stays in Chat as a conversation. Edit also lets it save URLs, subscribe to feeds, tag, mark read and favorite, and change titles, collections, genres and feeds. The articles it saves, and those from feeds it subscribes to, use AI credits too, for auto-classification and the like. Delete also lets it delete articles, collections, feeds and folders and merge genres; for each deletion, Lattice asks you first and refuses if you do not answer within 2 minutes.",
   "mcpSettings.none": "No registrations yet",
@@ -1416,24 +1437,38 @@ export const en = {
   "mcpSettings.roleRead": "Read",
   "mcpSettings.roleEdit": "Edit",
   "mcpSettings.roleDelete": "Delete",
-  "mcpSettings.scope": "Scope",
-  "mcpSettings.scopeUser": "All of Claude Code",
-  "mcpSettings.scopeLocal": "One project",
+  "mcpSettings.target": "Register for",
+  "mcpSettings.targetClaudeCode": "All of Claude Code",
+  "mcpSettings.targetClaudeCodeProject": "One Claude Code project",
+  "mcpSettings.targetCodex": "Codex",
+  "mcpSettings.targetOther": "Other",
   "mcpSettings.create": "Register",
-  "mcpSettings.copy": "Copy command",
+  "mcpSettings.connect": "Add to {agent}",
+  "mcpSettings.copyCommand": "Copy command",
+  "mcpSettings.copySettings": "Copy settings",
   "mcpSettings.copied": "Copied",
+  "mcpSettings.writing": "Changing {agent}'s settings…",
+  "mcpSettings.added": "Added to {agent}'s settings. Open sessions can use it once they reconnect.",
+  "mcpSettings.removed": "Also removed from {agent}'s settings.",
+  "mcpSettings.addByHand":
+    "The registration in Lattice is saved. Press Add to {agent} to try again. To add it by hand, remove an earlier one with {remove} if there is one, then use the copied text.",
+  "mcpSettings.removeByHand": "The registration in Lattice is deleted. Remove it from {agent}'s settings with {remove}.",
   "mcpSettings.regenerate": "Regenerate token",
   "mcpSettings.confirmRegenerate": "Regenerate the token of “{name}”?",
-  "mcpSettings.regenerateDescUser":
-    "The current token stops working from the next call, for agents already connected too. In Claude Code, remove the old registration with {remove}, then run the new command.",
-  "mcpSettings.regenerateDescLocal":
+  "mcpSettings.regenerateDescAgent":
+    "The current token stops working from the next call, for agents already connected too. Lattice also puts the new token in {agent}'s settings. Reconnect open sessions.",
+  "mcpSettings.regenerateDescProject":
     "The current token stops working from the next call, for agents already connected too. In that project's folder, remove the old registration with {remove}, then run the new command.",
+  "mcpSettings.regenerateDescOther":
+    "The current token stops working from the next call, for agents already connected too. Copy the new settings and replace the agent's old ones with them.",
   "mcpSettings.regenerateConfirm": "Regenerate",
   "mcpSettings.confirmDelete": "Delete the registration “{name}”?",
-  "mcpSettings.deleteDescUser":
-    "Its token stops working from the next call, for agents already connected too. In Claude Code, also remove the registration with {remove}.",
-  "mcpSettings.deleteDescLocal":
+  "mcpSettings.deleteDescAgent":
+    "Its token stops working from the next call, for agents already connected too. Lattice also removes the registration from {agent}'s settings.",
+  "mcpSettings.deleteDescProject":
     "Its token stops working from the next call, for agents already connected too. In that project's folder, also remove the registration with {remove}. After that, the project uses the registration for all of Claude Code, if there is one.",
+  "mcpSettings.deleteDescOther":
+    "Its token stops working from the next call, for agents already connected too. Also remove the registration from the agent's settings.",
   "mcpSettings.activity": "Activity",
   "mcpSettings.activityDesc":
     "Sessions agents have started, and each registration's latest 20 calls. Some agents never close their sessions when they quit, and those sessions stay too, so tell whether one is in use by its last request. Turning the MCP server off or quitting the app clears both. A new token also clears the old token's sessions from here.",
@@ -1570,5 +1605,10 @@ export const en = {
   "be.mcp.fellBack": "The original library could not be opened, so the MCP server is off",
   "be.mcp.badName": "Registration names are 1 to {max} characters",
   "be.mcp.nameTaken": "There is already a registration named “{name}”",
-  "be.mcp.userTaken": "“{name}” is already the registration for all of Claude Code",
+  "be.mcp.targetTaken": "{agent} already has the registration “{name}”",
+  "be.mcp.agentMissing": "Could not change {agent}'s settings: “{program}” was not found.",
+  "be.mcp.agentFailed": "Could not change {agent}'s settings: {error}",
+  "be.mcp.agentLost": "Could not change {agent}'s settings, and the earlier registration is gone from them: {error}",
+  "be.mcp.agentOther":
+    "{agent}'s settings already have a registration named “{name}” that is not Lattice's, so it was left as it is. Remove or rename it to add this one.",
 } satisfies Messages;

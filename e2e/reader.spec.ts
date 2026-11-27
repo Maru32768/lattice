@@ -1,4 +1,4 @@
-import { test, expect, listRow, callsOf } from "./harness.ts";
+import { test, expect, list, listRow, callsOf } from "./harness.ts";
 import { ARTICLES, MARKDOWN_ID, SNAPSHOT_ID, blocksOf } from "./fixtures.ts";
 
 const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
@@ -104,6 +104,53 @@ test("g y opens and closes the summary, in the Reader and as the Page view's str
   await expect(app.locator(".summary-strip .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
   await press("g", "y");
   await expect(app.locator(".summary-strip")).toHaveCount(0);
+});
+
+const other = ARTICLES.find((a) => a.id !== SNAPSHOT_ID && a.fetch_status === "ok" && a.title)!;
+
+/** Starts the app with every article read held until `release`d. */
+async function holdingViews(shell: import("@playwright/test").Page) {
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["get_article"];
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  const reads = async (n: number) => expect.poll(async () => (await callsOf(shell, "get_article")).length).toBe(n);
+  return { reads, release: () => shell.evaluate(() => window.__e2e.release("get_article")) };
+}
+
+test("the Reader keeps the article before, toolbar and all, until the next one's view comes", async ({ shell }) => {
+  const views = await holdingViews(shell);
+  await (await listRow(shell, snapshot.title!)).click();
+  await views.reads(1);
+  await views.release();
+  await expect(shell.locator(".art-title")).toHaveText(snapshot.title!);
+
+  await (await listRow(shell, other.title!)).click();
+  await views.reads(2);
+  await expect(shell.locator(".art-title")).toHaveText(snapshot.title!);
+  await expect(shell.locator(".docbar")).toBeVisible();
+  await views.release();
+  await expect(shell.locator(".art-title")).toHaveText(other.title!);
+});
+
+test("the Page view keeps the summary strip until the next article's view comes", async ({ shell }) => {
+  const views = await holdingViews(shell);
+  await (await listRow(shell, snapshot.title!)).click();
+  await views.release();
+  await expect(shell.locator(".art-title")).toHaveText(snapshot.title!);
+  await shell.keyboard.press("g");
+  await shell.keyboard.press("v");
+  await shell.keyboard.press("g");
+  await shell.keyboard.press("y");
+  await expect(shell.locator(".summary-strip .summary-body")).toContainText("MVCCで実装する");
+
+  await (await listRow(shell, other.title!)).click();
+  await views.reads(2);
+  await expect(shell.locator(".summary-strip .summary-body"), "the article before's, beside its page").toContainText("MVCCで実装する");
+  await views.release();
+  await expect(shell.locator(".summary-strip"), "the next article's, which has no summary yet").not.toContainText("MVCCで実装する");
+  await expect(shell.locator(".summary-strip")).toBeVisible();
 });
 
 const untranslated = ARTICLES.find((a) => a.id % 3 === 0 && a.fetch_status === "ok" && a.title && a.language !== "ja")!;

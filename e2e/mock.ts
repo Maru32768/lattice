@@ -1,6 +1,8 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
+import { emit } from "@tauri-apps/api/event";
 import type {
+  api,
   ArticleFilter,
   ArticleRow,
   ArticleSort,
@@ -29,13 +31,17 @@ import type {
   Quiz,
   McpApproval,
   McpEdit,
+  McpEdited,
   McpRegistration,
   McpStatus,
+  McpTarget,
   MobileSettings,
   MobileStatus,
   TailscaleStatus,
   R2Settings,
   SnapshotSettings,
+  Sticky,
+  StickyMessage,
   R2Status,
   RelevanceStatus,
   ReviewItem,
@@ -193,6 +199,8 @@ const store = {
   mcp: { enabled: false, error: null, fell_back: false, registrations: [] } as McpStatus,
   /** Counts tokens made, so that each one differs. */
   mcpTokens: 0,
+  /** Why the agents' settings cannot be changed, as the backend's coded message; null while they can. */
+  mcpAgentError: null as string | null,
   mcpApprovals: [] as McpApproval[],
   tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
   r2: {
@@ -209,6 +217,16 @@ const store = {
     last_prune_error: null,
     running: false,
   } as R2Status,
+};
+
+const claudeCommand = (scope: string) => (token: string) =>
+  `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer ${token}"`;
+/** As lattice-core's mcp_agents has them. */
+const MCP_TARGETS: Record<McpTarget, { agent: string | null; copy: (token: string) => string; remove: string | null }> = {
+  claude_code: { agent: "Claude Code", copy: claudeCommand("user"), remove: "claude mcp remove lattice -s user" },
+  claude_code_project: { agent: null, copy: claudeCommand("local"), remove: "claude mcp remove lattice -s local" },
+  codex: { agent: "Codex", copy: (token) => `[mcp_servers.lattice]\nAuthorization = "Bearer ${token}"\n`, remove: "codex mcp remove lattice" },
+  other: { agent: null, copy: (token) => `{"mcpServers":{"lattice":{"headers":{"Authorization":"Bearer ${token}"}}}}`, remove: null },
 };
 
 /** Rejects like the backend: with its coded message (lattice-core msg.rs), which the UI translates. */
@@ -300,6 +318,28 @@ function search(query: string, filter: ArticleFilter | null, ids: number[] | nul
 
 /** Memos by article id. */
 const notes = new Map<number, string>();
+/** Through a reload of the page too. */
+const stickies = JSON.parse(sessionStorage.getItem("e2e.stickies") ?? "[]") as Sticky[];
+function stickiesChanged(article: number) {
+  sessionStorage.setItem("e2e.stickies", JSON.stringify(stickies));
+  void emit("stickies-changed", article);
+}
+/** As SQLite gives it: the last one's again once that is gone. */
+const idAfter = (rows: { id: number }[]) => Math.max(0, ...rows.map((r) => r.id)) + 1;
+function stickyMessage(articleId: number, blockId: number | null, question: string): StickyMessage {
+  if (question.includes("the model is down") && !(window as unknown as { __modelUp?: boolean }).__modelUp) {
+    reject("stickies.malformed");
+  }
+  const block = blocksOf(article(articleId)).find((b) => b.id === blockId);
+  const citation = (n: number, block_id: number, text: string) => ({ n, block_id, article_id: articleId, url: "", title: "", heading: null, text });
+  return {
+    id: idAfter(stickies.flatMap((s) => s.messages)),
+    question,
+    answer:
+      "選んだ箇所の説明です [1]。記事には書かれていませんが、一般にも使います(snapshot)。出典のない番号 [7] と消えた出典 [2]、書き換わった出典 [3] はそのままです。",
+    citations: [...(block ? [citation(1, block.id, block.text), citation(3, block.id, "what it said then")] : []), citation(2, 999_999, "gone")],
+  };
+}
 /** Genres added in settings ahead of any article. */
 const addedGenres = new Set<string>();
 
@@ -649,6 +689,42 @@ export const handlers = {
     return m;
   },
   chat_threads: () => threads,
+  sticky_ask: ({ articleId, blockId, parent, kind, quote, question }: Parameters<typeof api.stickyAsk>[0]): Sticky => {
+    const of = stickies.find((s) => s.article_id === articleId && s.messages.some((m) => m.id === parent));
+    if (parent != null && !of) {
+      reject("stickies.gone");
+    }
+    const block = of ? of.block_id : (blocksOf(article(articleId)).find((b) => b.id === blockId)?.id ?? null);
+    const sticky: Sticky = {
+      id: idAfter(stickies),
+      article_id: articleId,
+      block_id: block,
+      parent,
+      kind,
+      quote,
+      messages: [stickyMessage(articleId, block, question)],
+    };
+    stickies.push(sticky);
+    stickiesChanged(articleId);
+    return sticky;
+  },
+  sticky_follow_up: ({ id, question }: Parameters<typeof api.stickyFollowUp>[0]): Sticky => {
+    const sticky = stickies.find((s) => s.id === id) ?? reject("stickies.gone");
+    sticky.messages = [...sticky.messages, stickyMessage(sticky.article_id, sticky.block_id, question)];
+    stickiesChanged(sticky.article_id);
+    return { ...sticky };
+  },
+  list_stickies: ({ articleId }: { articleId: number }): Sticky[] => stickies.filter((s) => s.article_id === articleId).map((s) => ({ ...s })),
+  delete_sticky: ({ id }: { id: number }) => {
+    const [gone] = stickies.splice(
+      stickies.findIndex((s) => s.id === id),
+      1,
+    );
+    for (const s of stickies.filter((s) => gone.messages.some((m) => m.id === s.parent))) {
+      s.parent = null;
+    }
+    stickiesChanged(gone.article_id);
+  },
   get_chat_budget: (): ChatBudget => store.chatBudget,
   set_chat_budget: ({ budget }: { budget: ChatBudget }) => void (store.chatBudget = budget),
   get_auto_summarize: (): AutoSummarize => store.autoSummarize,
@@ -1062,39 +1138,33 @@ export const handlers = {
   mcp_answer: ({ id }: { id: number; allow: boolean }) => {
     store.mcpApprovals = store.mcpApprovals.filter((a) => a.id !== id);
   },
-  mcp_edit: ({ edit }: { edit: McpEdit }): McpStatus => {
-    const command = (scope: string) =>
-      `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
+  mcp_edit: ({ edit }: { edit: McpEdit }): McpEdited => {
     const regs = store.mcp.registrations;
+    const target = edit.kind === "create" ? edit.target : regs.find((r) => "id" in edit && r.id === edit.id)?.target;
+    const { agent, copy, remove } = MCP_TARGETS[target ?? "other"];
     switch (edit.kind) {
       case "enable":
         store.mcp = { ...store.mcp, enabled: edit.on };
         break;
       case "create": {
-        const name = edit.name.trim();
+        const name = edit.name.trim() || (agent ?? "");
         if (regs.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
-          throw JSON.stringify({ code: "mcp.nameTaken", params: { name } });
+          reject("mcp.nameTaken", { name });
         }
-        const all = regs.find((r) => r.scope === "user");
-        if (edit.scope === "user" && all) {
-          throw JSON.stringify({ code: "mcp.userTaken", params: { name: all.name } });
+        const other = agent && regs.find((r) => r.target === edit.target);
+        if (other) {
+          reject("mcp.targetTaken", { agent, name: other.name });
         }
-        const made = command(edit.scope);
-        const reg = {
-          id: `r${store.mcpTokens}`,
-          name,
-          role: edit.role,
-          scope: edit.scope,
-          command: made,
-          remove: `claude mcp remove lattice -s ${edit.scope}`,
-          sessions: [],
-          calls: [],
-        };
-        store.mcp = { ...store.mcp, registrations: [...regs, reg] };
+        const token = `t${++store.mcpTokens}`;
+        const reg = { id: `r${store.mcpTokens}`, name, role: edit.role, target: edit.target, copy: copy(token), remove, sessions: [], calls: [] };
+        store.mcp = { ...store.mcp, enabled: true, registrations: [...regs, reg] };
         break;
       }
+      case "connect":
+        store.mcp = { ...store.mcp, enabled: store.mcp.enabled || !!target };
+        break;
       case "regenerate":
-        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope) } : r)) };
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, copy: copy(`t${++store.mcpTokens}`) } : r)) };
         break;
       case "set_role":
         store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
@@ -1103,7 +1173,10 @@ export const handlers = {
         store.mcp = { ...store.mcp, registrations: regs.filter((r) => r.id !== edit.id) };
         break;
     }
-    return store.mcp;
+    if (!agent || edit.kind === "set_role") {
+      return { status: store.mcp, agent: null };
+    }
+    return { status: store.mcp, agent: store.mcpAgentError ? { kind: "failed", error: store.mcpAgentError } : { kind: "written" } };
   },
   pick_data_dir: () => null,
   open_data_dir: none,
@@ -1140,6 +1213,11 @@ export const pluginHandlers: Record<string, () => unknown> = {
 /** What an agent's requests leave on the MCP server for registration `id`, as the app would then report it. */
 export function mcpActivity(id: string, activity: Pick<McpRegistration, "sessions" | "calls">) {
   store.mcp = { ...store.mcp, registrations: store.mcp.registrations.map((r) => (r.id === id ? { ...r, ...activity } : r)) };
+}
+
+/** From now on, why the agents' settings cannot be changed (a coded message), or null: they can. */
+export function mcpAgentError(error: string | null) {
+  store.mcpAgentError = error;
 }
 
 /** The deletions agents wait on the user for, as the MCP server would then hold them. */
