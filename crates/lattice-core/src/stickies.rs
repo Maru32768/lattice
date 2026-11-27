@@ -560,13 +560,13 @@ mod tests {
         super::ask(s, llm, &Semaphore::new(1), Ask { article_id, block_id, parent: None, origin: StickyOrigin::Text, kind, quote, question }).await
     }
 
-    /// Asks about a passage of the answer `n` of `of`.
+    /// Asks about a passage of the answer `n` of `of`, with a block and an origin that `ask` must not take from the caller.
     async fn ask_on<L: LlmProvider>(s: &Store, llm: &L, of: &Sticky, n: usize, kind: StickyKind, quote: &str, question: &str) -> Result<Sticky, String> {
         super::ask(
             s,
             llm,
             &Semaphore::new(1),
-            Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), origin: StickyOrigin::Answer, kind, quote, question },
+            Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), origin: StickyOrigin::Text, kind, quote, question },
         )
         .await
     }
