@@ -630,7 +630,7 @@ Stickies appear in a column to the right of the text, each at the height of the 
 - The numbers in an answer are citations. Click a number to go to the passage it cites. The AI can add general knowledge, and it says which part goes beyond the article.
 - If asking fails, the sticky stays and shows the error and **Retry**. A question you typed is kept. You can go to another article while you wait for the answer. A sticky or a follow-up without an answer is kept only in the window where you asked, and only while Lattice runs.
 - You can select up to 2,000 characters, and a question can have up to 4,000.
-- To delete a sticky, click **Delete the sticky** on it. Stickies made from its answers stay. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
+- To delete a sticky, click **Delete the sticky** on it. The stickies made from its answers stay, and they are still marked as made from an answer. Deleting an article deletes its stickies, but re-extracting the article keeps them. A sticky whose passage starts in a paragraph that is no longer in the article appears at the top.
 - Stickies are in the JSON export and in backups. In the [CLI and MCP](#cli-and-mcp), `get` also returns the article's stickies when asked for them.
 
 ### Notes
@@ -964,7 +964,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | Command | What it does |
 |---|---|
 | `search QUERY` | Hybrid search over your saved articles. `--scope`, `--limit` (default 20). |
-| `get ID` | One article's metadata, summary and text. `--blocks` adds paragraphs with their IDs, `--translation` adds saved translations, and `--stickies` adds the article's stickies. |
+| `get ID` | One article's metadata, summary and text. ID is an article ID or a reference: `lattice:article/ID`, `lattice:article/ID#bBLOCK` (one paragraph) or `lattice:article/ID#bFROM-bTO` (the paragraphs from one to the other). With paragraphs in the reference, only those paragraphs come back, with their IDs. Agents can pass the same references to the MCP `get` tool. `--blocks` adds paragraphs with their IDs, `--translation` adds saved translations, and `--stickies` adds the article's stickies. |
 | `list` | Saved articles, newest first. `--scope`, `--limit` (default 50). |
 | `summary ID` | An article's saved summary. |
 | `tags` | Tags with article counts. |

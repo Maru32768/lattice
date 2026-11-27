@@ -93,6 +93,7 @@ export type * from "./SnapshotStatus";
 export type * from "./Sticky";
 export type * from "./StickyKind";
 export type * from "./StickyMessage";
+export type * from "./StickyOrigin";
 export type * from "./SummaryItem";
 export type * from "./SummaryItems";
 export type * from "./SummaryView";

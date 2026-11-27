@@ -246,7 +246,7 @@ mod tests {
         ));
 
         s.exec_for_test(&format!(
-            "INSERT INTO stickies (id, article_id, block_id, kind, quote) VALUES (1, {id}, {para}, 'question', 'write skew'), (2, {id}, NULL, 'term', 'SSI');
+            "INSERT INTO stickies (id, article_id, block_id, origin, kind, quote) VALUES (1, {id}, {para}, 'text', 'question', 'write skew'), (2, {id}, NULL, 'answer', 'term', 'SSI');
              INSERT INTO sticky_messages (sticky_id, question, answer, citations, provider, prompt_version) VALUES
                  (1, 'なぜ？', '答え [1]', '[{{\"n\":1}}]', 'fake', 'sticky-v1'), (2, '', '用語の答え', '[]', 'fake', 'sticky-v1');"
         ));
@@ -283,6 +283,7 @@ mod tests {
         let stickies = a["stickies"].as_array().unwrap();
         assert_eq!((stickies.len(), stickies[0]["kind"].as_str(), stickies[0]["quote"].as_str()), (2, Some("question"), Some("write skew")));
         assert_eq!((stickies[0]["block_ordinal"].as_i64(), &stickies[1]["block_ordinal"]), (Some(1), &Value::Null), "the block as its ordinal");
+        assert_eq!((&stickies[0]["origin"], &stickies[1]["origin"]), (&json!("text"), &json!("answer")), "of an answer that is gone");
         assert_eq!(
             stickies[0]["messages"],
             json!([{"question": "なぜ？", "answer": "答え [1]", "citations": [{"n": 1}], "provider": "fake", "model": null, "prompt_version": "sticky-v1",

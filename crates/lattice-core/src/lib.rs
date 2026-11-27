@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod article_ref;
 pub mod backup;
 pub mod chain;
 pub mod chat;

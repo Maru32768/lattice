@@ -52,6 +52,7 @@ import type {
   SnapshotSettings,
   Sticky,
   StickyKind,
+  StickyOrigin,
   Reevaluated,
   RejectedEntry,
   RelevanceStatus,
@@ -159,8 +160,15 @@ export const api = {
   chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
   chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),
   /** Asks about a passage of an article, or of the answer of a sticky's message, and stores the answer as a sticky; `stickies-changed` with the article id follows. */
-  stickyAsk: (ask: { articleId: number; blockId: number | null; parent: number | null; kind: StickyKind; quote: string; question: string }) =>
-    invoke<Sticky>("sticky_ask", ask),
+  stickyAsk: (ask: {
+    articleId: number;
+    blockId: number | null;
+    parent: number | null;
+    origin: StickyOrigin;
+    kind: StickyKind;
+    quote: string;
+    question: string;
+  }) => invoke<Sticky>("sticky_ask", ask),
   /** Asks on in a sticky and stores the answer there; `stickies-changed` follows. */
   stickyFollowUp: (ask: { id: number; question: string }) => invoke<Sticky>("sticky_follow_up", ask),
   /** A draft for the article's memo of what the sticky says; nothing is stored. */

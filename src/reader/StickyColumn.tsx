@@ -284,13 +284,14 @@ function mark(column: HTMLElement, cards: { el: HTMLElement; block: HTMLElement 
   for (const { el, block } of cards) {
     const quote = el.querySelector(".sticky-quote")?.textContent ?? "";
     const message = el.dataset.child;
-    // A child's is in its parent's answer only: folded, that has none.
+    const ofAnswer = el.hasAttribute("data-of-answer");
+    // A child's is in its parent's answer only: folded, or gone, that has none.
     const answer = message ? column.querySelector(`.answer[data-message="${message}"]`) : null;
-    const range = message ? answer && passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
+    const range = ofAnswer ? answer && passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
     if (range) {
       ranges.push(range);
     }
-    if (!beside || !block || message) {
+    if (!beside || !block || ofAnswer) {
       continue;
     }
     // At its first line, as a card is at its block's first.
@@ -482,6 +483,7 @@ export function StickyColumn({
           const spot: Spot = {
             "data-block": c.blockId ?? undefined,
             "data-child": c.parent ? (("sticky" in c ? c.sticky.parent : c.ask.parent) ?? undefined) : undefined,
+            "data-of-answer": ("sticky" in c ? c.sticky : c.ask).origin === "answer" || undefined,
             "data-pinned": c.key === pinnedCard || undefined,
             "data-held": held.has(c.key) || undefined,
             style: { left: INDENT * Math.min(c.depth, DEEPEST) },
@@ -523,6 +525,8 @@ interface Spot {
   "data-block": number | undefined;
   /** The message whose answer its passage is of. */
   "data-child": number | undefined;
+  /** Its passage is of an answer, which may be gone by now. */
+  "data-of-answer": true | undefined;
   "data-pinned": true | undefined;
   "data-held": true | undefined;
   style: { left: number };
@@ -531,10 +535,10 @@ interface Spot {
 /** The keyboard goes back to the article from a card that loses what had it, or goes. */
 const leave = (from: HTMLElement | null) => from?.closest<HTMLElement>(".doc-scroll")?.focus({ preventScroll: true });
 
-function useLabel({ kind, parent }: { kind: Sticky["kind"]; parent: number | null }) {
+function useLabel({ kind, origin }: { kind: Sticky["kind"]; origin: Sticky["origin"] }) {
   const t = useT();
   const label = t(`stickies.${kind}`);
-  return parent == null ? label : t("stickies.ofAnswer", { kind: label });
+  return origin === "text" ? label : t("stickies.ofAnswer", { kind: label });
 }
 
 function Quote({ text }: { text: string }) {

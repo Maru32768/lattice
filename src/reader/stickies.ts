@@ -1,4 +1,4 @@
-import type { Sticky, StickyKind } from "../api";
+import type { Sticky, StickyKind, StickyOrigin } from "../api";
 import { splitCitations } from "../chat/chat.ts";
 import { inWord } from "../vocab/vocab.ts";
 
@@ -19,6 +19,8 @@ export interface Passage {
   blockId: number | null;
   /** The message whose answer it is of. */
   parent: number | null;
+  /** Of an answer still once that is gone, as a saved sticky's. */
+  origin: StickyOrigin;
   quote: string;
 }
 

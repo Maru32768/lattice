@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use clap::Subcommand;
+use lattice_core::article_ref::ArticleRef;
 use lattice_core::chain::LlmChain;
 use lattice_core::chat::{self, Scope};
 use lattice_core::embed::LocalE5;
@@ -49,7 +50,9 @@ pub enum Op {
     },
     /// One article: metadata, summary and text
     Get {
-        id: i64,
+        /// Article id, or a reference copied in Lattice: lattice:article/ID, lattice:article/ID#bBLOCK or lattice:article/ID#bFROM-bTO
+        /// (only those blocks, with ids)
+        id: ArticleRef,
         /// The blocks with their ids instead of the joined text
         #[arg(long)]
         #[serde(default)]
@@ -419,7 +422,11 @@ fn lines<T>(items: &[T], f: impl Fn(&T) -> String) -> String {
 fn sticky_lines(s: &stickies::Sticky) -> String {
     let kind = json!(s.kind);
     let on = s.block_id.map(|b| format!(" on block {b}")).unwrap_or_default();
-    let from = s.parent.map(|m| format!(" from message {m}")).unwrap_or_default();
+    let from = match (s.parent, s.origin) {
+        (Some(m), _) => format!(" from message {m}"),
+        (None, stickies::StickyOrigin::Answer) => " from an answer".into(),
+        (None, stickies::StickyOrigin::Text) => String::new(),
+    };
     let mut out = format!("[sticky {} {}{on}{from}] {}", s.id, kind.as_str().unwrap_or_default(), s.quote);
     for m in &s.messages {
         out += &format!("\n  [message {}]", m.id);
@@ -516,7 +523,8 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             });
             Ok(Out { json: json!({ "mode": mode, "semantic_error": r.semantic_error, "hits": r.hits }), text })
         }
-        Op::Get { id, blocks, translation, stickies: with_stickies } => {
+        Op::Get { id: reference, blocks, translation, stickies: with_stickies } => {
+            let id = reference.id;
             article(store, id)?;
             let target = translate::article_target(store, id)?;
             let mut v = store.get_article(id, &target.key()).map_err(err)?.ok_or_else(|| format!("no article {id}"))?;
@@ -549,13 +557,21 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                                 json!({ "id": m.id, "question": m.question, "answer": m.answer, "citations": citations })
                             })
                             .collect();
-                        json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "kind": s.kind, "quote": s.quote, "messages": messages })
+                        json!({ "id": s.id, "block_id": s.block_id, "parent": s.parent, "origin": s.origin, "kind": s.kind, "quote": s.quote, "messages": messages })
                     })
                     .collect();
             }
+            let shown = match reference.blocks {
+                None => &v.blocks[..],
+                Some((from, to)) => {
+                    let at = |b: i64| v.blocks.iter().position(|x| x.id == b).ok_or_else(|| format!("no block {b} in article {id}"));
+                    let (from, to) = (at(from)?, at(to)?);
+                    &v.blocks[from.min(to)..=from.max(to)]
+                }
+            };
+            let blocks = blocks || reference.blocks.is_some();
             if blocks {
-                json["blocks"] = v
-                    .blocks
+                json["blocks"] = shown
                     .iter()
                     .map(|b| {
                         let mut o = json!({ "id": b.id, "kind": b.block.kind.as_str(), "text": b.block.text });
@@ -566,10 +582,10 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                     })
                     .collect();
             } else {
-                json["text"] = json!(joined(&v.blocks, source));
+                json["text"] = json!(joined(shown, source));
                 if translation {
                     json["translation_language"] = json!(v.target_language);
-                    json["translation"] = json!(joined(&v.blocks, translated));
+                    json["translation"] = json!(joined(shown, translated));
                 }
             }
             let pick = if translation {
@@ -578,9 +594,9 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                 source
             };
             text += &if blocks {
-                format!("\n{}\n", lines(&v.blocks, |b| format!("[block {}] {}: {}", b.id, b.block.kind.as_str(), pick(b))))
+                format!("\n{}\n", lines(shown, |b| format!("[block {}] {}: {}", b.id, b.block.kind.as_str(), pick(b))))
             } else {
-                format!("\n{}\n", joined(&v.blocks, pick))
+                format!("\n{}\n", joined(shown, pick))
             };
             if let Some(notes) = &notes {
                 text += &format!(
@@ -780,7 +796,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use lattice_core::stickies::{Ask, StickyKind};
+    use lattice_core::stickies::{Ask, StickyKind, StickyOrigin};
 
     use super::*;
 
@@ -855,10 +871,10 @@ pub(crate) mod tests {
         let listed = run(&ctx, Op::List { scope: Some(format!("collection:{g}")), limit: 10 }).await.unwrap();
         assert_eq!(listed.json["total"], 1);
 
-        let out = run(&ctx, Op::Get { id, blocks: true, translation: false, stickies: false }).await.unwrap();
+        let out = run(&ctx, Op::Get { id: id.into(), blocks: true, translation: false, stickies: false }).await.unwrap();
         let first = out.json["blocks"][0]["id"].as_i64().unwrap();
         assert!(out.text.contains(&format!("[block {first}] heading: Why")), "{}", out.text);
-        assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false, stickies: false }).await.unwrap().text.contains("[block "));
+        assert!(!run(&ctx, Op::Get { id: id.into(), blocks: false, translation: false, stickies: false }).await.unwrap().text.contains("[block "));
     }
 
     const SSI: &str = "Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.";
@@ -898,7 +914,7 @@ pub(crate) mod tests {
         let block = s.get_article(a, "ja").unwrap().unwrap().blocks[0].id;
         let turn = tokio::sync::Semaphore::new(1);
         let ask = |article_id, block_id, parent, kind, quote, question| {
-            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, kind, quote, question })
+            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, origin: StickyOrigin::Text, kind, quote, question })
         };
         ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         // The follow-ups keep the ids of stickies and of messages apart, so that neither passes for the other.
@@ -910,17 +926,17 @@ pub(crate) mod tests {
         let (c1, b1) = (child.messages[0].id, blockless.messages[0].id);
         assert_eq!((root.id, child.id, blockless.id, [m1, m2, m3, c1, b1]), (1, 2, 3, [1, 2, 3, 4, 5]));
 
-        let get = |id, blocks, stickies| run(&ctx, Op::Get { id, blocks, translation: false, stickies });
+        let get = |id: i64, blocks, stickies| run(&ctx, Op::Get { id: id.into(), blocks, translation: false, stickies });
         let with = get(a, false, true).await.unwrap();
         let on_a = with.json["stickies"].clone();
         let message = |id, question| json!({ "id": id, "question": question, "answer": "答え [1]", "citations": [{ "n": 1, "block_id": block }] });
         assert_eq!(
             on_a,
             json!([
-                { "id": 1, "block_id": block, "parent": null, "kind": "question", "quote": "write skew",
+                { "id": 1, "block_id": block, "parent": null, "origin": "text", "kind": "question", "quote": "write skew",
                   "messages": [message(1, "なぜ?"), message(2, "ほかには?"), message(3, "例は?")] },
-                { "id": 2, "block_id": block, "parent": 3, "kind": "term", "quote": "答え", "messages": [message(4, "")] },
-                { "id": 3, "block_id": null, "parent": null, "kind": "detail", "quote": "SSI", "messages": [message(5, "")] },
+                { "id": 2, "block_id": block, "parent": 3, "origin": "answer", "kind": "term", "quote": "答え", "messages": [message(4, "")] },
+                { "id": 3, "block_id": null, "parent": null, "origin": "text", "kind": "detail", "quote": "SSI", "messages": [message(5, "")] },
             ])
         );
         let with_blocks = get(a, true, true).await.unwrap();
@@ -938,6 +954,11 @@ pub(crate) mod tests {
         assert_eq!(format!("{}{listed}", without.text), with.text, "the rest is as it was");
         let empty = get(none, false, true).await.unwrap();
         assert_eq!((&empty.json["stickies"], empty.text.ends_with("\n## Stickies\n\n(none)\n")), (&json!([]), true));
+
+        stickies::delete(s, root.id).unwrap();
+        let orphan = get(a, false, true).await.unwrap();
+        assert_eq!((&orphan.json["stickies"][0]["parent"], &orphan.json["stickies"][0]["origin"]), (&Value::Null, &json!("answer")));
+        assert!(orphan.text.contains(&format!("\n[sticky 2 term on block {block} from an answer] 答え\n")), "{}", orphan.text);
     }
 
     #[tokio::test]
@@ -952,11 +973,11 @@ pub(crate) mod tests {
         fetched(s, a, "A", &[SSI, wal]);
         let blocks = || s.get_article(a, "ja").unwrap().unwrap().blocks.into_iter().map(|b| (b.id, b.block.text)).collect::<Vec<_>>();
         let cited = blocks()[1].0;
-        let on = Ask { article_id: a, block_id: Some(cited), parent: None, kind: StickyKind::Detail, quote: "log", question: "" };
+        let on = Ask { article_id: a, block_id: Some(cited), parent: None, origin: StickyOrigin::Text, kind: StickyKind::Detail, quote: "log", question: "" };
         let sticky = stickies::ask(s, &Answers(2), &tokio::sync::Semaphore::new(1), on).await.unwrap();
         assert_eq!(sticky.messages[0].citations.iter().map(|c| (c.block_id, c.text.as_str())).collect::<Vec<_>>(), [(cited, wal)]);
         let citations = || async {
-            let out = run(&ctx, Op::Get { id: a, blocks: false, translation: false, stickies: true }).await.unwrap();
+            let out = run(&ctx, Op::Get { id: a.into(), blocks: false, translation: false, stickies: true }).await.unwrap();
             out.json["stickies"][0]["messages"][0]["citations"].clone()
         };
         assert_eq!(citations().await, json!([{ "n": 2, "block_id": cited }]));
@@ -969,10 +990,96 @@ pub(crate) mod tests {
         assert_eq!(citations().await, json!([]));
     }
 
+    #[tokio::test]
+    async fn get_by_a_reference_returns_its_blocks_alone_in_the_articles_order() {
+        let ctx = ctx();
+        let s = &ctx.store;
+        let [wal, mvcc] = [
+            "The write-ahead log is flushed before the page it describes, so a crash never leaves a page newer than its log record.",
+            "Multiversion concurrency control keeps old versions of a row, so readers see a snapshot and never wait for writers.",
+        ];
+        let (a, b) = (saved(s, "https://example.com/a", "A"), saved(s, "https://example.com/b", "B"));
+        fetched(s, a, "A", &[SSI, wal, mvcc]);
+        let ids: Vec<i64> = s.get_article(a, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
+        let elsewhere = s.get_article(b, "ja").unwrap().unwrap().blocks[0].id;
+        assert_eq!(ids.len(), 3);
+        let key = translate::article_target(s, a).unwrap().key();
+        let units = [lattice_core::segments::Unit { source: wal.into(), translation: "先行書き込みログ".into() }];
+        let hash = lattice_core::store::sha256_hex(wal);
+        s.insert_segments(&key, "v", None, &[(hash.as_str(), &units[..], "p", None)]).unwrap();
+
+        let get = |id: &str, translation| run(&ctx, Op::Get { id: id.parse().unwrap(), blocks: false, translation, stickies: false });
+        let by_id = get(&a.to_string(), false).await.unwrap();
+        let by_ref = get(&format!("lattice:article/{a}"), false).await.unwrap();
+        assert_eq!((&by_ref.json, &by_ref.text), (&by_id.json, &by_id.text), "a reference without blocks is the id");
+        let all = run(&ctx, Op::Get { id: a.into(), blocks: true, translation: true, stickies: false }).await.unwrap();
+        let listed: Vec<&str> = all.text.lines().filter(|l| l.starts_with("[block ")).collect();
+        let head = "# A
+<https://example.com/a>
+";
+
+        let one = get(&format!("lattice:article/{a}#b{}", ids[1]), true).await.unwrap();
+        assert_eq!(one.json["blocks"], json!([all.json["blocks"][1]]), "with its id, as with blocks");
+        assert_eq!(one.json["blocks"][0]["translation"], "先行書き込みログ");
+        assert!(
+            one.text.ends_with(&format!(
+                "
+[block {}] paragraph: 先行書き込みログ
+",
+                ids[1]
+            )),
+            "{}",
+            one.text
+        );
+        assert_eq!((&one.json["article"], one.json.get("text")), (&by_id.json["article"], None));
+        assert_eq!(
+            one.text,
+            format!(
+                "{head}
+{}
+",
+                listed[1]
+            )
+        );
+
+        for run_of in [format!("#b{}-b{}", ids[1], ids[2]), format!("#b{}-b{}", ids[2], ids[1])] {
+            let out = get(&format!("lattice:article/{a}{run_of}"), true).await.unwrap();
+            assert_eq!(out.json["blocks"], json!([all.json["blocks"][1], all.json["blocks"][2]]), "{run_of}");
+            assert_eq!(
+                out.text,
+                format!(
+                    "{head}
+{}
+{}
+",
+                    listed[1], listed[2]
+                ),
+                "{run_of}"
+            );
+        }
+        for missing in [format!("#b{elsewhere}"), format!("#b{}-b{elsewhere}", ids[0])] {
+            let e = get(&format!("lattice:article/{a}{missing}"), false).await.err();
+            assert_eq!(e, Some(format!("no block {elsewhere} in article {a}")), "{missing}");
+        }
+
+        // Fetched again with a paragraph inserted: the kept blocks keep their ids and the new one gets a larger id, so
+        // the run between two kept blocks holds a block whose id is outside them.
+        let inserted = "Two-phase locking holds every lock until the transaction ends, which serializes conflicting writers.";
+        fetched(s, a, "A", &[SSI, inserted, wal, mvcc]);
+        let now: Vec<i64> = s.get_article(a, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
+        assert_eq!((now[0], now[2], now[3]), (ids[0], ids[1], ids[2]), "{now:?}");
+        assert!(now[1] > ids[2], "{now:?}");
+        for (from, to, want) in [(ids[0], ids[1], &now[..3]), (ids[1], ids[2], &now[2..])] {
+            let out = get(&format!("lattice:article/{a}#b{from}-b{to}"), false).await.unwrap();
+            let got: Vec<i64> = out.json["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_i64().unwrap()).collect();
+            assert_eq!(got, want, "#b{from}-b{to}: by the article's order, not by id");
+        }
+    }
+
     fn reads(id: i64) -> Vec<Op> {
         vec![
             Op::Search { query: "wal".into(), scope: None, limit: 1 },
-            Op::Get { id, blocks: false, translation: false, stickies: false },
+            Op::Get { id: id.into(), blocks: false, translation: false, stickies: false },
             Op::List { scope: None, limit: 10 },
             Op::Summary { id },
             Op::Tags {},
