@@ -884,28 +884,34 @@ pub(crate) mod tests {
         let ask = |article_id, block_id, parent, kind, quote, question| {
             stickies::ask(s, &Answers, &turn, Ask { article_id, block_id, parent, kind, quote, question })
         };
-        let root = ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
-        let child = ask(a, None, Some(root.messages[0].id), StickyKind::Term, "答え", "").await.unwrap();
+        ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
+        // The follow-ups keep the ids of stickies and of messages apart, so that neither passes for the other.
+        stickies::follow_up(s, &Answers, &turn, 1, "ほかには?").await.unwrap();
+        let root = stickies::follow_up(s, &Answers, &turn, 1, "例は?").await.unwrap();
+        let [m1, m2, m3] = [0, 1, 2].map(|i| root.messages[i].id);
+        let child = ask(a, None, Some(m3), StickyKind::Term, "答え", "").await.unwrap();
+        let blockless = ask(a, None, None, StickyKind::Detail, "SSI", "").await.unwrap();
+        let (c1, b1) = (child.messages[0].id, blockless.messages[0].id);
+        assert_eq!((root.id, child.id, blockless.id, [m1, m2, m3, c1, b1]), (1, 2, 3, [1, 2, 3, 4, 5]));
 
         let get = |id, blocks, stickies| run(&ctx, Op::Get { id, blocks, translation: false, stickies });
         let with = get(a, false, true).await.unwrap();
         let on_a = with.json["stickies"].clone();
-        let cited = json!([{ "n": 1, "block_id": block }]);
+        let message = |id, question| json!({ "id": id, "question": question, "answer": "答え [1]", "citations": [{ "n": 1, "block_id": block }] });
         assert_eq!(
             on_a,
             json!([
-                { "id": root.id, "block_id": block, "parent": null, "kind": "question", "quote": "write skew",
-                  "messages": [{ "id": root.messages[0].id, "question": "なぜ?", "answer": "答え [1]", "citations": cited }] },
-                { "id": child.id, "block_id": block, "parent": root.messages[0].id, "kind": "term", "quote": "答え",
-                  "messages": [{ "id": child.messages[0].id, "question": "", "answer": "答え [1]", "citations": cited }] },
+                { "id": 1, "block_id": block, "parent": null, "kind": "question", "quote": "write skew",
+                  "messages": [message(1, "なぜ?"), message(2, "ほかには?"), message(3, "例は?")] },
+                { "id": 2, "block_id": block, "parent": 3, "kind": "term", "quote": "答え", "messages": [message(4, "")] },
+                { "id": 3, "block_id": null, "parent": null, "kind": "detail", "quote": "SSI", "messages": [message(5, "")] },
             ])
         );
         assert_eq!(get(a, true, true).await.unwrap().json["stickies"], on_a, "with the blocks too");
-        let (asked, answered) = (root.messages[0].id, child.messages[0].id);
         let listed = format!(
-            "\n## Stickies\n\n[sticky {} question on block {block}] write skew\n  [message {asked}] Q: なぜ?\n  A: 答え [1]\n\
-             [sticky {} term on block {block} from message {asked}] 答え\n  [message {answered}] A: 答え [1]\n",
-            root.id, child.id
+            "\n## Stickies\n\n[sticky 1 question on block {block}] write skew\n  [message 1] Q: なぜ?\n  A: 答え [1]\n  [message 2] Q: ほかには?\n  \
+             A: 答え [1]\n  [message 3] Q: 例は?\n  A: 答え [1]\n[sticky 2 term on block {block} from message 3] 答え\n  [message 4] A: 答え [1]\n\
+             [sticky 3 detail] SSI\n  [message 5] A: 答え [1]\n"
         );
         assert!(with.text.ends_with(&listed), "{}", with.text);
 
