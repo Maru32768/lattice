@@ -378,6 +378,7 @@ test("Vim: a save refused for another window's that landed first comes back unde
   await shell.evaluate(() => window.__e2e.release("set_article_note"));
   const warning = panel.getByRole("alert");
   await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await expect(panel.getByRole("status"), "a refused save is not saved").toHaveText("");
   await expect(note).toHaveText("mine");
   expect((await stored(shell)).body).toBe("theirs");
 
