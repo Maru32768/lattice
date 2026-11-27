@@ -1052,6 +1052,17 @@ pub(crate) mod tests {
             let e = get(&format!("lattice:article/{a}{missing}"), false).await.err();
             assert_eq!(e, Some(format!("no block {elsewhere} in article {a}")), "{missing}");
         }
+
+        // Fetched again with a paragraph inserted: the kept blocks keep their ids and the new one gets a larger id, so
+        // the run between two kept blocks holds a block whose id is outside them.
+        let inserted = "Two-phase locking holds every lock until the transaction ends, which serializes conflicting writers.";
+        fetched(s, a, "A", &[SSI, inserted, wal, mvcc]);
+        let now: Vec<i64> = s.get_article(a, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
+        assert_eq!((now[0], now[2], now[3]), (ids[0], ids[1], ids[2]), "{now:?}");
+        assert!(now[1] > ids[2], "{now:?}");
+        let out = get(&format!("lattice:article/{a}#b{}-b{}", ids[0], ids[1]), false).await.unwrap();
+        let got: Vec<i64> = out.json["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_i64().unwrap()).collect();
+        assert_eq!(got, now[..3], "by the article's order, not by id");
     }
 
     fn reads(id: i64) -> Vec<Op> {
