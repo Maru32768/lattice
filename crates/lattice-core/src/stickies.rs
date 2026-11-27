@@ -1142,6 +1142,10 @@ mod tests {
         );
         assert_eq!((sent.block_id, sent.parent, sent.origin), (first, None, StickyOrigin::Answer));
         assert!(!llm.input().contains("<passage>"));
+        // And a child of it: the orphan's passage above its own is still an excerpt, not the article's.
+        let llm = Fake::new("GRANDCHILD-A1");
+        ask_on(&s, &llm, &child, 0, StickyKind::Term, "C1", "").await.unwrap();
+        assert!(llm.input().starts_with(&format!("{WAL_SOURCES}{alone}<excerpt>\nC1\n</excerpt>\n\n")), "{}", llm.input());
     }
 
     #[tokio::test]
