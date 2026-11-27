@@ -87,3 +87,23 @@ test("the bar over a selected passage copies the blocks it starts and ends in", 
   await bar(app).getByRole("button", { name: "エージェント用にコピー" }).click();
   await expect.poll(() => clipboard(app)).toBe(`${ref}#b${second}`);
 });
+
+test("an open tooltip's text does not make the paragraph it hangs from part of the reference", async ({ app }) => {
+  const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
+  await list(app).locator(".row", { hasText: snapshot.title! }).click();
+  await app.locator("#b-102 .sent").hover();
+  await expect(app.locator("#b-102 .pop")).toBeVisible();
+  // As a drag down from the blank after the first paragraph's line, across its tooltip.
+  await app.evaluate(() => {
+    const [start, end] = ["#b-102 p", "#b-103 p"].map((s) => document.querySelector(s)!);
+    const r = document.createRange();
+    r.setStart(start, start.childNodes.length);
+    r.setEnd(end, end.childNodes.length);
+    start.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(r);
+    end.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await bar(app).getByRole("button", { name: "エージェント用にコピー" }).click();
+  await expect.poll(() => clipboard(app)).toBe(`lattice:article/${SNAPSHOT_ID}#b103`);
+});

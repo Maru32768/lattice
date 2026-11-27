@@ -1026,7 +1026,10 @@ export function Reader({
       if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0) {
         part.setEnd(range.endContainer, range.endOffset);
       }
-      if (part.toString().trim()) {
+      // Not a tooltip's text, which the passage leaves out too: an open one hangs below the block's last line.
+      const text = part.cloneContents();
+      text.querySelectorAll(".pop").forEach((p) => p.remove());
+      if (text.textContent.trim()) {
         taken.push(b);
       }
     }
