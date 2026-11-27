@@ -4167,6 +4167,37 @@ test("メモに足す after typing that cannot be saved, and another window's sa
   expect(await storedMemo(app), "the other window's X stays until a button says otherwise").toBe(`X\n\n${draft}`);
 });
 
+test("ここでの入力で上書き while メモに足す is on its way, with the typing back at the memo it went from, warns again rather than show what is not stored", async ({
+  shell,
+}) => {
+  await hold(shell, "append_article_note");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(shell).click();
+  await memoField(shell).fill("a");
+  await expect.poll(async () => (await storedNote(shell, SNAPSHOT_ID)).revision).toBe(1);
+  await typedAsAnotherSaves(shell, SNAPSHOT_ID, "b", "X", 1);
+  const panel = shell.getByRole("complementary", { name: "メモ" });
+  const warning = panel.getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await memoField(shell).fill("a");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(memoField(shell)).toHaveValue(`a\n\n${draft}`);
+  await warning.getByRole("button", { name: "ここでの入力で上書き" }).click();
+  await shell.evaluate(() => window.__e2e.release("append_article_note"));
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect.poll(async () => (await callsOf(shell, "set_article_note")).length, "the save of 上書き, refused").toBe(3);
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await expect(memoField(shell)).toHaveValue(`a\n\n${draft}`);
+  await expect(panel.getByRole("status")).toHaveText("");
+  expect(await storedMemo(shell)).toBe(`X\n\n${draft}`);
+});
+
 test("メモに下書き: the draft of a sticky deleted meanwhile goes to no other, though a new one has its id", async ({ shell }) => {
   // Answered as it is asked, as the backend reads the sticky then, and delivered at its release.
   await shell.addInitScript(() => void (window.__e2eLate = ["sticky_note_draft"]));

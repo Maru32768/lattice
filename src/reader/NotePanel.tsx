@@ -114,7 +114,7 @@ function added(note: Note, shown: string, base: Note, based: boolean) {
   } else if (memo.saved === base && note.revision === base.revision + 1) {
     // Added right onto the memo the copy went from. When the save before it failed, that text is still unsent here, on top.
     memo.saved = note;
-  } else if (based && memo.text === shown) {
+  } else if (memo.saved === base && based && memo.text === shown) {
     // The copy was behind a save it had not heard of yet.
     memos.set(note.article_id, { text: note.body, saved: note, theirs: null });
     tellChanged(note.article_id);
