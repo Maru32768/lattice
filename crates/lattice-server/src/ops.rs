@@ -538,7 +538,13 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                             .messages
                             .iter()
                             .map(|m| {
-                                let citations: Vec<Value> = m.citations.iter().map(|c| json!({ "n": c.n, "block_id": c.block_id })).collect();
+                                // As in the Reader, by its text too: the id of a block that is gone can be another block's by now.
+                                let citations: Vec<Value> = m
+                                    .citations
+                                    .iter()
+                                    .filter(|c| v.blocks.iter().any(|b| b.id == c.block_id && b.block.text == c.text))
+                                    .map(|c| json!({ "n": c.n, "block_id": c.block_id }))
+                                    .collect();
                                 json!({ "id": m.id, "question": m.question, "answer": m.answer, "citations": citations })
                             })
                             .collect();
@@ -773,6 +779,8 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use lattice_core::stickies::{Ask, StickyKind};
+
     use super::*;
 
     /// An empty in-memory library with no LLM or embedding model behind it.
@@ -852,42 +860,49 @@ pub(crate) mod tests {
         assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false, stickies: false }).await.unwrap().text.contains("[block "));
     }
 
+    const SSI: &str = "Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.";
+
     /// An article Lattice fetched, titled `title`.
     fn saved(s: &Store, url: &str, title: &str) -> i64 {
         let (id, _) = s.upsert_pending(url, url, "example.com").unwrap();
-        let html = format!(
-            "<html><head><title>{title}</title></head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.</p></article></body></html>"
-        );
-        ingest::store_fetched(s, id, &lattice_core::fetch::Fetched { final_url: url.into(), status: 200, content_type: None, html }).unwrap();
+        fetched(s, id, title, &[SSI]);
         id
+    }
+
+    /// Article `id` as fetched again, now with these paragraphs.
+    fn fetched(s: &Store, id: i64, title: &str, paragraphs: &[&str]) {
+        let url = s.get_article(id, "ja").unwrap().unwrap().article.original_url;
+        let paragraphs: String = paragraphs.iter().map(|p| format!("<p>{p}</p>")).collect();
+        let html = format!("<html><head><title>{title}</title></head><body><article>{paragraphs}</article></body></html>");
+        ingest::store_fetched(s, id, &lattice_core::fetch::Fetched { final_url: url, status: 200, content_type: None, html }).unwrap();
+    }
+
+    /// Answers "答え [n]", citing its `n`th source.
+    struct Answers(usize);
+    impl lattice_core::llm::LlmProvider for Answers {
+        fn name(&self) -> &str {
+            "fake"
+        }
+        async fn complete_json(&self, _: &str, _: &str, _: &Value) -> Result<lattice_core::llm::Completion, lattice_core::llm::LlmError> {
+            let value = json!({ "answer": format!("答え [{}]", self.0), "citations": [self.0] });
+            Ok(lattice_core::llm::Completion { value, model: None, provider: "fake".into() })
+        }
     }
 
     #[tokio::test]
     async fn get_carries_the_stickies_of_its_article_alone_when_asked() {
-        use lattice_core::llm::{Completion, LlmError, LlmProvider};
-        use lattice_core::stickies::{Ask, StickyKind};
-
-        struct Answers;
-        impl LlmProvider for Answers {
-            fn name(&self) -> &str {
-                "fake"
-            }
-            async fn complete_json(&self, _: &str, _: &str, _: &Value) -> Result<Completion, LlmError> {
-                Ok(Completion { value: json!({ "answer": "答え [1]", "citations": [1] }), model: None, provider: "fake".into() })
-            }
-        }
         let ctx = ctx();
         let s = &ctx.store;
         let (a, none) = (saved(s, "https://example.com/a", "A"), saved(s, "https://example.com/c", "C"));
         let block = s.get_article(a, "ja").unwrap().unwrap().blocks[0].id;
         let turn = tokio::sync::Semaphore::new(1);
         let ask = |article_id, block_id, parent, kind, quote, question| {
-            stickies::ask(s, &Answers, &turn, Ask { article_id, block_id, parent, kind, quote, question })
+            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, kind, quote, question })
         };
         ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         // The follow-ups keep the ids of stickies and of messages apart, so that neither passes for the other.
-        stickies::follow_up(s, &Answers, &turn, 1, "ほかには?").await.unwrap();
-        let root = stickies::follow_up(s, &Answers, &turn, 1, "例は?").await.unwrap();
+        stickies::follow_up(s, &Answers(1), &turn, 1, "ほかには?").await.unwrap();
+        let root = stickies::follow_up(s, &Answers(1), &turn, 1, "例は?").await.unwrap();
         let [m1, m2, m3] = [0, 1, 2].map(|i| root.messages[i].id);
         let child = ask(a, None, Some(m3), StickyKind::Term, "答え", "").await.unwrap();
         let blockless = ask(a, None, None, StickyKind::Detail, "SSI", "").await.unwrap();
@@ -922,6 +937,34 @@ pub(crate) mod tests {
         assert_eq!(format!("{}{listed}", without.text), with.text, "the rest is as it was");
         let empty = get(none, false, true).await.unwrap();
         assert_eq!((&empty.json["stickies"], empty.text.ends_with("\n## Stickies\n\n(none)\n")), (&json!([]), true));
+    }
+
+    #[tokio::test]
+    async fn get_leaves_out_a_citation_whose_block_id_is_another_blocks_by_now() {
+        let ctx = ctx();
+        let s = &ctx.store;
+        let a = saved(s, "https://example.com/a", "A");
+        let [wal, mvcc] = [
+            "The write-ahead log is flushed before the page it describes, so a crash never leaves a page newer than its log record.",
+            "Multiversion concurrency control keeps old versions of a row, so readers see a snapshot and never wait for writers.",
+        ];
+        fetched(s, a, "A", &[SSI, wal]);
+        let blocks = || s.get_article(a, "ja").unwrap().unwrap().blocks.into_iter().map(|b| (b.id, b.block.text)).collect::<Vec<_>>();
+        let cited = blocks()[1].0;
+        let on = Ask { article_id: a, block_id: Some(cited), parent: None, kind: StickyKind::Detail, quote: "log", question: "" };
+        let sticky = stickies::ask(s, &Answers(2), &tokio::sync::Semaphore::new(1), on).await.unwrap();
+        assert_eq!(sticky.messages[0].citations.iter().map(|c| (c.block_id, c.text.as_str())).collect::<Vec<_>>(), [(cited, wal)]);
+        let citations = || async {
+            let out = run(&ctx, Op::Get { id: a, blocks: false, translation: false, stickies: true }).await.unwrap();
+            out.json["stickies"][0]["messages"][0]["citations"].clone()
+        };
+        assert_eq!(citations().await, json!([{ "n": 2, "block_id": cited }]));
+
+        // The cited block goes, and with it the highest id: the next block inserted gets that id.
+        fetched(s, a, "A", &[SSI]);
+        fetched(s, a, "A", &[SSI, mvcc]);
+        assert_eq!(blocks()[1], (cited, mvcc.to_string()));
+        assert_eq!(citations().await, json!([]));
     }
 
     fn reads(id: i64) -> Vec<Op> {
