@@ -260,6 +260,9 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     changed.add(show);
     return () => void changed.delete(show);
   }, [id]);
+  // The copy may have come from this panel's view, read after a save the window has not heard of yet: news to another
+  // panel on the article, which would save its older text from that save's revision.
+  useEffect(() => tellChanged(id), [id]);
   const typed = (value: string) => {
     memos.get(id)!.text = value;
     setText(value);

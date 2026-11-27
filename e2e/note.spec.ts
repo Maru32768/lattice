@@ -167,16 +167,17 @@ const twoReaders = {
   focused: 1,
 };
 
-/** One article's note open in two panes, with the keyboard in neither's text yet. */
-const twoPanels = async (page: Page) => {
+/** One article in two panes, with its note open in the first `opened` of them and the keyboard in neither's text yet. */
+const twoPanels = async (page: Page, opened = 2) => {
   const [left, right] = twoReaders.root.children;
   const sameArticle = { ...twoReaders, root: { ...twoReaders.root, children: [left, { ...right, tabs: [{ ...right.tabs[0], articleId: SNAPSHOT_ID }] }] } };
   await page.addInitScript((layout) => localStorage.setItem("lattice.layout", layout), JSON.stringify(sameArticle));
   await page.goto("/");
   await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   const toggles = [0, 1].map((i) => page.locator(".dpane").nth(i).getByRole("button", { name: "メモ", exact: true }));
-  await toggles[0].click();
-  await toggles[1].click();
+  for (const toggle of toggles.slice(0, opened)) {
+    await toggle.click();
+  }
   const panels = [0, 1].map((i) => page.locator(".dpane").nth(i).getByRole("complementary", { name: "メモ" }));
   return { toggles, panels, notes: panels.map((panel) => panel.getByRole("textbox", { name: "メモ" })) };
 };
@@ -474,4 +475,23 @@ test("メモ: the warning comes back with the panel, over the typing it keeps", 
   await button.click();
   await expect(note).toHaveValue("mine");
   await expect(panel.getByRole("alert"), "else what is typed is never saved, and nothing says so").toContainText("ほかのウィンドウで保存されました");
+});
+
+test("メモ: a panel opened on a view read after another window's save, not heard of yet, shows that save in the other pane too", async ({ shell }) => {
+  const { toggles, panels, notes } = await twoPanels(shell, 1);
+  await expect(notes[0]).toHaveValue("");
+  const letEventsGo = await holdEvents(shell, "note-changed");
+  await invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "theirs", revision: 0 });
+  const views = async () => (await callsOf(shell, "get_article")).length;
+  const read = await views();
+  await shell.evaluate((id) => window.__e2e.emit("article-changed", id), SNAPSHOT_ID);
+  await expect.poll(views).toBeGreaterThan(read);
+  await toggles[1].click();
+  await expect(notes[1]).toHaveValue("theirs");
+  await expect(notes[0], "typed on, it would save its blank memo's typing over that save").toHaveValue("theirs");
+  await notes[0].press("Control+End");
+  await notes[0].pressSequentially("!");
+  await expect.poll(() => storedNote(shell, SNAPSHOT_ID)).toMatchObject({ body: "theirs!" });
+  await letEventsGo();
+  await expect(panels[0].getByRole("alert")).toHaveCount(0);
 });
