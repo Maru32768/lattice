@@ -507,8 +507,8 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                 text += &format!("\n{}\n", s.text);
             }
             let mut json = json!({ "article": a, "summary": v.summary });
-            // A citation keeps only its block's id: the block is in the article's text here, and a copy per citation would push
-            // that text out under the MCP result's cap (`stickies` sorts before `text`).
+            // A citation keeps only its block's id, that of `blocks`: a copy of each cited block would push the article's text out
+            // under the MCP result's cap, before which `stickies` sorts.
             json["stickies"] = stickies::list(store, id)?
                 .iter()
                 .map(|s| {
