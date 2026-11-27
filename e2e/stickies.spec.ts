@@ -208,7 +208,8 @@ test("詳しく: a passage over two paragraphs gets an answer beside the first, 
 
   // Let go in the margin, as a drag over a passage often ends.
   await drag(shell, "#b-102", "#b-103", 60);
-  await expect(bar(shell).getByRole("button")).toHaveText(["質問", "詳しく", "用語"]);
+  await expect(bar(shell).getByRole("button")).toHaveText(["質問", "詳しく", "用語", ""]);
+  await expect(bar(shell).getByRole("button").last()).toHaveAccessibleName("エージェント用にコピー");
   const at = await boxOf(bar(shell));
   expect(at.y).toBeGreaterThan(text.y);
   await bar(shell).getByRole("button", { name: "詳しく" }).click();
@@ -245,7 +246,7 @@ test("用語 asks at once; a word also offers 単語を登録, and code and tabl
     .first()
     .dblclick({ position: { x: 10, y: 10 } });
   await expect(bar(app).getByRole("button", { name: /単語を登録/ })).toBeVisible();
-  await expect(bar(app).getByRole("button")).toHaveCount(4);
+  await expect(bar(app).getByRole("button")).toHaveCount(5);
   await bar(app).getByRole("button", { name: "用語" }).click();
   await expect(card(app, "用語").locator(".answer")).toHaveText(ANSWERED);
 

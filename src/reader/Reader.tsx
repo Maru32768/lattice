@@ -1473,8 +1473,15 @@ export function Reader({
                     </button>
                   ))}
                 {agentRef && (
-                  <button className="btn sm" onMouseDown={(e) => e.preventDefault()} onClick={() => copyRef(cap, agentRef)}>
-                    {t("articleMenu.copyRef")}
+                  // An icon, not a label: the bar is kept in the window for a width of 380px, which the asks and 単語を登録 fill.
+                  <button
+                    className="btn sm"
+                    aria-label={t("articleMenu.copyRef")}
+                    title={t("articleMenu.copyRef")}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => copyRef(cap, agentRef)}
+                  >
+                    <Icon name="copy" size="sm" />
                   </button>
                 )}
                 {capture && (
