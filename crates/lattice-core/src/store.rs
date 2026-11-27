@@ -378,6 +378,10 @@ fn note_in(c: &Connection, article_id: i64) -> Result<Note> {
     Ok(Note { article_id, body, revision })
 }
 
+fn has_article(c: &Connection, id: i64) -> Result<bool> {
+    c.prepare_cached("SELECT 1 FROM articles WHERE id = ?1")?.exists([id])
+}
+
 fn write_note(c: &Connection, article_id: i64, body: &str, revision: i64) -> Result<Note> {
     let body = if body.trim().is_empty() {
         ""
@@ -1194,23 +1198,30 @@ impl Store {
         Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary, note }))
     }
 
-    /// The user's memo on an article, written from the memo at `revision`: refused when another save landed since.
-    pub fn set_note(&self, article_id: i64, body: &str, revision: i64) -> Result<NoteSave> {
+    /// The user's memo on an article, written from the memo at `revision`: refused when another save landed since. None
+    /// when the article is gone.
+    pub fn set_note(&self, article_id: i64, body: &str, revision: i64) -> Result<Option<NoteSave>> {
         let mut c = self.conn();
         let tx = c.transaction()?;
+        if !has_article(&tx, article_id)? {
+            return Ok(None);
+        }
         let stored = note_in(&tx, article_id)?;
         if stored.revision != revision {
-            return Ok(NoteSave::Newer(stored));
+            return Ok(Some(NoteSave::Newer(stored)));
         }
         let saved = write_note(&tx, article_id, body, revision + 1)?;
         tx.commit()?;
-        Ok(NoteSave::Saved(saved))
+        Ok(Some(NoteSave::Saved(saved)))
     }
 
-    /// `text` after the memo as stored, a blank line between (a sticky's メモに足す).
-    pub fn append_note(&self, article_id: i64, text: &str) -> Result<Note> {
+    /// `text` after the memo as stored, a blank line between (a sticky's メモに足す). None when the article is gone.
+    pub fn append_note(&self, article_id: i64, text: &str) -> Result<Option<Note>> {
         let mut c = self.conn();
         let tx = c.transaction()?;
+        if !has_article(&tx, article_id)? {
+            return Ok(None);
+        }
         let stored = note_in(&tx, article_id)?;
         let was = stored.body.trim_end();
         let body = if was.is_empty() {
@@ -1220,7 +1231,7 @@ impl Store {
         };
         let note = write_note(&tx, article_id, &body, stored.revision + 1)?;
         tx.commit()?;
-        Ok(note)
+        Ok(Some(note))
     }
 
     /// Blocks of `kinds` of an article lacking a current translation in `target_language`.
@@ -2091,10 +2102,10 @@ mod tests {
         s.set_note(id, "first", 0).unwrap();
         s.set_note(id, "second", 1).unwrap();
         assert_eq!(note_view(&s, id), (Some("second".into()), 2));
-        assert_eq!(s.set_note(id, "  \n", 2).unwrap(), NoteSave::Saved(Note { article_id: id, body: String::new(), revision: 3 }));
+        assert_eq!(s.set_note(id, "  \n", 2).unwrap().unwrap(), NoteSave::Saved(Note { article_id: id, body: String::new(), revision: 3 }));
         assert_eq!(note_view(&s, id), (None, 3));
-        assert!(matches!(s.set_note(id, "from before the clear", 2).unwrap(), NoteSave::Newer(_)), "a copy from before the clear is behind it");
-        assert_eq!(s.set_note(id, "again", 3).unwrap(), NoteSave::Saved(Note { article_id: id, body: "again".into(), revision: 4 }));
+        assert!(matches!(s.set_note(id, "from before the clear", 2).unwrap().unwrap(), NoteSave::Newer(_)), "a copy from before the clear is behind it");
+        assert_eq!(s.set_note(id, "again", 3).unwrap().unwrap(), NoteSave::Saved(Note { article_id: id, body: "again".into(), revision: 4 }));
     }
 
     /// Windows A and B load the memo at revision 0, and B saves first.
@@ -2103,10 +2114,23 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
         let x = Note { article_id: id, body: "X".into(), revision: 1 };
-        assert_eq!(s.set_note(id, "X", 0).unwrap(), NoteSave::Saved(x.clone()));
-        assert_eq!(s.set_note(id, "A's text", 0).unwrap(), NoteSave::Newer(x.clone()));
-        assert_eq!(s.set_note(id, "A's text", 2).unwrap(), NoteSave::Newer(x), "nor from one ahead of it");
+        assert_eq!(s.set_note(id, "X", 0).unwrap().unwrap(), NoteSave::Saved(x.clone()));
+        assert_eq!(s.set_note(id, "A's text", 0).unwrap().unwrap(), NoteSave::Newer(x.clone()));
+        assert_eq!(s.set_note(id, "A's text", 2).unwrap().unwrap(), NoteSave::Newer(x), "nor from one ahead of it");
         assert_eq!(note_view(&s, id), (Some("X".into()), 1));
+    }
+
+    /// Another window deleted the article, or merged it into another, while this one has its memo open.
+    #[test]
+    fn the_memo_of_an_article_that_is_gone_is_neither_saved_nor_added_to() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.set_note(id, "X", 0).unwrap();
+        assert!(s.delete_article(id).unwrap());
+        for revision in [0, 1] {
+            assert_eq!(s.set_note(id, "typed", revision).unwrap(), None, "from revision {revision}");
+        }
+        assert_eq!(s.append_note(id, "Y").unwrap(), None);
     }
 
     /// B saves X; A, which loaded the memo before that, adds Y from a sticky.
@@ -2115,7 +2139,7 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
         s.set_note(id, "X", 0).unwrap();
-        assert_eq!(s.append_note(id, "Y").unwrap(), Note { article_id: id, body: "X\n\nY".into(), revision: 2 });
+        assert_eq!(s.append_note(id, "Y").unwrap().unwrap(), Note { article_id: id, body: "X\n\nY".into(), revision: 2 });
         assert_eq!(note_view(&s, id), (Some("X\n\nY".into()), 2));
     }
 
@@ -2123,11 +2147,11 @@ mod tests {
     fn text_added_to_no_memo_or_a_blank_one_is_the_text_alone() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
-        assert_eq!(s.append_note(id, "Y").unwrap(), Note { article_id: id, body: "Y".into(), revision: 1 });
+        assert_eq!(s.append_note(id, "Y").unwrap().unwrap(), Note { article_id: id, body: "Y".into(), revision: 1 });
         s.set_note(id, " \n", 1).unwrap();
-        assert_eq!(s.append_note(id, "Z").unwrap(), Note { article_id: id, body: "Z".into(), revision: 3 });
+        assert_eq!(s.append_note(id, "Z").unwrap().unwrap(), Note { article_id: id, body: "Z".into(), revision: 3 });
         s.set_note(id, "Z \n\n", 3).unwrap();
-        assert_eq!(s.append_note(id, "W").unwrap().body, "Z\n\nW", "the memo's trailing blank lines make no wider gap");
+        assert_eq!(s.append_note(id, "W").unwrap().unwrap().body, "Z\n\nW", "the memo's trailing blank lines make no wider gap");
     }
 
     /// A feed linking http:// saved its articles under http keys; the browser lands on https.

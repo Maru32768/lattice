@@ -199,7 +199,7 @@ fn merging_joins_the_memos_and_a_window_holding_the_kept_one_cannot_save_over_th
         let v = s.get_article(kept, "ja").unwrap().unwrap();
         let changed = !moved.is_empty();
         assert_eq!((v.note.body.as_str(), v.note.revision), (joined.unwrap_or(""), 2 + i64::from(changed)), "{moved:?} into {kept_memo:?}");
-        let stale = s.set_note(kept, "from a window that loaded it before", 2).unwrap();
+        let stale = s.set_note(kept, "from a window that loaded it before", 2).unwrap().unwrap();
         assert_eq!(matches!(stale, NoteSave::Newer(_)), changed, "{moved:?} into {kept_memo:?}");
     }
 }

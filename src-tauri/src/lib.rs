@@ -750,7 +750,7 @@ fn set_favorite(app: State<'_, App>, id: i64, favorite: bool) -> Result<(), Stri
 /// that lands, not `article-changed`: that would reload the library too.
 #[tauri::command(async)]
 fn set_article_note(handle: tauri::AppHandle, app: State<'_, App>, id: i64, body: String, revision: i64) -> Result<NoteSave, String> {
-    let save = app.store.set_note(id, &body, revision).map_err(err)?;
+    let save = app.store.set_note(id, &body, revision).map_err(err)?.ok_or_else(|| msg!("note.articleGone"))?;
     if let NoteSave::Saved(note) = &save {
         let _ = handle.emit("note-changed", note);
     }
@@ -760,7 +760,7 @@ fn set_article_note(handle: tauri::AppHandle, app: State<'_, App>, id: i64, body
 /// A sticky's メモに足す: `text` after the memo as stored, whichever revision the window holds; `note-changed` follows.
 #[tauri::command(async)]
 fn append_article_note(handle: tauri::AppHandle, app: State<'_, App>, id: i64, text: String) -> Result<Note, String> {
-    let note = app.store.append_note(id, &text).map_err(err)?;
+    let note = app.store.append_note(id, &text).map_err(err)?.ok_or_else(|| msg!("note.articleGone"))?;
     let _ = handle.emit("note-changed", &note);
     Ok(note)
 }

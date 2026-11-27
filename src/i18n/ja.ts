@@ -1147,6 +1147,7 @@ export const ja = {
   "be.stickies.malformed": "モデルが空の回答を返しました",
   "be.stickies.gone": "付箋が削除されています",
   "be.stickies.articleGone": "答えを待つ間に、記事が削除されたか、ほかの記事に統合されました",
+  "be.note.articleGone": "記事が削除されたか、ほかの記事に統合されたので、メモを保存できません",
   "be.chat.effortUnsupported": "選んだプロバイダはeffort「{effort}」に対応していません",
   "be.article.noContent": "記事の本文が抽出されていません",
   "be.summarize.malformed": "モデルが返した要約の形式が不正です",

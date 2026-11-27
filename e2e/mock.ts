@@ -556,6 +556,7 @@ export const handlers = {
     const i = articles.findIndex((a) => a.id === id);
     if (i >= 0) {
       articles.splice(i, 1);
+      notes.delete(id);
     }
     return i >= 0;
   },
@@ -826,10 +827,16 @@ export const handlers = {
     if (body.includes("the disk is full") && !(window as unknown as { __diskFreed?: boolean }).__diskFreed) {
       reject("file.tooLarge", { max: 1 });
     }
+    if (!articles.some((a) => a.id === id)) {
+      reject("note.articleGone");
+    }
     const stored = noteOf(id);
     return stored.revision === revision ? { kind: "saved", ...writeNote(id, body) } : { kind: "newer", ...stored };
   },
   append_article_note: ({ id, text }: { id: number; text: string }) => {
+    if (!articles.some((a) => a.id === id)) {
+      reject("note.articleGone");
+    }
     const was = noteOf(id).body.trimEnd();
     return writeNote(id, was ? `${was}\n\n${text}` : text);
   },
