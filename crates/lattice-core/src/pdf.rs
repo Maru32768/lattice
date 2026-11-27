@@ -1999,7 +1999,16 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
     let outer = |l: &Line| margin(l.page, [l.x0, l.y, l.x1, l.y]);
     // A page's one line inside the margins is its text, with none to be set apart from.
     let text = |page: &[Line]| page.iter().filter(|l| !outer(l)).count() > 1;
-    let apart: Vec<Vec<f64>> = lines.iter().map(|page| text(page).then(|| set_apart(page)).unwrap_or_default()).collect();
+    let apart: Vec<Vec<f64>> = lines
+        .iter()
+        .map(|page| {
+            if text(page) {
+                set_apart(page)
+            } else {
+                Vec::new()
+            }
+        })
+        .collect();
     // A chapter's title, a slide's and a page's one exercise stand alone there too, set as large as a heading.
     let body = body_size(lines);
     let in_margin = |l: &Line| outer(l) || !pages[l.page].vertical && l.size < 1.1 * body && apart[l.page].iter().any(|y| (l.y - y).abs() < 0.5 * l.size);
