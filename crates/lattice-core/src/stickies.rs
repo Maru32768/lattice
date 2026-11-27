@@ -208,11 +208,7 @@ pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: 
         None => (None, Vec::new()),
     };
     let block_id = parent.as_ref().map_or(new.block_id, |p| p.block_id);
-    let origin = if new.parent.is_some() {
-        StickyOrigin::Answer
-    } else {
-        new.origin
-    };
+    let origin = parent.as_ref().map_or(new.origin, |_| StickyOrigin::Answer);
     let new = Ask { block_id, origin, quote, question, ..new };
     levels.push(Level { quote: quote.into(), origin, turns: Vec::new() });
     let url = store.article_url(new.article_id).map_err(err)?;
