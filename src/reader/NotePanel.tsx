@@ -302,9 +302,9 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         </button>
       </div>
       {theirs && (
-        <div className="note-newer" role="alert">
-          <p className="qz-note">{t("notePanel.newer")}</p>
-          <div>
+        <div className="note warn col note-newer" role="alert">
+          <span>{t("notePanel.newer")}</span>
+          <div className="btn-row">
             <button className="btn sm" onClick={keepMine}>
               {t("notePanel.keepMine")}
             </button>
