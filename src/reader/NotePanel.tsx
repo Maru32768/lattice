@@ -75,8 +75,9 @@ function save(id: number, body: string): Promise<string | null> {
   const ended = queue
     .then(() => {
       const { saved } = memos.get(id)!;
-      // Text added from a sticky saves what was typed before it, which the panel may have sent already.
-      return body === saved.body ? null : api.setArticleNote(id, body, saved.revision);
+      // Text added from a sticky saves what was typed before it, which the panel may have sent already. Spaces over a
+      // blank memo would only raise its revision, and another window with typing of its own would warn of a save.
+      return differs(body, saved) ? api.setArticleNote(id, body, saved.revision) : null;
     })
     .then(
       (r) => {
