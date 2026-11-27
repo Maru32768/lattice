@@ -1,7 +1,6 @@
-import { test, expect, list, callsOf, holdEvents, invoke } from "./harness.ts";
+import { test, expect, list, callsOf, holdEvents, invoke, storedNote } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
-import type { ArticleView } from "../src/api.ts";
 
 async function open(page: Page, id: number) {
   const title = ARTICLES.find((a) => a.id === id)!.title!;
@@ -268,7 +267,7 @@ for (const vim of [false, true]) {
   });
 }
 
-const stored = async (page: Page) => (await invoke(page, "get_article", { id: SNAPSHOT_ID })) as ArticleView;
+const stored = (page: Page) => storedNote(page, SNAPSHOT_ID);
 const memoPanel = (page: Page) => {
   const panel = page.getByRole("complementary", { name: "メモ" });
   return { panel, note: panel.getByRole("textbox", { name: "メモ" }) };
@@ -290,7 +289,7 @@ test("メモ: what another window saves or adds comes in where nothing here is u
   await expect(panel.getByRole("alert")).toHaveCount(0);
   await note.press("Control+End");
   await note.pressSequentially("!");
-  await expect.poll(async () => (await stored(app)).note.body, "saved from the memo it took, not refused").toBe("X\n\nY!");
+  await expect.poll(async () => (await stored(app)).body, "saved from the memo it took, not refused").toBe("X\n\nY!");
 });
 
 test("Vim: the memo's own saves keep its editor and the cursor, and another window's save comes in with the keyboard kept", async ({ shell }) => {
@@ -308,13 +307,13 @@ test("Vim: the memo's own saves keep its editor and the cursor, and another wind
   await shell.keyboard.type("abc");
   await expect(panel.getByRole("status")).toHaveText("保存しました");
   await shell.keyboard.type("def");
-  await expect.poll(async () => (await stored(shell)).note.body).toBe("abcdef");
+  await expect.poll(async () => (await stored(shell)).body).toBe("abcdef");
   await letEventsGo();
   await shell.evaluate(() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn))));
   await expect(note).toHaveText("abcdef");
   expect(await note.evaluate((el) => (el as { first?: boolean }).first), "the same editor").toBe(true);
 
-  const { revision } = (await stored(shell)).note;
+  const { revision } = await stored(shell);
   await invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "from the other window", revision });
   await expect(note).toHaveText("from the other window");
   await expect(note).toBeFocused();
@@ -348,14 +347,14 @@ test("メモ: typing not yet saved when another window's save comes stays under 
   await expect(note).toHaveValue("mine");
   await note.blur();
   expect(await savedBodies(app), "none from this window").toEqual(["theirs"]);
-  expect((await stored(app)).note.body).toBe("theirs");
+  expect((await stored(app)).body).toBe("theirs");
 
   await warning.getByRole("button", { name: "ここでの入力で上書き" }).click();
   await expect(warning).toHaveCount(0);
   await expect(note, "the keyboard goes back to the memo").toBeFocused();
   await expect(panel.getByRole("status")).toHaveText("保存しました");
   expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "mine", revision: 1 });
-  expect((await stored(app)).note.body).toBe("mine");
+  expect((await stored(app)).body).toBe("mine");
 
   await typedAsAnotherSaves(app, " again", "theirs again", 2);
   await expect(note).toHaveValue("mine again");
@@ -365,7 +364,7 @@ test("メモ: typing not yet saved when another window's save comes stays under 
   await expect(note).toBeFocused();
   await note.press("Control+End");
   await note.pressSequentially("!");
-  await expect.poll(async () => (await stored(app)).note.body).toBe("theirs again!");
+  await expect.poll(async () => (await stored(app)).body).toBe("theirs again!");
   expect(await savedBodies(app), "this window's typing went where it said").toEqual(["theirs", "mine", "theirs again", "theirs again!"]);
 });
 
@@ -394,13 +393,13 @@ test("Vim: a save refused for another window's that landed first comes back unde
   const warning = panel.getByRole("alert");
   await expect(warning).toContainText("ほかのウィンドウで保存されました");
   await expect(note).toHaveText("mine");
-  expect((await stored(shell)).note.body).toBe("theirs");
+  expect((await stored(shell)).body).toBe("theirs");
 
   await warning.getByRole("button", { name: "ここでの入力で上書き" }).click();
   await expect(warning).toHaveCount(0);
   await expect(note).toBeFocused();
   await shell.evaluate(() => window.__e2e.release("set_article_note"));
-  await expect.poll(async () => (await stored(shell)).note.body).toBe("mine");
+  await expect.poll(async () => (await stored(shell)).body).toBe("mine");
   expect(await note.evaluate((el) => (el as { first?: boolean }).first), "the same editor").toBe(true);
   await shell.keyboard.press("Escape");
   await shell.keyboard.press("u");
@@ -414,7 +413,7 @@ test("メモ: a memo cleared to spaces counts as saved, so another window's save
   await note.fill("first");
   await expect(panel.getByRole("status")).toHaveText("保存しました");
   await note.fill(" ");
-  await expect.poll(async () => (await stored(app)).note.revision).toBe(2);
+  await expect.poll(async () => (await stored(app)).revision).toBe(2);
   await invoke(app, "set_article_note", { id: SNAPSHOT_ID, body: "theirs", revision: 2 });
   await expect(note).toHaveValue("theirs");
   await expect(panel.getByRole("alert")).toHaveCount(0);

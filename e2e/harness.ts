@@ -1,5 +1,6 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { NOW } from "./fixtures.ts";
+import type { ArticleView } from "../src/api.ts";
 
 /**
  * `shell`: a page not yet navigated (a spec opens it as the main window or a pop-out). `app`: the
@@ -37,6 +38,9 @@ export const invoke = (page: Page, cmd: string, args: object) =>
       (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke(cmd, args),
     [cmd, args] as const,
   );
+
+/** The memo of article `id` as stored. */
+export const storedNote = async (page: Page, id: number) => ((await invoke(page, "get_article", { id })) as ArticleView).note;
 
 /** Holds the events named `name` as those from another window still on their way would be; resolves to what lets them go. */
 export async function holdEvents(page: Page, name: string) {

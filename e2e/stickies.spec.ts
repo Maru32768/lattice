@@ -1,8 +1,7 @@
 // Stickies: asking about a passage in the Reader, and the answer that stays beside it.
-import { test, expect, callsOf, holdEvents, invoke, list, listRow, navItem, selectWord } from "./harness.ts";
+import { test, expect, callsOf, holdEvents, invoke, list, listRow, navItem, selectWord, storedNote } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
-import type { ArticleView } from "../src/api.ts";
 
 // With scrollbars that take width, as in the app: the pane of its default window is too narrow for a column only with one.
 test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
@@ -3838,7 +3837,7 @@ const draftField = (sticky: Locator) => sticky.getByRole("textbox", { name: "メ
 const memoButton = (page: Page) => page.getByRole("button", { name: "メモ", exact: true });
 const memoField = (page: Page) => page.getByRole("complementary", { name: "メモ" }).getByRole("textbox", { name: "メモ" });
 const lastMemo = async (page: Page) => (await callsOf(page, "set_article_note")).at(-1);
-const storedMemo = async (page: Page) => ((await invoke(page, "get_article", { id: SNAPSHOT_ID })) as ArticleView).note.body;
+const storedMemo = async (page: Page) => (await storedNote(page, SNAPSHOT_ID)).body;
 const DRAFTED = /^「.+」の下書き。答え1件から。$/;
 
 test("メモに下書き: the draft waits, stays through leaving the article, is changed in the sticky and goes to the end of the memo", async ({ shell }) => {
