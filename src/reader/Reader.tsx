@@ -1081,9 +1081,9 @@ export function Reader({
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
 
-  function copyRef(c: NonNullable<typeof cap>, ref: string) {
+  async function copyRef(c: NonNullable<typeof cap>, ref: string) {
     clearTimeout(timers.current.cap);
-    navigator.clipboard
+    await navigator.clipboard
       .writeText(ref)
       .then(() => setCap({ ...c, status: t("reader.refCopied") }))
       .catch((e: unknown) => setCap({ ...c, error: String(e) }));
@@ -1484,7 +1484,7 @@ export function Reader({
                     aria-label={t("articleMenu.copyRef")}
                     title={t("articleMenu.copyRef")}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => copyRef(cap, agentRef)}
+                    onClick={() => void copyRef(cap, agentRef)}
                   >
                     <Icon name="copy" size="sm" />
                   </button>
