@@ -730,6 +730,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 - **モデルはダウンロードしない。** `LocalE5::offline`はhf-hubのキャッシュ(`models--intfloat--multilingual-e5-small/snapshots/*/onnx/model.onnx`)がなければ埋め込みを失敗させるので、検索は既存の`semantic_error`の経路で全文検索だけになり、JSONに`"mode": "full_text"`と理由を出す。
 - **リリース。** インストーラーとportable zipに`lattice-cli.exe`を同梱する。インストール版ではGUIと同じフォルダに置き、更新とアンインストールでも両方を扱う。PATHには登録しない。`scripts/version.ts`は`lattice-cli`のCargo.lockの版も書き換える。
 - **記事の参照は`get`が読む。** 記事やblockの参照(`lattice:article/12`、1つのblockなら`#b345`、続くblockなら`#b345-b347`)は、LLMのエージェントが利用者から文として受け取るものなので、エージェントに参照を読み解かせないよう、`get`の`id`は記事のidのほかに参照の文字列も受け取る(`lattice_core::article_ref`)。blockを含む参照では、そのblockだけを`blocks`を付けたときと同じ形でidと一緒に返し、`translation`も効く。blockのidはライブラリ全体で振られ、記事の中の順番を表さないので、範囲は2つのblockとその間のblockを記事の順番(`ordinal`)で取り、逆に書いても同じ範囲になる。記事にないblockのidはエラーにする。メタデータ、要約、`stickies`は参照にblockがないときと同じように返す。ほかのtoolは記事のidだけを受け取る。
+- **選んだ箇所の参照は、文字を取ったblockだけで作る。** Readerの選択のバーの「エージェント用にコピー」は、選択が文字を取ったblockの最初から最後までを参照にする。行の後ろの余白からのドラッグはそのblockの末尾から始まり、トリプルクリックは次のblockの先頭で終わるので、文字を取らないblockを両端から外す。付箋の回答の中の選択には、記事のblockがないのでボタンを出さない。バーは幅を決めて置くので、ボタンはアイコンにし、名前は`aria-label`と`title`に持たせる。
 
 ### 未実装(意図的)
 
