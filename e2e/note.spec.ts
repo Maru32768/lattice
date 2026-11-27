@@ -138,7 +138,9 @@ test("メモ: text typed again while an earlier save of it is on its way is stil
   await note.blur();
   await note.fill("first");
   await app.evaluate(() => (window as unknown as { __letNotesGo: () => void }).__letNotesGo());
-  await expect.poll(async () => (await callsOf(app, "set_article_note")).map((s) => (s as { body: string }).body).at(-1)).toBe("first");
+  await expect
+    .poll(async () => (await callsOf(app, "set_article_note")).map((s) => (s as { body: string }).body))
+    .toEqual(["first", "first and more", "first"]);
 });
 
 test("ジャンル: a genre added ahead of any article is listed for classification", async ({ app }) => {
