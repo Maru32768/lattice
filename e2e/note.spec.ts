@@ -418,3 +418,18 @@ test("メモ: a memo cleared to spaces counts as saved, so another window's save
   await expect(note).toHaveValue("theirs");
   await expect(panel.getByRole("alert")).toHaveCount(0);
 });
+
+test("メモ: the warning comes back with the panel, over the typing it keeps", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const { panel, note } = memoPanel(app);
+  await expect(note).toBeFocused();
+  await typedAsAnotherSaves(app, "mine", "theirs", 0);
+  await expect(panel.getByRole("alert")).toContainText("ほかのウィンドウで保存されました");
+  await button.click();
+  await expect(panel).toHaveCount(0);
+  await button.click();
+  await expect(note).toHaveValue("mine");
+  await expect(panel.getByRole("alert"), "else what is typed is never saved, and nothing says so").toContainText("ほかのウィンドウで保存されました");
+});
