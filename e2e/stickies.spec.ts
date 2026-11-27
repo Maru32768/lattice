@@ -4040,6 +4040,32 @@ test("メモに足す after another window saved the memo puts the text after wh
   await expect(app.getByRole("complementary", { name: "メモ" }).getByRole("alert")).toHaveCount(0);
 });
 
+test("メモに足す after another window's save this window has not heard of keeps what is typed while the text is added, under the warning", async ({
+  shell,
+}) => {
+  await hold(shell, "append_article_note");
+  await shell.goto("/");
+  await openSnapshot(shell);
+  await askAbout(shell, "詳しく", "#b-102");
+  const sticky = card(shell, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  const letEventsGo = await holdEvents(shell, "note-changed");
+  await invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "X", revision: 0 });
+  await memoButton(shell).click();
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(memoField(shell)).toHaveValue(draft);
+  await memoField(shell).press("Control+End");
+  await memoField(shell).pressSequentially("!");
+  await shell.evaluate(() => window.__e2e.release("append_article_note"));
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  await expect(memoField(shell), "what was typed meanwhile stays").toHaveValue(`${draft}!`);
+  await expect(shell.getByRole("complementary", { name: "メモ" }).getByRole("alert")).toContainText("ほかのウィンドウで保存されました");
+  expect(await storedMemo(shell)).toBe(`X\n\n${draft}`);
+  await letEventsGo();
+});
+
 test("メモに下書き: the draft of a sticky deleted meanwhile goes to no other, though a new one has its id", async ({ shell }) => {
   // Answered as it is asked, as the backend reads the sticky then, and delivered at its release.
   await shell.addInitScript(() => void (window.__e2eLate = ["sticky_note_draft"]));
