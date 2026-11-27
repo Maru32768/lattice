@@ -47,7 +47,7 @@ pub enum Op {
         #[serde(default = "search_limit")]
         limit: usize,
     },
-    /// One article: metadata, summary and text
+    /// One article: metadata, summary and text, and in JSON its stickies
     Get {
         id: i64,
         /// The blocks with their ids instead of the joined text

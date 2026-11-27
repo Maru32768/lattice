@@ -963,7 +963,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | Command | What it does |
 |---|---|
 | `search QUERY` | Hybrid search over your saved articles. `--scope`, `--limit` (default 20). |
-| `get ID` | One article's metadata, summary and text. `--blocks` adds paragraphs with their IDs, and `--translation` adds saved translations. |
+| `get ID` | One article's metadata, summary and text, and in JSON its stickies. `--blocks` adds paragraphs with their IDs, and `--translation` adds saved translations. |
 | `list` | Saved articles, newest first. `--scope`, `--limit` (default 50). |
 | `summary ID` | An article's saved summary. |
 | `tags` | Tags with article counts. |
