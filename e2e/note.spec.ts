@@ -368,3 +368,41 @@ test("メモ: typing not yet saved when another window's save comes stays under 
   await expect.poll(async () => (await stored(app)).note).toBe("theirs again!");
   expect(await savedBodies(app), "this window's typing went where it said").toEqual(["theirs", "mine", "theirs again", "theirs again!"]);
 });
+
+test("Vim: a save refused for another window's that landed first comes back under the warning, and keeping it keeps the editor and its undo", async ({
+  shell,
+}) => {
+  await shell.addInitScript(() => {
+    localStorage.setItem("lattice.chatVim", "on");
+    window.__e2eHold = ["set_article_note"];
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await open(shell, SNAPSHOT_ID);
+  await shell.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(shell);
+  await expect(note).toBeFocused();
+  await note.evaluate((el) => void ((el as { first?: boolean }).first = true));
+  const sent = async () => (await callsOf(shell, "set_article_note")).length;
+  await shell.keyboard.type("mine");
+  await expect.poll(sent).toBe(1);
+  void invoke(shell, "set_article_note", { id: SNAPSHOT_ID, body: "theirs", revision: 0 });
+  await expect.poll(sent).toBe(2);
+  // The other window's save lands first.
+  await shell.evaluate(() => window.__e2e.release("set_article_note", -1));
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  const warning = panel.getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await expect(note).toHaveText("mine");
+  expect((await stored(shell)).note).toBe("theirs");
+
+  await warning.getByRole("button", { name: "ここでの入力で上書き" }).click();
+  await expect(warning).toHaveCount(0);
+  await expect(note).toBeFocused();
+  await shell.evaluate(() => window.__e2e.release("set_article_note"));
+  await expect.poll(async () => (await stored(shell)).note).toBe("mine");
+  expect(await note.evaluate((el) => (el as { first?: boolean }).first), "the same editor").toBe(true);
+  await shell.keyboard.press("Escape");
+  await shell.keyboard.press("u");
+  await expect(note, "with its undo").not.toContainText("mine");
+});

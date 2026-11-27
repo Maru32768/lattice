@@ -174,8 +174,8 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
   const [text, setText] = useState(initial.text);
   const [theirs, setTheirs] = useState(initial.theirs);
   /**
-   * How many times the editor came up again, and whether it takes the keyboard then: the Vim editor takes its text only as
-   * it comes up, and either takes the keyboard only then.
+   * How many times the Vim editor came up again, and whether it takes the keyboard then: it takes its text only as it
+   * comes up, and the keyboard only then.
    */
   const [shown, setShown] = useState({ n: 0, focus: true });
   const [status, setStatus] = useState<"saving" | "saved" | null>(null);
@@ -255,8 +255,12 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     clearTimeout(timer.current);
     timer.current = window.setTimeout(flush, SAVE_MS);
   };
+  // The buttons go with the warning, so the keyboard goes back to the editor. Keeping this window's text leaves the editor as
+  // it is: made again, Vim would lose its undo.
+  const focusEditor = () => panel.current?.querySelector<HTMLElement>('textarea, [role="textbox"]')?.focus();
   const keepMine = () => {
     const memo = memos.get(id)!;
+    focusEditor();
     if (memo.theirs) {
       memo.saved = memo.theirs;
       memo.theirs = null;
@@ -264,10 +268,10 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
       setStatus("saving");
       void save(id, memo.text);
     }
-    setShown((s) => ({ n: s.n + 1, focus: true }));
   };
   const loadSaved = () => {
     const memo = memos.get(id)!;
+    focusEditor();
     if (memo.theirs) {
       memos.set(id, { text: memo.theirs.body, saved: memo.theirs, theirs: null });
       failedSaves.delete(id);
@@ -323,10 +327,9 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         </Suspense>
       ) : (
         <textarea
-          key={shown.n}
           className="note-text"
           value={text}
-          autoFocus={shown.focus}
+          autoFocus
           spellCheck={false}
           placeholder={t("notePanel.placeholder")}
           aria-label={t("notePanel.title")}
