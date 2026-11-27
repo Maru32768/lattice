@@ -72,16 +72,10 @@ impl fmt::Display for ArticleRef {
 
 impl<'de> Deserialize<'de> for ArticleRef {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Raw {
-            Id(i64),
-            Text(String),
-        }
-        match Raw::deserialize(d)? {
-            Raw::Id(id) if id > 0 => Ok(id.into()),
-            Raw::Id(id) => Err(D::Error::custom(not_a_ref(&id.to_string()))),
-            Raw::Text(s) => s.parse().map_err(D::Error::custom),
+        match serde_json::Value::deserialize(d)? {
+            serde_json::Value::String(s) => s.parse().map_err(D::Error::custom),
+            serde_json::Value::Number(n) => n.as_i64().filter(|id| *id > 0).map(ArticleRef::from).ok_or_else(|| D::Error::custom(not_a_ref(&n.to_string()))),
+            other => Err(D::Error::custom(not_a_ref(&other.to_string()))),
         }
     }
 }
@@ -140,9 +134,16 @@ mod tests {
         let de = |v: serde_json::Value| serde_json::from_value::<ArticleRef>(v).map_err(|e| e.to_string());
         assert_eq!(de(serde_json::json!(12)), Ok(12.into()));
         assert_eq!(de(serde_json::json!("lattice:article/12#b3")), Ok(ArticleRef { id: 12, blocks: Some((3, 3)) }));
-        for bad in [serde_json::json!(0), serde_json::json!(-1), serde_json::json!("lattice:feed/3")] {
+        for bad in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!("lattice:feed/3"),
+            serde_json::json!(12.0),
+            serde_json::json!(18446744073709551615u64),
+            serde_json::json!(null),
+            serde_json::json!(true),
+        ] {
             assert!(de(bad.clone()).unwrap_err().contains("lattice:article/ID#bBLOCK"), "{bad}");
         }
-        assert!(de(serde_json::json!(true)).is_err());
     }
 }
