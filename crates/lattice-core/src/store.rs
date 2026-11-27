@@ -67,6 +67,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00046_stickies.sql"),
     include_str!("../db/migrations/00047_sticky_parent.sql"),
     include_str!("../db/migrations/00048_vocab_explanation.sql"),
+    include_str!("../db/migrations/00049_sticky_origin.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -1751,6 +1752,33 @@ mod tests {
         assert_eq!((rows.len(), rows[0].thin, rows[0].genre.as_deref()), (1, true, None), "text_length backfilled");
         assert_eq!(s.get_article(1, "ja").unwrap().unwrap().blocks.len(), 1);
         assert_eq!(s.setting("claude_model").unwrap().as_deref(), Some("sonnet"));
+    }
+
+    #[test]
+    fn sticky_origin_migration_says_a_child_of_an_existing_library_is_of_an_answer() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("ADD COLUMN origin")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (1, 'u', 'u', 'd');
+             INSERT INTO stickies (id, article_id, kind, quote) VALUES (1, 1, 'term', 'WAL'), (3, 1, 'term', 'fsync');
+             INSERT INTO sticky_messages (id, sticky_id, question, answer, citations, prompt_version) VALUES (5, 1, '', 'a', '[]', 'v');
+             INSERT INTO stickies (id, article_id, parent_message_id, kind, quote) VALUES (2, 1, 5, 'term', 'a');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let origins: Vec<(i64, String)> = s
+            .conn()
+            .prepare("SELECT id, origin FROM stickies ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(origins, [(1, "text".to_string()), (2, "answer".to_string()), (3, "text".to_string())]);
     }
 
     #[test]
