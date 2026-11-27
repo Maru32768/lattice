@@ -729,6 +729,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 - **jobはアプリに任せる。** `save`はbulk importと同じ`enqueue_urls`でingest jobを積むだけ。アプリのrunnerはwakeがなくても30秒ごとにqueueを見る(`IDLE_POLL`)ので、別プロセスが積んだjobも30秒以内に拾う。アプリ側の変更は要らなかった。`save --run`は`jobs::run_article`でその記事のjobだけをrunnerと同じコードで実行する(取得・画像、モデルがあれば埋め込み。分類と裏描画はアプリに残る)。claimは1文の`UPDATE … RETURNING`なので、アプリとCLIが同じjobを二重に実行することはない。
 - **モデルはダウンロードしない。** `LocalE5::offline`はhf-hubのキャッシュ(`models--intfloat--multilingual-e5-small/snapshots/*/onnx/model.onnx`)がなければ埋め込みを失敗させるので、検索は既存の`semantic_error`の経路で全文検索だけになり、JSONに`"mode": "full_text"`と理由を出す。
 - **リリース。** インストーラーとportable zipに`lattice-cli.exe`を同梱する。インストール版ではGUIと同じフォルダに置き、更新とアンインストールでも両方を扱う。PATHには登録しない。`scripts/version.ts`は`lattice-cli`のCargo.lockの版も書き換える。
+- **記事の参照は`get`が読む。** 記事やblockの参照(`lattice:article/12`、1つのblockなら`#b345`、続くblockなら`#b345-b347`)は、LLMのエージェントが利用者から文として受け取るものなので、エージェントに参照を読み解かせないよう、`get`の`id`は記事のidのほかに参照の文字列も受け取る(`lattice_core::article_ref`)。blockを含む参照では、そのblockだけを`blocks`を付けたときと同じ形でidと一緒に返し、`translation`も効く。blockのidはライブラリ全体で振られ、記事の中の順番を表さないので、範囲は2つのblockとその間のblockを記事の順番(`ordinal`)で取り、逆に書いても同じ範囲になる。記事にないblockのidはエラーにする。メタデータ、要約、`stickies`は参照にblockがないときと同じように返す。ほかのtoolは記事のidだけを受け取る。
 
 ### 未実装(意図的)
 

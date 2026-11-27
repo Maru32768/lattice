@@ -963,7 +963,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | Command | What it does |
 |---|---|
 | `search QUERY` | Hybrid search over your saved articles. `--scope`, `--limit` (default 20). |
-| `get ID` | One article's metadata, summary and text. `--blocks` adds paragraphs with their IDs, `--translation` adds saved translations, and `--stickies` adds the article's stickies. |
+| `get ID` | One article's metadata, summary and text. ID is an article ID or a reference: `lattice:article/ID`, `lattice:article/ID#bBLOCK` (one paragraph) or `lattice:article/ID#bFROM-bTO` (the paragraphs from one to the other). With paragraphs in the reference, only those paragraphs come back, with their IDs. Agents can pass the same references to the MCP `get` tool. `--blocks` adds paragraphs with their IDs, `--translation` adds saved translations, and `--stickies` adds the article's stickies. |
 | `list` | Saved articles, newest first. `--scope`, `--limit` (default 50). |
 | `summary ID` | An article's saved summary. |
 | `tags` | Tags with article counts. |
