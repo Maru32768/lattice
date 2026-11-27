@@ -963,7 +963,7 @@ bucketの中の記事と一覧は暗号化されないので、Cloudflareから�
 | コマンド | 内容 |
 |---|---|
 | `search 検索語` | 保存した記事をhybrid検索します。`--scope`、`--limit` (既定20)。 |
-| `get ID` | 1つの記事のメタデータ・要約・本文を出します。`--blocks`で段落をID付きで、`--translation`で保存済みの訳文を、`--stickies`で記事の付箋も出します。 |
+| `get ID` | 1つの記事のメタデータ・要約・本文を出します。IDには記事のIDか、`lattice:article/ID`、`lattice:article/ID#bBLOCK`(1つの段落)、`lattice:article/ID#bFROM-bTO`(その間の段落)の参照を渡せます。段落を含む参照では、その段落だけをID付きで出します。エージェントもMCPの`get`に同じ参照を渡せます。`--blocks`で段落をID付きで、`--translation`で保存済みの訳文を、`--stickies`で記事の付箋も出します。 |
 | `list` | 保存した記事を新しい順に出します。`--scope`、`--limit` (既定50)。 |
 | `summary ID` | 記事の保存済みの要約を出します。 |
 | `tags` | タグと記事数を出します。 |
