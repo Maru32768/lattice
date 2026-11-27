@@ -264,9 +264,10 @@
       .region:has(.lattice-sentence[data-shown="t"]) {
         z-index: 2;
         color: #1c1c1e;
-        background: #fff;
+        /* What the page is printed on under the box (`paintPaper`), white until it is drawn. */
+        background: var(--paper, #fff);
         /* The original's glyphs stick out of its measured box by a hair. */
-        box-shadow: 0 0 0 2px #fff;
+        box-shadow: 0 0 0 2px var(--paper, #fff);
       }
     </style>
   </head>

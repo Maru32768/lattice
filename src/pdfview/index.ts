@@ -8,6 +8,7 @@
 import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import { bookmarkTree, headingTree, topOf, webLink, type Entry, type Target } from "./outline.ts";
 import { pageAction } from "./pageAction.ts";
+import { paperColor, pixelsUnder } from "./paper.ts";
 import { onViewport } from "./regionBox.ts";
 import { widen } from "./widen.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -264,7 +265,7 @@ function span(el: HTMLElement, left: number, width: number) {
   el.style.width = `${width * 100}%`;
 }
 
-/** A translated region's white shadow is 2px wide: a widened box stops this many px short of its column's edge, where a frame's line may be drawn. */
+/** A translated region's shadow is 2px wide: a widened box stops this many px short of its column's edge, where a frame's line may be drawn. */
 const FRAME_GAP = 3;
 
 /** A single line too long for its box takes the rest of its line first: above and below it a frame may be drawn, which the layout does not see. */
@@ -448,7 +449,35 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
   await task.promise;
   host.querySelector("canvas")?.remove();
   host.prepend(canvas);
+  paintPaper(host, canvas);
   await drawText(page, host);
+}
+
+/** A translation covers the original in the colour the page is printed on there: an aside's tinted box keeps its tint. */
+function paintPaper(host: HTMLElement, canvas: HTMLCanvasElement) {
+  // A page drawn again keeps the colours it has.
+  const unread = regionsOf(host).filter((el) => !el.style.getPropertyValue("--paper"));
+  if (!unread.length) {
+    return;
+  }
+  // Reading and counting the millions of pixels under a page's boxes takes about 60 ms. One in sixteen tells the colour as well.
+  const small = document.createElement("canvas");
+  small.width = Math.ceil(canvas.width / 4);
+  small.height = Math.ceil(canvas.height / 4);
+  const context = small.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    return;
+  }
+  // Nearest pixels: a mean of the glyphs and the paper between them is no colour of the page.
+  context.imageSmoothingEnabled = false;
+  context.drawImage(canvas, 0, 0, small.width, small.height);
+  for (const el of unread) {
+    const box = boxes.get(el);
+    const under = box && pixelsUnder(box, small.width, small.height);
+    if (under) {
+      el.style.setProperty("--paper", paperColor(context.getImageData(...under).data) ?? "#fff");
+    }
+  }
 }
 
 /** A long PDF would hold hundreds of MB of canvases: only pages near the screen keep theirs. */
