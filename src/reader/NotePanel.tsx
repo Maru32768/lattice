@@ -56,7 +56,7 @@ function take(note: Note) {
   if (memo && note.revision <= Math.max(memo.saved.revision, memo.theirs?.revision ?? 0)) {
     return;
   }
-  if (!memo || !unsent(memo) || memo.text === note.body) {
+  if (!memo || !unsent(memo) || !differs(memo.text, note)) {
     memos.set(note.article_id, { text: note.body, saved: note, theirs: null });
   } else {
     memo.theirs = note;

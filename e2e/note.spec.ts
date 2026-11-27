@@ -417,6 +417,19 @@ test("メモ: spaces typed into a blank memo are not sent, so they raise no revi
   expect((await stored(app)).revision).toBe(0);
 });
 
+test("メモ: spaces typed over the memo as another window clears it take the cleared memo without a warning", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(app);
+  await note.fill("first");
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await note.fill("");
+  await typedAsAnotherSaves(app, SNAPSHOT_ID, "  ", "", 1);
+  await expect(note, "both are blank").toHaveValue("");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  expect(await stored(app)).toMatchObject({ body: "", revision: 2 });
+});
+
 test("メモ: the warning comes back with the panel, over the typing it keeps", async ({ app }) => {
   await open(app, SNAPSHOT_ID);
   const button = app.getByRole("button", { name: "メモ", exact: true });
