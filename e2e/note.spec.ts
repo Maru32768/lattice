@@ -406,3 +406,16 @@ test("Vim: a save refused for another window's that landed first comes back unde
   await shell.keyboard.press("u");
   await expect(note, "with its undo").not.toContainText("mine");
 });
+
+test("メモ: a memo cleared to spaces counts as saved, so another window's save then comes in without a warning", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("button", { name: "メモ", exact: true }).click();
+  const { panel, note } = memoPanel(app);
+  await note.fill("first");
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await note.fill(" ");
+  await expect.poll(async () => (await stored(app)).note_revision).toBe(2);
+  await invoke(app, "set_article_note", { id: SNAPSHOT_ID, body: "theirs", revision: 2 });
+  await expect(note).toHaveValue("theirs");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});

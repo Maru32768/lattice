@@ -30,7 +30,8 @@ const tellChanged = (id: number) => changed.forEach((f) => f(id));
 /** Saves and adds run one at a time, in order: two in flight could land out of order and keep the older text. */
 let queue: Promise<unknown> = Promise.resolve();
 
-const unsent = (memo: Memo) => memo.text !== memo.saved.body;
+// A blank memo is stored as "", whatever blank text was typed.
+const unsent = (memo: Memo) => memo.text !== memo.saved.body && !(memo.saved.body === "" && memo.text.trim() === "");
 
 /** This window's copy, unless it has nothing unsent and the view was read after a save the copy has not heard of. */
 function current(view: ArticleView): Memo {
