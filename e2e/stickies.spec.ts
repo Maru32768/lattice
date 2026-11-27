@@ -1,5 +1,5 @@
 // Stickies: asking about a passage in the Reader, and the answer that stays beside it.
-import { test, expect, callsOf, holdEvents, invoke, list, listRow, navItem, selectWord, storedNote } from "./harness.ts";
+import { test, expect, callsOf, holdEvents, invoke, list, listRow, navItem, selectWord, storedNote, typedAsAnotherSaves } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -4064,6 +4064,31 @@ test("メモに足す after another window's save this window has not heard of k
   await expect(shell.getByRole("complementary", { name: "メモ" }).getByRole("alert")).toContainText("ほかのウィンドウで保存されました");
   expect(await storedMemo(shell)).toBe(`X\n\n${draft}`);
   await letEventsGo();
+});
+
+test("メモに足す while the memo warns of another window's save keeps the typing, and loading the saved memo then shows the text added", async ({ app }) => {
+  await openSnapshot(app);
+  await askAbout(app, "詳しく", "#b-102");
+  const sticky = card(app, "詳しく");
+  await sticky.getByRole("button", { name: "メモに下書き" }).click();
+  await expect(draftField(sticky)).toHaveValue(DRAFTED);
+  const draft = await draftField(sticky).inputValue();
+  await memoButton(app).click();
+  await expect(memoField(app)).toBeFocused();
+  await typedAsAnotherSaves(app, SNAPSHOT_ID, "mine", "theirs", 0);
+  const warning = app.getByRole("complementary", { name: "メモ" }).getByRole("alert");
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await sticky.getByRole("button", { name: "メモに足す" }).click();
+  await expect(sticky.getByRole("status")).toHaveText("メモに足しました");
+  expect(await storedMemo(app)).toBe(`theirs\n\n${draft}`);
+  await expect(memoField(app)).toHaveValue(`mine\n\n${draft}`);
+  await expect(warning).toContainText("ほかのウィンドウで保存されました");
+  await warning.getByRole("button", { name: "保存されたメモを読み込む" }).click();
+  await expect(memoField(app)).toHaveValue(`theirs\n\n${draft}`);
+  await memoField(app).press("Control+End");
+  await memoField(app).pressSequentially("!");
+  await expect.poll(() => storedMemo(app)).toBe(`theirs\n\n${draft}!`);
+  await expect(warning).toHaveCount(0);
 });
 
 test("メモに下書き: the draft of a sticky deleted meanwhile goes to no other, though a new one has its id", async ({ shell }) => {

@@ -42,6 +42,20 @@ export const invoke = (page: Page, cmd: string, args: object) =>
 /** The memo of article `id` as stored. */
 export const storedNote = async (page: Page, id: number) => ((await invoke(page, "get_article", { id })) as ArticleView).note;
 
+/** Types `text` at the end of the memo of article `id` and, before that can be saved, another window saves `body` from `revision`. */
+export const typedAsAnotherSaves = (page: Page, id: number, text: string, body: string, revision: number) =>
+  page.evaluate(
+    ([id, text, body, revision]) => {
+      const field = document.querySelector<HTMLTextAreaElement>("textarea.note-text")!;
+      // Past React's record of the value, as typing is.
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, field.value + text);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      type Invoke = (cmd: string, args: object) => Promise<unknown>;
+      return (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__.invoke("set_article_note", { id, body, revision });
+    },
+    [id, text, body, revision] as const,
+  );
+
 /** Holds the events named `name` as those from another window still on their way would be; resolves to what lets them go. */
 export async function holdEvents(page: Page, name: string) {
   await page.evaluate((name) => {

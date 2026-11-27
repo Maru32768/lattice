@@ -1,4 +1,4 @@
-import { test, expect, list, callsOf, holdEvents, invoke, storedNote } from "./harness.ts";
+import { test, expect, list, callsOf, holdEvents, invoke, storedNote, typedAsAnotherSaves } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -320,20 +320,6 @@ test("Vim: the memo's own saves keep its editor and the cursor, and another wind
   await expect(panel.getByRole("alert")).toHaveCount(0);
 });
 
-/** Types `text` at the end of the memo and, before that can be saved, another window saves `body` from `revision`. */
-const typedAsAnotherSaves = (page: Page, text: string, body: string, revision: number) =>
-  page.evaluate(
-    ([text, body, revision, id]) => {
-      const field = document.querySelector<HTMLTextAreaElement>("textarea.note-text")!;
-      // Past React's record of the value, as typing is.
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, field.value + text);
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-      type Invoke = (cmd: string, args: object) => Promise<unknown>;
-      return (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__.invoke("set_article_note", { id, body, revision });
-    },
-    [text, body, revision, SNAPSHOT_ID] as const,
-  );
-
 test("メモ: typing not yet saved when another window's save comes stays under a warning and saves over nothing, and each button does what it says", async ({
   app,
 }) => {
@@ -341,7 +327,7 @@ test("メモ: typing not yet saved when another window's save comes stays under 
   await app.getByRole("button", { name: "メモ", exact: true }).click();
   const { panel, note } = memoPanel(app);
   await expect(note).toBeFocused();
-  await typedAsAnotherSaves(app, "mine", "theirs", 0);
+  await typedAsAnotherSaves(app, SNAPSHOT_ID, "mine", "theirs", 0);
   const warning = panel.getByRole("alert");
   await expect(warning).toContainText("ほかのウィンドウで保存されました");
   await expect(note).toHaveValue("mine");
@@ -356,7 +342,7 @@ test("メモ: typing not yet saved when another window's save comes stays under 
   expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "mine", revision: 1 });
   expect((await stored(app)).body).toBe("mine");
 
-  await typedAsAnotherSaves(app, " again", "theirs again", 2);
+  await typedAsAnotherSaves(app, SNAPSHOT_ID, " again", "theirs again", 2);
   await expect(note).toHaveValue("mine again");
   await warning.getByRole("button", { name: "保存されたメモを読み込む" }).click();
   await expect(note).toHaveValue("theirs again");
@@ -425,7 +411,7 @@ test("メモ: the warning comes back with the panel, over the typing it keeps", 
   await button.click();
   const { panel, note } = memoPanel(app);
   await expect(note).toBeFocused();
-  await typedAsAnotherSaves(app, "mine", "theirs", 0);
+  await typedAsAnotherSaves(app, SNAPSHOT_ID, "mine", "theirs", 0);
   await expect(panel.getByRole("alert")).toContainText("ほかのウィンドウで保存されました");
   await button.click();
   await expect(panel).toHaveCount(0);
