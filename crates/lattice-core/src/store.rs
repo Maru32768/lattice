@@ -1770,8 +1770,8 @@ mod tests {
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
-        let origins = crate::stickies::list(&s, 1).unwrap().into_iter().map(|t| (t.id, t.origin)).collect::<Vec<_>>();
-        assert_eq!(origins, [(1, crate::stickies::StickyOrigin::Text), (2, crate::stickies::StickyOrigin::Answer)]);
+        let origins = crate::stickies::list(&s, 1).unwrap().into_iter().map(|t| (t.id, t.parent, t.origin)).collect::<Vec<_>>();
+        assert_eq!(origins, [(1, None, crate::stickies::StickyOrigin::Text), (2, Some(5), crate::stickies::StickyOrigin::Answer)]);
     }
 
     #[test]
