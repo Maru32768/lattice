@@ -56,7 +56,8 @@ fn all_tools() -> Vec<(Role, Value)> {
             json!({
                 "id": {
                     "type": ["integer", "string"],
-                    "description": "Article id, or a reference copied in Lattice: lattice:article/ID, lattice:article/ID#bBLOCK (that block) or                                     lattice:article/ID#bFROM-bTO (that run of blocks). A reference with blocks returns only those blocks, with ids",
+                    "description": "Article id, or a reference copied in Lattice: lattice:article/ID, lattice:article/ID#bBLOCK (that block) or \
+                                    lattice:article/ID#bFROM-bTO (that run of blocks). A reference with blocks returns only those blocks, with ids",
                 },
                 "blocks": flag("Return the blocks with ids instead of the joined text"),
                 "translation": flag("Include the stored translation"),
@@ -316,6 +317,7 @@ mod tests {
         for (role, t) in all_tools() {
             let name = t["name"].as_str().unwrap();
             names.push(name.to_string());
+            assert!(!t.to_string().contains("  "), "{name}: a string literal broken without \\ keeps its indent in what agents read");
             let cmd = cli.find_subcommand(name.replace('_', "-")).unwrap_or_else(|| panic!("no command for {name}"));
             let mut args: Vec<&str> = cmd.get_arguments().map(|a| a.get_id().as_str()).collect();
             let mut props: Vec<&str> = t["inputSchema"]["properties"].as_object().unwrap().keys().map(String::as_str).collect();
