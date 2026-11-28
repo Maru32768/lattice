@@ -118,6 +118,11 @@ test("wordIn: of a word twice, the place that reads as where its sticky was sele
     "whitespace apart",
   );
   assert.deepEqual(
+    wordIn("𝑓 is a b. 𝑔 is a b.", "a", { prefix: "𝑔 is", suffix: null }),
+    { surface: "a", sentence: "𝑔 is a b." },
+    "after characters of two code units",
+  );
+  assert.deepEqual(
     wordIn(text, "log", { prefix: "Writers tail the", suffix: " as it grows." }),
     { surface: "log", sentence: "Readers tail the log as it grows." },
     "the place where one side still reads so",
@@ -147,4 +152,9 @@ test("wordIn: Japanese, written with no spaces, ends no word", () => {
   assert.deepEqual(wordIn("分離でもwrite\nskewは起こる。", "write skew"), { surface: "write skew", sentence: "分離でもwrite skewは起こる。" });
   assert.deepEqual(wordIn("MVCC方式で実装する。", "MVCC"), { surface: "MVCC", sentence: "MVCC方式で実装する。" }, "kanji as kana");
   assert.equal(wordIn("MVCCsの実装", "MVCC"), null);
+});
+
+test("wordIn: of a word in a block 300,000 times, it is the place its sticky was selected, found in time", () => {
+  const text = `${"a. ".repeat(150_000)}b a. ${"a. ".repeat(150_000)}`;
+  assert.equal(wordIn(text, "a", { prefix: "b ", suffix: null })?.sentence, "b a.");
 });

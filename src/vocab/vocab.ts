@@ -65,15 +65,15 @@ export interface QuoteContext {
 
 const bare = (s: string) => s.replace(/\s+/gu, "");
 
-/** How many sides of [start, end) of `text` read as they did where the passage was selected, whitespace apart. */
+/** How many sides of [start, end) of `text`, which has no whitespace, read as they did where the passage was selected. */
 export function fitOf(text: string, start: number, end: number, { prefix, suffix }: QuoteContext): number {
-  return Number(prefix != null && bare(text.slice(0, start)).endsWith(bare(prefix))) + Number(suffix != null && bare(text.slice(end)).startsWith(bare(suffix)));
+  return Number(prefix != null && text.endsWith(bare(prefix), start)) + Number(suffix != null && text.startsWith(bare(suffix), end));
 }
 
 /** Of the places found, those that read most as the passage did where it was selected, in their order. */
 export function bestFits<T>(found: T[], fit: (place: T) => number): T[] {
   const fits = found.map(fit);
-  const top = Math.max(0, ...fits);
+  const top = fits.reduce((a, b) => Math.max(a, b), 0);
   return found.filter((_, i) => fits[i] === top);
 }
 
@@ -85,7 +85,13 @@ export function wordIn(text: string, form: string, context: QuoteContext = { pre
   const want = collapse(form);
   const whole = ([s, e]: [number, number]) => !(inWord(text[s - 1]) && inWord(text[s])) && !(inWord(text[e - 1]) && inWord(text[e]));
   const found = want ? [...text.matchAll(new RegExp(spaced(want), "giu"))].map((m): [number, number] => [m.index, m.index + m[0].length]).filter(whole) : [];
-  const near = bestFits(found, ([s, e]) => fitOf(text, s, e, context));
+  const flat = bare(text);
+  /** Where in `flat` each place of `text` is. */
+  const at = [0];
+  for (let i = 0; i < text.length; i++) {
+    at.push(at[i]! + Number(!/\s/u.test(text[i]!)));
+  }
+  const near = bestFits(found, ([s, e]) => fitOf(flat, at[s]!, at[e]!, context));
   const [start, end] = near.find(([s, e]) => collapse(text.slice(s, e)) === want) ?? near[0] ?? [];
   return start == null || end == null ? null : { surface: collapse(text.slice(start, end)), sentence: sentenceAt(text, start, end) };
 }

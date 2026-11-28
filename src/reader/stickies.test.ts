@@ -292,3 +292,12 @@ test("a sticky's explanation is its first answer without the markers it cites an
   assert.equal(explanationOf(term), "先に書く。dp[2] と番号 [9] は残る。");
   assert.equal(explanationOf(sticky(2, 10)), "", "none without an answer");
 });
+
+test("of a passage in a block 300,000 times, it is the one that reads as where it was selected, found in time", () => {
+  const n = 150_000;
+  const text = `${"a. ".repeat(n)}b a. ${"a. ".repeat(n)}`;
+  assert.deepEqual(findPassage([text], 1, "a", [], { prefix: "b", suffix: null }), [
+    [0, 3 * n + 2],
+    [0, 3 * n + 3],
+  ]);
+});
