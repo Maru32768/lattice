@@ -4435,6 +4435,27 @@ test("of a word twice in a block, a 用語 sticky on the later one is marked the
   expect(inAnswer).toMatch(/書き換わった$/);
 });
 
+test("of a word twice in a list item, 単語を登録 saves the sentence its 用語 sticky is on, though the item's marker is before it", async ({ shell }) => {
+  // Near the start of the item, and with the same text after both.
+  await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const body = (await res.text()).replace('"Readers never block writers."', '"Open the file. Close the file."');
+    await route.fulfill({ response: res, body });
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await openSnapshot(shell);
+  const item = shell.locator("#b-104");
+  await expect(item).toContainText("•Open the file. Close the file.");
+  await dragWord(shell, item, "file", 1);
+  await bar(shell).getByRole("button", { name: "用語", exact: true }).click();
+  const term = card(shell, "用語");
+  await expect(term.locator(".answer")).toHaveText(ANSWERED);
+  await term.getByRole("button", { name: "単語を登録" }).click();
+  await expect(term.getByRole("status")).toHaveText("「file」を単語帳に登録しました");
+  expect(((await callsOf(shell, "vocab_add")) as { capture: { sentence: string } }[]).map((c) => c.capture.sentence)).toEqual(["Close the file."]);
+});
+
 test("単語を登録: a 用語 sticky on a word in a translation saves it in the sentence shown, as the Reader's own does", async ({ app }) => {
   await open(app, SNAPSHOT_ID);
   await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();

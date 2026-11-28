@@ -237,7 +237,8 @@ export function contextOf(range: Range, within: Element): Pick<Passage, "quotePr
       r.setStart(node, offset);
     }
     const text = r.cloneContents();
-    text.querySelectorAll(NOT_SELECTED).forEach((e) => e.remove());
+    // A list item's marker is not in the text 単語を登録 reads the sentence from: a prefix with it would fit no place there.
+    text.querySelectorAll(`${NOT_SELECTED}, .marker`).forEach((e) => e.remove());
     // By code points: a cut between the two halves of one would leave one the backend cannot read.
     const chars = [...collapse(text.textContent)];
     return (before ? chars.slice(-CONTEXT_CHARS) : chars.slice(0, CONTEXT_CHARS)).join("");
