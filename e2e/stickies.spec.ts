@@ -71,13 +71,35 @@ const child = (page: Page, kind: Kind) => card(page, `${kind}(回答から)`);
 const followUp = (page: Page | Locator) => page.getByRole("button", { name: "続けて質問", exact: true });
 const followUpField = (page: Page | Locator) => page.getByRole("textbox", { name: "付箋への続きの質問" });
 const asked = async (page: Page) =>
-  (await callsOf(page, "sticky_ask")) as { blockId: number | null; parent: number | null; origin: string; kind: string; quote: string; question: string }[];
+  (await callsOf(page, "sticky_ask")) as {
+    blockId: number | null;
+    parent: number | null;
+    origin: string;
+    kind: string;
+    quote: string;
+    quotePrefix: string | null;
+    quoteSuffix: string | null;
+    question: string;
+  }[];
 
 const ANSWERED = /選んだ箇所の説明です/;
 
 const unfold = (sticky: Locator) => sticky.getByRole("button", { name: "付箋を広げる" }).click();
 
 const boxOf = async (l: Locator) => (await l.boundingBox())!;
+
+/** Of each mark, the text it is in before it: of its sentence in the article, of its answer in one. */
+const marksBefore = (page: Page) =>
+  page.evaluate(() =>
+    [...(CSS.highlights.get("sticky") ?? [])].map((r) => {
+      const range = r as Range;
+      const within = range.startContainer.parentElement!.closest(".answer, .sent, .blk")!;
+      const head = document.createRange();
+      head.setStart(within, 0);
+      head.setEnd(range.startContainer, range.startOffset);
+      return head.toString();
+    }),
+  );
 
 const selected = (page: Page) => page.evaluate(() => getSelection()!.toString().trim().replace(/\s+/g, " "));
 
@@ -4408,19 +4430,9 @@ test("of a word twice in a block, a 用語 sticky on the later one is marked the
   await bar(app).getByRole("button", { name: "用語", exact: true }).click();
   const term = card(app, "用語");
   await expect(term.locator(".answer")).toHaveText(ANSWERED);
-  /** Of each mark, the text it is in before it: of its sentence in the article, of its answer in one. */
-  const before = () =>
-    app.evaluate(() =>
-      [...(CSS.highlights.get("sticky") ?? [])].map((r) => {
-        const range = r as Range;
-        const within = range.startContainer.parentElement!.closest(".answer, .sent")!;
-        const head = document.createRange();
-        head.setStart(within, 0);
-        head.setEnd(range.startContainer, range.startOffset);
-        return head.toString();
-      }),
-    );
-  expect(await before()).toEqual(["Monitor "]);
+  expect(await marksBefore(app)).toEqual(["Monitor "]);
+  // The 32 characters on each side of the selection in the block's text, its whitespace collapsed.
+  expect(await asked(app)).toMatchObject([{ quote: "them", quotePrefix: "actions keep them alive. Monitor", quoteSuffix: "closely." }]);
   await term.getByRole("button", { name: "単語を登録" }).click();
   await expect(term.getByRole("status")).toHaveText("「them」を単語帳に登録しました");
   expect(((await callsOf(app, "vocab_add")) as { capture: { sentence: string } }[]).map((c) => c.capture.sentence)).toEqual(["Monitor them closely."]);
@@ -4430,30 +4442,53 @@ test("of a word twice in a block, a 用語 sticky on the later one is marked the
   await bar(app).getByRole("button", { name: "用語", exact: true }).click();
   await expect(child(app, "用語").locator(".answer")).toHaveText(ANSWERED);
   await frames(app);
-  const [inText, inAnswer] = await before();
+  const [inText, inAnswer] = await marksBefore(app);
   expect(inText).toBe("Monitor ");
   expect(inAnswer).toMatch(/書き換わった$/);
 });
 
-test("of a word twice in a list item, 単語を登録 saves the sentence its 用語 sticky is on, though the item's marker is before it", async ({ shell }) => {
-  // Near the start of the item, and with the same text after both.
+/** Opens the snapshot article with one of its block's text in place of another. */
+async function openSnapshotWith(shell: Page, text: string, instead: string) {
   await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
     const res = await route.fetch();
-    const body = (await res.text()).replace('"Readers never block writers."', '"Open the file. Close the file."');
-    await route.fulfill({ response: res, body });
+    await route.fulfill({ response: res, body: (await res.text()).replace(JSON.stringify(instead), JSON.stringify(text)) });
   });
   await shell.goto("/");
   await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   await openSnapshot(shell);
-  const item = shell.locator("#b-104");
-  await expect(item).toContainText("•Open the file. Close the file.");
-  await dragWord(shell, item, "file", 1);
+}
+
+/** A 用語 sticky on the `nth` `word` of `block`, and what 単語を登録 on it saved. */
+async function termTwice(shell: Page, block: Locator, word: string, nth: number) {
+  await dragWord(shell, block, word, nth);
   await bar(shell).getByRole("button", { name: "用語", exact: true }).click();
   const term = card(shell, "用語");
   await expect(term.locator(".answer")).toHaveText(ANSWERED);
   await term.getByRole("button", { name: "単語を登録" }).click();
-  await expect(term.getByRole("status")).toHaveText("「file」を単語帳に登録しました");
-  expect(((await callsOf(shell, "vocab_add")) as { capture: { sentence: string } }[]).map((c) => c.capture.sentence)).toEqual(["Close the file."]);
+  await expect(term.getByRole("status")).toHaveText(`「${word}」を単語帳に登録しました`);
+  return ((await callsOf(shell, "vocab_add")) as { capture: { sentence: string } }[]).map((c) => c.capture.sentence);
+}
+
+test("of a word twice in a list item, a 用語 sticky on the later one is marked there and saves its sentence, though the item's marker is before it", async ({
+  shell,
+}) => {
+  // Near the start of the item, and with the same text after both: only the text before tells them apart.
+  await openSnapshotWith(shell, "Open the file. Close the file.", "Readers never block writers.");
+  const item = shell.locator("#b-104");
+  await expect(item).toContainText("•Open the file. Close the file.");
+  expect(await termTwice(shell, item, "file", 1)).toEqual(["Close the file."]);
+  expect(await marksBefore(shell)).toEqual([expect.stringMatching(/Close the $/)]);
+});
+
+test("of a word twice after the same 32 characters, and before more than 32, a 用語 sticky on the later one is marked there and saves its sentence", async ({
+  shell,
+}) => {
+  const text = "Every reader that starts tails the log first. Every reader that starts tails the log last, until the writer closes the file.";
+  await openSnapshotWith(shell, text, "Write skew is still possible under snapshot isolation.");
+  const block = shell.locator("#b-106");
+  await expect(block).toContainText(text);
+  expect(await termTwice(shell, block, "log", 1)).toEqual(["Every reader that starts tails the log last, until the writer closes the file."]);
+  expect(await marksBefore(shell)).toEqual([expect.stringMatching(/log first\. Every reader that starts tails the $/)]);
 });
 
 test("単語を登録: a 用語 sticky on a word in a translation saves it in the sentence shown, as the Reader's own does", async ({ app }) => {
