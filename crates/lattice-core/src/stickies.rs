@@ -1506,13 +1506,16 @@ mod tests {
         for sticky in [&on_text, &on_answer] {
             assert_eq!((sticky.quote_prefix.clone(), sticky.quote_suffix.clone()), kept, "32 characters on each side, not bytes");
         }
+        let short = super::ask(&s, &llm, &Semaphore::new(1), Ask { quote_prefix: Some("ログ"), quote_suffix: Some("."), ..new(None) }).await.unwrap();
+        assert_eq!((short.quote_prefix.as_deref(), short.quote_suffix.as_deref()), (Some("ログ"), Some(".")), "shorter sides as they are");
         let none = ask(&s, &llm, a, None, StickyKind::Term, "WAL", "").await.unwrap();
         assert_eq!((&none.quote_prefix, &none.quote_suffix), (&None, &None));
-        assert_eq!(list(&s, a).unwrap(), [on_text, on_answer, none]);
+        assert_eq!(list(&s, a).unwrap(), [on_text, on_answer, short, none]);
         let json: String = s.conn().query_row(EXPORT, [a], |r| r.get(0)).unwrap();
         let exported: Vec<Value> = serde_json::from_str(&json).unwrap();
         let contexts = exported.iter().map(|x| (x["quote_prefix"].clone(), x["quote_suffix"].clone())).collect::<Vec<_>>();
-        assert_eq!(contexts, [(json!(kept.0), json!(kept.1)), (json!(kept.0), json!(kept.1)), (Value::Null, Value::Null)]);
+        let long = (json!(kept.0), json!(kept.1));
+        assert_eq!(contexts, [long.clone(), long, (json!("ログ"), json!(".")), (Value::Null, Value::Null)]);
     }
 
     #[test]
