@@ -150,6 +150,20 @@ test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no s
   const text = "「速い！」MVCCは古い版を残す。それで読む側が待たない？";
   assert.equal(sentenceAt(text, text.indexOf("MVCC"), text.indexOf("MVCC") + 4), "MVCCは古い版を残す。", "after a closing bracket too");
   assert.equal(sentenceAt(text, 0, 3), "「速い！」");
+  const at = (t: string, word: string) => sentenceAt(t, t.indexOf(word), t.indexOf(word) + word.length);
+  assert.equal(at("なぜ速い？WALを先に書くから。", "WAL"), "WALを先に書くから。", "after a question");
+  assert.equal(at("本当に速い？！WALを先に書く。", "WAL"), "WALを先に書く。", "after stops one after another");
+  assert.equal(at("本当に速い？！WALを先に書く。", "本当"), "本当に速い？！");
+  for (const t of [
+    "（先に書く。）次にfsyncを呼ぶ。",
+    "【先に書く。】次にfsyncを呼ぶ。",
+    "〔先に書く。〕次にfsyncを呼ぶ。",
+    "《先に書く。》次にfsyncを呼ぶ。",
+    "〈先に書く。〉次にfsyncを呼ぶ。",
+    "［先に書く。］次にfsyncを呼ぶ。",
+  ]) {
+    assert.equal(at(t, "fsync"), "次にfsyncを呼ぶ。", `after ${t.slice(0, 7)}`);
+  }
 });
 
 test("wordIn: Japanese, written with no spaces, ends no word", () => {
