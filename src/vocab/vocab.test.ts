@@ -174,19 +174,28 @@ test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no s
   );
   assert.equal(at("速い！と叫んでWALを使う。", "WAL"), "速い！と叫んでWALを使う。");
   assert.equal(at("速い。しかしWALは要る。", "WAL"), "しかしWALは要る。", "a full stop before kana");
-  for (const t of [
-    "（先に書く。）次にfsyncを呼ぶ。",
-    "【先に書く。】次にfsyncを呼ぶ。",
-    "〔先に書く。〕次にfsyncを呼ぶ。",
-    "《先に書く。》次にfsyncを呼ぶ。",
-    "〈先に書く。〉次にfsyncを呼ぶ。",
-    "［先に書く。］次にfsyncを呼ぶ。",
-    "『先に書く。』次にfsyncを呼ぶ。",
-    "(先に書く。)次にfsyncを呼ぶ。",
-    "“先に書く。”次にfsyncを呼ぶ。",
-  ]) {
-    assert.equal(at(t, "fsync"), "次にfsyncを呼ぶ。", `after ${t.slice(0, 7)}`);
+  const brackets: [string, string][] = [
+    ["「", "」"],
+    ["『", "』"],
+    ["（", "）"],
+    ["【", "】"],
+    ["〔", "〕"],
+    ["〈", "〉"],
+    ["《", "》"],
+    ["［", "］"],
+    ['"', '"'],
+    ["'", "'"],
+    ["“", "”"],
+    ["‘", "’"],
+    ["(", ")"],
+    ["[", "]"],
+  ];
+  for (const [open, close] of brackets) {
+    assert.equal(at(`${open}先に書く。${close}次にfsyncを呼ぶ。`, "fsync"), "次にfsyncを呼ぶ。", `after ${close} and kanji`);
+    const quoted = `${open}なぜ遅いのか？${close}とPostgreSQLの開発者は問う。`;
+    assert.equal(at(`${quoted}次の文。`, "PostgreSQL"), quoted, `after ${close} and hiragana`);
   }
+  assert.equal(at("「彼は『WALを使う。』」と言った。", "WAL"), "「彼は『WALを使う。』」と言った。", "after brackets in brackets");
 });
 
 test("wordIn: Japanese, written with no spaces, ends no word", () => {
