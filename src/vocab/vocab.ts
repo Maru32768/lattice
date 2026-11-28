@@ -31,7 +31,7 @@ export function sentenceAt(text: string, start: number, end: number): string {
   let to = text.length;
   for (const m of text.matchAll(END)) {
     const [, stops, closers, kana] = m;
-    if (kana && (closers || !stops?.endsWith("。"))) {
+    if (kana && (closers || /[！？]$/u.test(stops ?? ""))) {
       continue;
     }
     const after = m.index + m[0].length;
