@@ -196,6 +196,9 @@ test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no s
     assert.equal(at(`${quoted}次の文。`, "PostgreSQL"), quoted, `after ${close} and hiragana`);
   }
   assert.equal(at("「彼は『WALを使う。』」と言った。", "WAL"), "「彼は『WALを使う。』」と言った。", "after brackets in brackets");
+  assert.equal(at("「速い。」ベンチマークでもWALが勝った。", "WAL"), "ベンチマークでもWALが勝った。", "katakana after a bracket");
+  assert.equal(at("速い？ベンチマークでもWALが勝った。", "WAL"), "ベンチマークでもWALが勝った。", "katakana after a question");
+  assert.equal(at("「速い。」「本当にWALのおかげ？」", "WAL"), "「本当にWALのおかげ？」", "a bracket opened after one closed");
 });
 
 test("wordIn: Japanese, written with no spaces, ends no word", () => {
