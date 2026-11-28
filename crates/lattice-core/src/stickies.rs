@@ -1497,9 +1497,9 @@ mod tests {
             question: "",
         };
         let on_text = super::ask(&s, &llm, &Semaphore::new(1), new(None)).await.unwrap();
-        let prompts = vec![llm.input()];
+        let on_text_prompt = llm.input();
         let on_answer = super::ask(&s, &llm, &Semaphore::new(1), new(Some(on_text.messages[0].id))).await.unwrap();
-        for prompt in [&prompts[0], &llm.input()] {
+        for prompt in [on_text_prompt, llm.input()] {
             assert!(!prompt.contains("xxx") && !prompt.contains("yyy"), "the model gets the passage, not the text around it: {prompt}");
         }
         let kept = (Some(format!("{}ログを先に書く", "x".repeat(25))), Some(format!("の後で{}", "y".repeat(29))));
