@@ -27,6 +27,7 @@ export interface ArticleActions {
   popOut?: (a: ArticleRow) => void;
   page: (a: ArticleRow) => void;
   copyUrl: (a: ArticleRow) => void;
+  copyRef: (a: ArticleRow) => void;
   /** Asks for confirmation first. */
   remove: (a: ArticleRow) => void;
 }
@@ -85,6 +86,7 @@ export function articleMenu(rows: ArticleRow[], act: ArticleActions, t: T): (Men
           ...(act.popOut ? [{ label: t("tabStrip.popOut"), onSelect: () => act.popOut!(one) }] : []),
           { label: t("articleMenu.openPage"), onSelect: () => act.page(one), disabled: local && !one.pdf },
           { label: t("articleMenu.copyUrl"), onSelect: () => act.copyUrl(one), disabled: local },
+          { label: t("articleMenu.copyRef"), onSelect: () => act.copyRef(one) },
           "-",
           { label: t("browserView.remove"), onSelect: () => act.remove(one), danger: true },
         ]

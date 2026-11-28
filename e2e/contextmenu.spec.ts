@@ -24,6 +24,7 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
     "別ウィンドウで開く",
     "Pageで開く",
     "URLをコピー",
+    "エージェント用にコピー",
     "ライブラリから削除…",
   ]);
   await m.getByRole("menuitem", { name: /お気に入り/ }).click();

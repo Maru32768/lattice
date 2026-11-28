@@ -251,7 +251,7 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
   expect(reader.items[1]).toBe("描画して取り込み直す");
   expect(page.items[1]).toBe("表示中のページで取り込み直す");
   expect(page.items.toSpliced(1, 1)).toEqual(reader.items.toSpliced(1, 1));
-  expect(reader.items.slice(-2)).toEqual(["URLをコピー", "ライブラリから削除…"]);
+  expect(reader.items.slice(-3)).toEqual(["URLをコピー", "エージェント用にコピー", "ライブラリから削除…"]);
 
   // The quiz opens beside the page, as it does beside the Reader.
   await app.locator(".docbar").getByRole("button", { name: "理解度チェック" }).click();

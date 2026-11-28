@@ -229,7 +229,7 @@ Imported Markdown has no original web page, so it has no Page view. The Page vie
 
 - **Re-extract**: rebuilds the article from the saved HTML, PDF or Markdown without going online. Use it after a Lattice update improves text extraction.
 - The import-again actions (see [Pages that don't extract well](#pages-that-dont-extract-well))
-- **Auto-classify**, **Translate again**, **Turn automatic translation off**, **Summarize**, **Copy URL** and **Remove from library…**
+- **Auto-classify**, **Translate again**, **Turn automatic translation off**, **Summarize**, **Copy URL**, **Copy for agent** and **Remove from library…**
 
 **The built-in browser.** The Page view's toolbar has back, forward, reload and **Home (search engine)**. Click the URL to edit it, press `Enter` to open it, or `Esc` to stop editing. Text that is not a URL is searched with the search engine chosen in **Settings › Browser**. Your logins to sites are kept after you quit Lattice.
 
@@ -506,7 +506,7 @@ Each list keeps its own filters on this computer. When you choose a list in the 
 
 Right-click an article in the list, or a Reader or Page tab, to open a menu of actions for that article. With the keyboard, press the menu key or `Shift+F10`.
 
-The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Edit tags…**, **Rename…**, **Importance**, **Difficulty**, **Genre**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from library…**. **Importance**, **Difficulty** and **Genre** open a list of values with the current one marked. For the tab of a page you have not saved, only the items that apply to it appear. A title you give with **Rename…** stays when the article is imported again. To go back to the title Lattice gave it, save an empty title or press **Reset**.
+The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Edit tags…**, **Rename…**, **Importance**, **Difficulty**, **Genre**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL**, **Copy for agent** and **Remove from library…**. **Importance**, **Difficulty** and **Genre** open a list of values with the current one marked. For the tab of a page you have not saved, only the items that apply to it appear. A title you give with **Rename…** stays when the article is imported again. To go back to the title Lattice gave it, save an empty title or press **Reset**.
 
 ### Act on several articles
 
@@ -619,6 +619,7 @@ When you don't understand a passage, select it in the Reader. Click **Ask**, **E
 - **Ask**: type a question on the sticky and send it with the key set in **Send key** (`Ctrl+Enter` always sends). `Esc` closes the sticky without sending.
 - **Explain**: explains the passage in detail.
 - **Term**: explains what the selected words mean in this article.
+- **Copy for agent** (the copy icon): copies a reference to the paragraphs from the one where the passage starts to the one where it ends, for an AI agent ([Use Lattice from Claude Code or Codex](#use-lattice-from-claude-code-or-codex)). The bar for a passage of an answer does not have this button.
 
 Stickies appear in a column to the right of the text, each at the height of the paragraph that its passage starts in. Where they would overlap, they move up or down. In a narrow pane, each sticky is directly under the paragraph that its passage starts in, and the text below moves down to make room. Each sticky's passage is underlined in the text. When the stickies are to the right of the text, a line joins the passage to its sticky.
 
@@ -1032,6 +1033,8 @@ Agents connect to the MCP server built into Lattice, at `http://127.0.0.1:8788/m
 1. In **Settings › AI agents (MCP)**, under **New registration**, choose a role and what to register for. If you leave the name empty for **All of Claude Code** or **Codex**, the registration takes the agent's name.
 2. Press **Register**. If **Run the MCP server** is off, Lattice turns it on. For **All of Claude Code** and **Codex**, Lattice also adds the registration to that agent's own settings. Open sessions can use the registration once they reconnect.
 3. For **One Claude Code project**, press **Copy command** on the registration. Then run the copied command from a terminal in that project's folder. For **Other**, press **Copy settings**. Then paste the copied settings into the agent's MCP settings.
+
+To point an agent at an article, choose **Copy for agent** in the article's menu or the ⋯ menu. Then paste the copied reference, such as `lattice:article/12`, into your message to the agent. **Copy for agent** in the bar that appears for a selected passage copies a reference to the passage's paragraphs: `lattice:article/12#b345` for one paragraph, and `lattice:article/12#b345-b347` for a run of paragraphs. Given such a reference, `get` returns only those paragraphs ([CLI and MCP](#cli-and-mcp)).
 
 If Lattice cannot change the agent's settings, it shows why. After **Register** or **Regenerate token**, the registration stays in Lattice, so try again with **Add to Claude Code** or **Add to Codex**, or add the registration by hand with the text copied from it. After **Delete**, the registration is gone from Lattice, so remove it from the agent's settings with the command on the screen. If the agent's settings already have another registration named `lattice`, Lattice leaves that other registration as it is. To register, remove or rename that one first. Lattice also leaves the rest of the agent's settings as they are.
 

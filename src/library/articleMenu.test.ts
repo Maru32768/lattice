@@ -21,6 +21,7 @@ const actions: ArticleActions = {
   popOut: noop,
   page: noop,
   copyUrl: noop,
+  copyRef: noop,
   remove: noop,
 };
 const row = (id: number, extra: Partial<ArticleRow> = {}) =>
@@ -43,6 +44,7 @@ test("one article gets every action; picked ones only those that apply to all at
     "tabStrip.popOut",
     "articleMenu.openPage",
     "articleMenu.copyUrl",
+    "articleMenu.copyRef",
     "-",
     "browserView.remove",
   ]);

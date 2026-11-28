@@ -28,6 +28,7 @@ import { MAX_QUOTE, STICKY_KINDS, explanationOf, type Passage } from "./stickies
 import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
+import { articleRef } from "../lib/articleRef";
 import { useLatest } from "../lib/useLatest";
 import { captureIn, isWord, wordIn } from "../vocab/vocab";
 import { locale, useT } from "../i18n";
@@ -332,6 +333,7 @@ export interface DocActions {
   onTranslateManual: (on: boolean) => void;
   onSummarize: () => void;
   onCopyUrl: () => void;
+  onCopyRef: () => void;
   /** Asks for confirmation, then removes the article from the Index. */
   onDelete: () => void;
   /** Shows a block in the Reader, marked as the source of a summary item, a quiz answer or a sticky's. */
@@ -459,6 +461,7 @@ export function ArticleTools({
           { label: view.summary ? t("reader.resummarize") : t("reader.summarize"), onSelect: act.onSummarize, disabled: failed || job("summarize") },
           "-",
           { label: t("articleMenu.copyUrl"), onSelect: act.onCopyUrl, disabled: local },
+          { label: t("articleMenu.copyRef"), onSelect: act.onCopyRef },
           "-",
           { label: t("browserView.remove"), onSelect: act.onDelete, danger: true },
         ]}
@@ -912,6 +915,8 @@ export function Reader({
   /** The bar over the selection: what to ask about the passage, 単語を登録 for a word, then what came of that. */
   const [cap, setCap] = useState<{
     passage?: Passage;
+    /** What エージェント用にコピー copies: only for a passage of the article's blocks. */
+    agentRef?: string;
     capture?: VocabCapture;
     x: number;
     y: number;
@@ -1016,7 +1021,35 @@ export function Reader({
     if (!block || beyond.toString().trim()) {
       return null;
     }
-    return { passage: { blockId: block.id, parent: null, origin: "text" as const, quote }, ...barAt(range, view) };
+    // The blocks the selection takes text from: a drag from the blank after a line starts at that block's end, and a
+    // triple click ends at the start of the next one.
+    const taken: Block[] = [];
+    for (const b of blocks.slice(blocks.indexOf(block))) {
+      const el = root.querySelector(`#b-${b.id}`);
+      if (!el || !range.intersectsNode(el)) {
+        break;
+      }
+      const part = document.createRange();
+      part.selectNodeContents(el);
+      if (range.compareBoundaryPoints(Range.START_TO_START, part) > 0) {
+        part.setStart(range.startContainer, range.startOffset);
+      }
+      if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0) {
+        part.setEnd(range.endContainer, range.endOffset);
+      }
+      // Not a tooltip's text, which the passage leaves out too: an open one hangs below the block's last line.
+      const text = part.cloneContents();
+      text.querySelectorAll(".pop").forEach((p) => p.remove());
+      if (text.textContent.trim()) {
+        taken.push(b);
+      }
+    }
+    const [first, last] = [taken[0] ?? block, taken.at(-1) ?? block];
+    return {
+      passage: { blockId: block.id, parent: null, origin: "text" as const, quote },
+      agentRef: articleRef(a.id, [first.id, last.id]),
+      ...barAt(range, view),
+    };
   }
 
   /** The passage selected in one answer of a sticky, and where to put the bar. */
@@ -1065,6 +1098,15 @@ export function Reader({
         setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
         onVocabChanged();
       })
+      .catch((e: unknown) => setCap({ ...c, error: String(e) }));
+    timers.current.cap = window.setTimeout(() => setCap(null), 2000);
+  }
+
+  async function copyRef(c: NonNullable<typeof cap>, ref: string) {
+    clearTimeout(timers.current.cap);
+    await navigator.clipboard
+      .writeText(ref)
+      .then(() => setCap({ ...c, status: t("reader.refCopied") }))
       .catch((e: unknown) => setCap({ ...c, error: String(e) }));
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
@@ -1167,6 +1209,7 @@ export function Reader({
   const local = isLocal(a.original_url);
   const passage = cap?.passage;
   const capture = cap?.capture;
+  const agentRef = cap?.agentRef;
   // Characters as the backend counts them, not UTF-16 units.
   const passageTooLong = !!passage && Array.from(passage.quote).length > MAX_QUOTE;
 
@@ -1455,6 +1498,18 @@ export function Reader({
                       {t(`stickies.${kind}`)}
                     </button>
                   ))}
+                {agentRef && (
+                  // An icon, not a label: the bar is kept in the window for a width of 380px, which the asks and 単語を登録 fill.
+                  <button
+                    className="btn sm"
+                    aria-label={t("articleMenu.copyRef")}
+                    title={t("articleMenu.copyRef")}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void copyRef(cap, agentRef)}
+                  >
+                    <Icon name="copy" size="sm" />
+                  </button>
+                )}
                 {capture && (
                   <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord({ ...cap, capture })}>
                     {t("vocab.save")}
