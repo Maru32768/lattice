@@ -219,9 +219,9 @@ test("wordIn: of a word in a block 300,000 times, it is the place its sticky was
 });
 
 test("sentenceAt: of a run of 100,000 stops that a bracket and kana follow, the window around the word, found in time", () => {
-  const text = `WAL${"！".repeat(100_000)}」と`;
+  const text = `WAL${"！？".repeat(50_000)}」と`;
   const start = performance.now();
-  assert.equal(sentenceAt(text, 0, 3), `WAL${"！".repeat(250)}`);
+  assert.equal(sentenceAt(text, 0, 3), `WAL${"！？".repeat(125)}`);
   const elapsed = performance.now() - start;
   assert.ok(elapsed < 5_000, `${Math.round(elapsed)} ms`);
 });
