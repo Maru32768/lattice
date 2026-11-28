@@ -17,11 +17,11 @@ export function isWord(s: string): boolean {
 }
 
 /**
- * A sentence end: terminal punctuation (and closing quotes or brackets) before a space, or a line break. Japanese puts no
- * space after its own, and goes on where hiragana follows a quote or bracket, or ？ or ！: 「なぜ遅い？」と問う。速い！と叫ぶ。
- * A next sentence that starts with hiragana there is read as the same one. Japanese stops come with their closers and the
- * hiragana after them, for `sentenceAt` to tell: a lookbehind here would keep the phone page from loading on Safari
- * before 16.4.
+ * Where a sentence may end: terminal punctuation (and closing quotes or brackets) before a space, or a line break. Japanese
+ * puts no space after its own, and goes on where hiragana follows a quote or bracket, or ？ or ！: 「なぜ遅い？」と問う。
+ * 速い！と叫ぶ。 A next sentence that starts with hiragana there is read as the same one. Japanese stops come with their
+ * closers, and with the hiragana that follows captured, for `sentenceAt` to tell: a lookbehind here would keep the phone
+ * page from loading on Safari before 16.4.
  */
 const END = /[.!?]["'”’)\]]*(?=\s|$)|([。！？]+)([」』）】〕〉》］"'”’)\]]*)(?=([ぁ-ゟ])?)|\n/gu;
 
