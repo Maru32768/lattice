@@ -174,6 +174,7 @@ test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no s
   );
   assert.equal(at("速い！と叫んでWALを使う。", "WAL"), "速い！と叫んでWALを使う。");
   assert.equal(at("速い。しかしWALは要る。", "WAL"), "しかしWALは要る。", "a full stop before kana");
+  assert.equal(at("本当に速いの？。とはいえWALは要る。", "WAL"), "とはいえWALは要る。", "stops that end with a full stop before kana");
   const brackets: [string, string][] = [
     ["「", "」"],
     ["『", "』"],
