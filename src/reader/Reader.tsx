@@ -1092,8 +1092,8 @@ export function Reader({
       return null;
     }
     const shown = shownText(block.text, pieces.get(block.id)!, (j) => shows(block.id, j));
-    const context = { prefix: s.quote_prefix, suffix: s.quote_suffix };
-    const c = wordIn(shown, s.quote, context) ?? wordIn(block.text, s.quote, context);
+    const find = (text: string) => wordIn(text, s.quote, { prefix: s.quote_prefix, suffix: s.quote_suffix });
+    const c = find(shown) ?? find(block.text);
     return c && { ...c, article_id: a.id, block_id: block.id, url: isLocal(a.original_url) ? null : a.original_url, explanation: explanationOf(s) };
   }
 
