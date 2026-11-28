@@ -1497,7 +1497,11 @@ mod tests {
             question: "",
         };
         let on_text = super::ask(&s, &llm, &Semaphore::new(1), new(None)).await.unwrap();
+        let prompts = vec![llm.input()];
         let on_answer = super::ask(&s, &llm, &Semaphore::new(1), new(Some(on_text.messages[0].id))).await.unwrap();
+        for prompt in [&prompts[0], &llm.input()] {
+            assert!(!prompt.contains("xxx") && !prompt.contains("yyy"), "the model gets the passage, not the text around it: {prompt}");
+        }
         let kept = (Some(format!("{}ログを先に書く", "x".repeat(25))), Some(format!("の後で{}", "y".repeat(29))));
         for sticky in [&on_text, &on_answer] {
             assert_eq!((sticky.quote_prefix.clone(), sticky.quote_suffix.clone()), kept, "32 characters on each side, not bytes");
