@@ -170,6 +170,9 @@ test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no s
     "《先に書く。》次にfsyncを呼ぶ。",
     "〈先に書く。〉次にfsyncを呼ぶ。",
     "［先に書く。］次にfsyncを呼ぶ。",
+    "『先に書く。』次にfsyncを呼ぶ。",
+    "(先に書く。)次にfsyncを呼ぶ。",
+    "“先に書く。”次にfsyncを呼ぶ。",
   ]) {
     assert.equal(at(t, "fsync"), "次にfsyncを呼ぶ。", `after ${t.slice(0, 7)}`);
   }
