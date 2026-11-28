@@ -167,6 +167,9 @@ export const api = {
     origin: StickyOrigin;
     kind: StickyKind;
     quote: string;
+    /** The text right before and after the passage where it was selected. */
+    quotePrefix: string | null;
+    quoteSuffix: string | null;
     question: string;
   }) => invoke<Sticky>("sticky_ask", ask),
   /** Asks on in a sticky and stores the answer there; `stickies-changed` follows. */

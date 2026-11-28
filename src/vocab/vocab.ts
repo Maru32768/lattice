@@ -54,17 +54,39 @@ export function captureIn(text: string, selected: string, near: number): { surfa
 /** Japanese is written with no spaces between its words, so there a word's edge cannot be told. */
 export const inWord = (c: string | undefined) => c != null && /[\p{L}\p{N}_]/u.test(c) && !/[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u.test(c);
 
+/** Mirrors stickies.rs: the characters a sticky keeps of the text on each side of its passage. */
+export const CONTEXT_CHARS = 32;
+
+/** The text right before and right after a passage, as it was selected; null on a sticky from before that was kept. */
+export interface QuoteContext {
+  prefix: string | null;
+  suffix: string | null;
+}
+
+const bare = (s: string) => s.replace(/\s+/gu, "");
+
+/** How many sides of [start, end) of `text` read as they did where the passage was selected, whitespace apart. */
+export function fitOf(text: string, start: number, end: number, { prefix, suffix }: QuoteContext): number {
+  return Number(prefix != null && bare(text.slice(0, start)).endsWith(bare(prefix))) + Number(suffix != null && bare(text.slice(end)).startsWith(bare(suffix)));
+}
+
+/** Of the places found, those that read most as the passage did where it was selected, in their order. */
+export function bestFits<T>(found: T[], fit: (place: T) => number): T[] {
+  const fits = found.map(fit);
+  const top = Math.max(0, ...fits);
+  return found.filter((_, i) => fits[i] === top);
+}
+
 /**
- * The capture of `form` where it is a whole word in `text`, by the edges of a sticky's mark: the first place with its own case,
- * else the first.
- * shortcut: a sticky keeps no place in its block, so a word there twice is saved with the sentence of the first, which is also
- * where its mark is; keep the place if that is ever wrong.
+ * The capture of `form` where it is a whole word in `text`, by the edges of a sticky's mark: of the places that read most as
+ * where it was selected, the first with its own case, else the first.
  */
-export function wordIn(text: string, form: string): { surface: string; sentence: string } | null {
+export function wordIn(text: string, form: string, context: QuoteContext = { prefix: null, suffix: null }): { surface: string; sentence: string } | null {
   const want = collapse(form);
   const whole = ([s, e]: [number, number]) => !(inWord(text[s - 1]) && inWord(text[s])) && !(inWord(text[e - 1]) && inWord(text[e]));
   const found = want ? [...text.matchAll(new RegExp(spaced(want), "giu"))].map((m): [number, number] => [m.index, m.index + m[0].length]).filter(whole) : [];
-  const [start, end] = found.find(([s, e]) => collapse(text.slice(s, e)) === want) ?? found[0] ?? [];
+  const near = bestFits(found, ([s, e]) => fitOf(text, s, e, context));
+  const [start, end] = near.find(([s, e]) => collapse(text.slice(s, e)) === want) ?? near[0] ?? [];
   return start == null || end == null ? null : { surface: collapse(text.slice(start, end)), sentence: sentenceAt(text, start, end) };
 }
 

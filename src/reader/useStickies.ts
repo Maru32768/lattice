@@ -110,8 +110,8 @@ function answerTo(article: number, ask: Ask) {
   if (isFollowUp(ask)) {
     return api.stickyFollowUp({ id: ask.sticky, question });
   }
-  const { blockId, parent, origin, kind, quote } = ask;
-  return api.stickyAsk({ articleId: article, blockId, parent, origin, kind, quote, question });
+  const { blockId, parent, origin, kind, quote, quotePrefix, quoteSuffix } = ask;
+  return api.stickyAsk({ articleId: article, blockId, parent, origin, kind, quote, quotePrefix, quoteSuffix, question });
 }
 
 /** Sends it; the answer takes its place. One that failed can be sent again. */

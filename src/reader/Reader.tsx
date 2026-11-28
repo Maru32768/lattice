@@ -23,7 +23,7 @@ import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, addToNote, useHasNote } from "./NotePanel";
-import { StickyColumn, type Opened } from "./StickyColumn";
+import { StickyColumn, contextOf, type Opened } from "./StickyColumn";
 import { MAX_QUOTE, STICKY_KINDS, explanationOf, type Passage } from "./stickies";
 import { openAsk } from "./useStickies";
 import { useReadingPlace } from "./useReadingPlace";
@@ -1018,7 +1018,7 @@ export function Reader({
     const beyond = document.createRange();
     beyond.setStartAfter(root);
     beyond.setEnd(range.endContainer, range.endOffset);
-    if (!block || beyond.toString().trim()) {
+    if (!el || !block || beyond.toString().trim()) {
       return null;
     }
     // The blocks the selection takes text from: a drag from the blank after a line starts at that block's end, and a
@@ -1045,8 +1045,9 @@ export function Reader({
       }
     }
     const [first, last] = [taken[0] ?? block, taken.at(-1) ?? block];
+    const { prefix, suffix } = contextOf(range, el);
     return {
-      passage: { blockId: block.id, parent: null, origin: "text" as const, quote },
+      passage: { blockId: block.id, parent: null, origin: "text" as const, quote, quotePrefix: prefix, quoteSuffix: suffix },
       agentRef: articleRef(a.id, [first.id, last.id]),
       ...barAt(range, view),
     };
@@ -1073,8 +1074,16 @@ export function Reader({
       return null;
     }
     const block = answer.closest<HTMLElement>(".sticky")!.dataset.block;
+    const { prefix, suffix } = contextOf(range, answer);
     return {
-      passage: { blockId: block ? Number(block) : null, parent: Number(answer.dataset.message), origin: "answer" as const, quote },
+      passage: {
+        blockId: block ? Number(block) : null,
+        parent: Number(answer.dataset.message),
+        origin: "answer" as const,
+        quote,
+        quotePrefix: prefix,
+        quoteSuffix: suffix,
+      },
       ...barAt(range, view),
     };
   }
@@ -1086,7 +1095,8 @@ export function Reader({
       return null;
     }
     const shown = shownText(block.text, pieces.get(block.id)!, (j) => shows(block.id, j));
-    const c = wordIn(shown, s.quote) ?? wordIn(block.text, s.quote);
+    const context = { prefix: s.quote_prefix, suffix: s.quote_suffix };
+    const c = wordIn(shown, s.quote, context) ?? wordIn(block.text, s.quote, context);
     return c && { ...c, article_id: a.id, block_id: block.id, url: isLocal(a.original_url) ? null : a.original_url, explanation: explanationOf(s) };
   }
 

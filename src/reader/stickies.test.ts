@@ -12,6 +12,8 @@ const sticky = (id: number, block_id: number | null, messages: number[] = [], pa
   origin: parent == null ? "text" : "answer",
   kind: "term",
   quote: "q",
+  quote_prefix: null,
+  quote_suffix: null,
   messages: messages.map((m) => ({ id: m, question: "", answer: `answer ${m}`, citations: [] })),
 });
 const ask = (key: number, blockId: number, parent: number | null = null): Ask => ({
@@ -21,6 +23,8 @@ const ask = (key: number, blockId: number, parent: number | null = null): Ask =>
   origin: parent == null ? "text" : "answer",
   kind: "detail",
   quote: "q",
+  quotePrefix: null,
+  quoteSuffix: null,
   question: "",
   step: "pending",
 });
@@ -236,6 +240,48 @@ test("a word does not go on from one text node to the next one set apart from it
       [1, 18],
     ],
     "inline, as a link in a word",
+  );
+});
+
+test("of a passage twice, it is the one that reads as where it was selected, whitespace apart, else the first", () => {
+  const texts = ["The log is append-only.\n  Readers ", "tail the log as it grows."];
+  const later = { prefix: "append-only. Readers tail the", suffix: " as it grows." };
+  assert.deepEqual(findPassage(texts, 2, "log", [], later), [
+    [1, 9],
+    [1, 12],
+  ]);
+  assert.deepEqual(
+    findPassage(texts, 2, "log", [], { prefix: "Writers tail the", suffix: " as it grows." }),
+    [
+      [1, 9],
+      [1, 12],
+    ],
+    "where one side still reads so",
+  );
+  for (const context of [
+    { prefix: "Writers tail the", suffix: " when it shrinks." },
+    { prefix: null, suffix: null },
+  ]) {
+    assert.deepEqual(findPassage(texts, 2, "log", [], context), [
+      [0, 4],
+      [0, 7],
+    ]);
+  }
+  assert.deepEqual(
+    findPassage(["Deadlocks happen when a lock is held."], 1, "lock", [], { prefix: "Dead", suffix: "s happen when a lock" }),
+    [
+      [0, 4],
+      [0, 8],
+    ],
+    "inside a word, as it was selected",
+  );
+  assert.deepEqual(
+    findPassage(["A log. A log."], 1, "log", [], { prefix: "A", suffix: "." }),
+    [
+      [0, 2],
+      [0, 5],
+    ],
+    "the first of those that read so",
   );
 });
 

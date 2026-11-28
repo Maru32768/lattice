@@ -1,6 +1,6 @@
 import type { Sticky, StickyKind, StickyOrigin } from "../api";
 import { splitCitations } from "../chat/chat.ts";
-import { inWord } from "../vocab/vocab.ts";
+import { bestFits, fitOf, inWord, type QuoteContext } from "../vocab/vocab.ts";
 
 /** Mirrors stickies.rs: a longer passage is refused. */
 export const MAX_QUOTE = 2000;
@@ -22,6 +22,8 @@ export interface Passage {
   /** Of an answer still once that is gone, as a saved sticky's. */
   origin: StickyOrigin;
   quote: string;
+  quotePrefix: string | null;
+  quoteSuffix: string | null;
 }
 
 export type Step = { step: "writing" } | { step: "pending" } | { step: "failed"; error: string };
@@ -94,10 +96,18 @@ export function cardsOf(saved: Sticky[], asks: Ask[], blocks: { id: number }[]):
 /**
  * Where `quote` is in `texts`, the text nodes one after the other, starting in the first `own` of them: as [node, offset] at
  * its start and past its end. A selection gives the text with whitespace as it is laid out, so none counts. Of the same text
- * twice it is the first, unless that starts or ends inside a word and another does not: a term selected is often part of others.
- * A word does not go on into a node `apart` from the one before, as one in another cell or block: no space is between them.
+ * twice it is the one that reads most as where it was selected, by the text on each side of it: a sentence switched to the
+ * other language since, or extracted again, reads so no more. Of those it is the first, unless that starts or ends inside a
+ * word and another does not: a term selected is often part of others. A word does not go on into a node `apart` from the one
+ * before, as one in another cell or block: no space is between them.
  */
-export function findPassage(texts: string[], own: number, quote: string, apart: boolean[] = []): [[number, number], [number, number]] | null {
+export function findPassage(
+  texts: string[],
+  own: number,
+  quote: string,
+  apart: boolean[] = [],
+  context: QuoteContext = { prefix: null, suffix: null },
+): [[number, number], [number, number]] | null {
   const want = quote.replace(/\s+/g, "");
   const full: [number, number][] = [];
   /** Where in `full` each character of `text` is. */
@@ -122,7 +132,8 @@ export function findPassage(texts: string[], own: number, quote: string, apart: 
   const charAt = (k: number) => (full[k] ? texts[full[k][0]]![full[k][1]] : undefined);
   const last = (i: number) => at[i + want.length - 1]!;
   const whole = (i: number) => !(inWord(charAt(at[i]! - 1)) && inWord(want[0])) && !(inWord(want.at(-1)) && inWord(charAt(last(i) + 1)));
-  const i = found.find(whole) ?? found[0];
+  const near = bestFits(found, (i) => fitOf(text, i, i + want.length, context));
+  const i = near.find(whole) ?? near[0];
   if (i == null) {
     return null;
   }

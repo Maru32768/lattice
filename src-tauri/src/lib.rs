@@ -1096,9 +1096,21 @@ async fn sticky_ask(
     origin: StickyOrigin,
     kind: StickyKind,
     quote: String,
+    quote_prefix: Option<String>,
+    quote_suffix: Option<String>,
     question: String,
 ) -> Result<Sticky, String> {
-    let new = stickies::Ask { article_id, block_id, parent, origin, kind, quote: &quote, question: &question };
+    let new = stickies::Ask {
+        article_id,
+        block_id,
+        parent,
+        origin,
+        kind,
+        quote: &quote,
+        quote_prefix: quote_prefix.as_deref(),
+        quote_suffix: quote_suffix.as_deref(),
+        question: &question,
+    };
     let sticky = stickies::ask(&app.store, &app.providers.llm, &app.chat_llm, new).await?;
     let _ = handle.emit("stickies-changed", sticky.article_id);
     Ok(sticky)

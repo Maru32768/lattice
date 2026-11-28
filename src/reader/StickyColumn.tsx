@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
 import { GAP, ROOM, cardsOf, findPassage, isFollowUp, isSame, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
+import { CONTEXT_CHARS, collapse, type QuoteContext } from "../vocab/vocab";
 import { deleteSticky, changeAsk, changeDraft, draftNote, dropAsk, dropDraft, foldSticky, openAsk, sendAsk, useStickies, type Draft } from "./useStickies";
 import "./stickies.css";
 
@@ -221,8 +222,31 @@ const cardsIn = (column: HTMLElement, article: HTMLElement) =>
 /** What is not the text that a passage was selected from. */
 const NOT_SELECTED = "button, textarea, .blk-label, .pop";
 
-/** The passage in `within`'s text that starts in `from`'s, as the reader selected it. */
-function passageIn(from: Element, within: Element, quote: string) {
+/** The text of `within` right before `range` and right after it, the text there being the same as `passageIn` reads. */
+export function contextOf(range: Range, within: Element): QuoteContext {
+  const side = (before: boolean) => {
+    const [node, offset] = before ? [range.startContainer, range.startOffset] : [range.endContainer, range.endOffset];
+    if (!within.contains(node)) {
+      return "";
+    }
+    const r = document.createRange();
+    r.selectNodeContents(within);
+    if (before) {
+      r.setEnd(node, offset);
+    } else {
+      r.setStart(node, offset);
+    }
+    const text = r.cloneContents();
+    text.querySelectorAll(NOT_SELECTED).forEach((e) => e.remove());
+    // By code points: a cut between the two halves of one would leave one the backend cannot read.
+    const chars = [...collapse(text.textContent)];
+    return (before ? chars.slice(-CONTEXT_CHARS) : chars.slice(0, CONTEXT_CHARS)).join("");
+  };
+  return { prefix: side(true), suffix: side(false) };
+}
+
+/** The passage in `within`'s text that starts in `from`'s, as the reader selected it with `context` around it. */
+function passageIn(from: Element, within: Element, quote: string, context: QuoteContext) {
   const want = quote.replace(/\s+/g, "").length;
   const nodes: Text[] = [];
   let own = 0;
@@ -245,6 +269,7 @@ function passageIn(from: Element, within: Element, quote: string) {
     own,
     quote,
     boxes.map((box, i) => i > 0 && box !== boxes[i - 1]),
+    context,
   );
   if (!found) {
     return null;
@@ -285,9 +310,10 @@ function mark(column: HTMLElement, cards: { el: HTMLElement; block: HTMLElement 
     const quote = el.querySelector(".sticky-quote")?.textContent ?? "";
     const message = el.dataset.child;
     const ofAnswer = el.hasAttribute("data-of-answer");
+    const context = { prefix: el.dataset.prefix ?? null, suffix: el.dataset.suffix ?? null };
     // A child's is in its parent's answer only: folded, or gone, that has none.
     const answer = message ? column.querySelector(`.answer[data-message="${message}"]`) : null;
-    const range = ofAnswer ? answer && passageIn(answer, answer, quote) : block && passageIn(block, article, quote);
+    const range = ofAnswer ? answer && passageIn(answer, answer, quote, context) : block && passageIn(block, article, quote, context);
     if (range) {
       ranges.push(range);
     }
@@ -484,6 +510,8 @@ export function StickyColumn({
             "data-block": c.blockId ?? undefined,
             "data-child": c.parent ? (("sticky" in c ? c.sticky.parent : c.ask.parent) ?? undefined) : undefined,
             "data-of-answer": ("sticky" in c ? c.sticky : c.ask).origin === "answer" || undefined,
+            "data-prefix": ("sticky" in c ? c.sticky.quote_prefix : c.ask.quotePrefix) ?? undefined,
+            "data-suffix": ("sticky" in c ? c.sticky.quote_suffix : c.ask.quoteSuffix) ?? undefined,
             "data-pinned": c.key === pinnedCard || undefined,
             "data-held": held.has(c.key) || undefined,
             style: { left: INDENT * Math.min(c.depth, DEEPEST) },
@@ -527,6 +555,9 @@ interface Spot {
   "data-child": number | undefined;
   /** Its passage is of an answer, which may be gone by now. */
   "data-of-answer": true | undefined;
+  /** The text right before and after its passage where it was selected. */
+  "data-prefix": string | undefined;
+  "data-suffix": string | undefined;
   "data-pinned": true | undefined;
   "data-held": true | undefined;
   style: { left: number };

@@ -108,6 +108,33 @@ test("wordIn: a whole word in its sentence, first where it has its own case", ()
   assert.equal(wordIn(text, "cat"), null);
 });
 
+test("wordIn: of a word twice, the place that reads as where its sticky was selected, else as with no context", () => {
+  const text = "The log is append-only. Readers tail the log as it grows.";
+  const later = { prefix: "append-only. Readers tail the", suffix: " as it grows." };
+  assert.deepEqual(wordIn(text, "log", later), { surface: "log", sentence: "Readers tail the log as it grows." });
+  assert.deepEqual(
+    wordIn(text, "log", { prefix: "Readers\n tail the", suffix: "as it\tgrows." }),
+    { surface: "log", sentence: "Readers tail the log as it grows." },
+    "whitespace apart",
+  );
+  assert.deepEqual(
+    wordIn(text, "log", { prefix: "Writers tail the", suffix: " as it grows." }),
+    { surface: "log", sentence: "Readers tail the log as it grows." },
+    "the place where one side still reads so",
+  );
+  assert.deepEqual(
+    wordIn(text, "log", { prefix: "Writers tail the", suffix: " when it shrinks." }),
+    { surface: "log", sentence: "The log is append-only." },
+    "none reads so",
+  );
+  assert.deepEqual(wordIn(text, "log", { prefix: null, suffix: null }), { surface: "log", sentence: "The log is append-only." });
+  assert.deepEqual(
+    wordIn("The Log grows. Readers tail the log.", "Log", { prefix: "Readers tail the", suffix: "." }),
+    { surface: "log", sentence: "Readers tail the log." },
+    "before its own case",
+  );
+});
+
 test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no space after it", () => {
   assert.deepEqual(wordIn("WALを先に書く。次にfsyncを呼ぶ。", "fsync"), { surface: "fsync", sentence: "次にfsyncを呼ぶ。" });
   const text = "「速い！」MVCCは古い版を残す。それで読む側が待たない？";

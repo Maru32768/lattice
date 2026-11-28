@@ -17,6 +17,8 @@ use ts_rs::TS;
 
 pub const PROMPT_VERSION: &str = "sticky-v3";
 const MAX_QUOTE_CHARS: usize = 2_000;
+/// Of the text on each side of a passage, enough to tell it from the same text elsewhere in its block.
+const CONTEXT_CHARS: usize = 32;
 /// Every block kind but images: a reader asks about the code and the tables too.
 const SENT_KINDS: &[&str] = &["heading", "paragraph", "list_item", "blockquote", "caption", "code", "table"];
 
@@ -65,6 +67,10 @@ pub struct Sticky {
     pub origin: StickyOrigin,
     pub kind: StickyKind,
     pub quote: String,
+    /// The text right before the passage where it was selected, and right after it: of the same text twice in the block or
+    /// answer, the one it is. None on a sticky from before they were kept.
+    pub quote_prefix: Option<String>,
+    pub quote_suffix: Option<String>,
     pub messages: Vec<StickyMessage>,
 }
 
@@ -79,8 +85,20 @@ pub struct Ask<'a> {
     pub origin: StickyOrigin,
     pub kind: StickyKind,
     pub quote: &'a str,
+    /// Cut to the last and the first `CONTEXT_CHARS` of them.
+    pub quote_prefix: Option<&'a str>,
+    pub quote_suffix: Option<&'a str>,
     /// Left out where the kind alone is the question.
     pub question: &'a str,
+}
+
+fn last_chars(s: &str, n: usize) -> &str {
+    let skip = s.chars().count().saturating_sub(n);
+    s.char_indices().nth(skip).map_or(s, |(i, _)| &s[i..])
+}
+
+fn first_chars(s: &str, n: usize) -> &str {
+    s.char_indices().nth(n).map_or(s, |(i, _)| &s[..i])
 }
 
 const RULES: &str = "You help a Japanese software engineer who is reading an article and asks about a passage they selected in it. \
@@ -209,7 +227,9 @@ pub async fn ask<L: LlmProvider>(store: &Store, llm: &L, turn: &Semaphore, new: 
     };
     let block_id = parent.as_ref().map_or(new.block_id, |p| p.block_id);
     let origin = parent.as_ref().map_or(new.origin, |_| StickyOrigin::Answer);
-    let new = Ask { block_id, origin, quote, question, ..new };
+    let quote_prefix = new.quote_prefix.map(|s| last_chars(s, CONTEXT_CHARS));
+    let quote_suffix = new.quote_suffix.map(|s| first_chars(s, CONTEXT_CHARS));
+    let new = Ask { block_id, origin, quote, quote_prefix, quote_suffix, question, ..new };
     levels.push(Level { quote: quote.into(), origin, turns: Vec::new() });
     let url = store.article_url(new.article_id).map_err(err)?;
     let prompt = prompt(store, new.article_id, block_id, &levels, &request(new.kind, question, &levels))?;
@@ -407,11 +427,11 @@ fn save(store: &Store, new: &Ask, parent: Option<&Parent>, url: Option<&str>, an
     if let Some(p) = parent {
         id = tx
             .query_row(
-                "INSERT INTO stickies (article_id, block_id, parent_message_id, origin, kind, quote)
-                 SELECT s.article_id, s.block_id, m.id, 'answer', ?4, ?5 FROM sticky_messages m JOIN stickies s ON s.id = m.sticky_id
+                "INSERT INTO stickies (article_id, block_id, parent_message_id, origin, kind, quote, quote_prefix, quote_suffix)
+                 SELECT s.article_id, s.block_id, m.id, 'answer', ?4, ?5, ?6, ?7 FROM sticky_messages m JOIN stickies s ON s.id = m.sticky_id
                  WHERE m.id = ?1 AND m.answer = ?2 AND m.created_at = ?3
                  RETURNING id",
-                params![p.id, p.answer, p.created_at, kind.as_str(), new.quote],
+                params![p.id, p.answer, p.created_at, kind.as_str(), new.quote, new.quote_prefix, new.quote_suffix],
                 |r| r.get(0),
             )
             .optional()?;
@@ -419,10 +439,10 @@ fn save(store: &Store, new: &Ask, parent: Option<&Parent>, url: Option<&str>, an
     if id.is_none() {
         id = tx
             .query_row(
-                "INSERT INTO stickies (article_id, block_id, origin, kind, quote)
-                 SELECT id, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?6, ?3, ?4 FROM articles WHERE id = ?1 AND original_url = ?5
+                "INSERT INTO stickies (article_id, block_id, origin, kind, quote, quote_prefix, quote_suffix)
+                 SELECT id, (SELECT id FROM blocks WHERE id = ?2 AND article_id = ?1), ?6, ?3, ?4, ?7, ?8 FROM articles WHERE id = ?1 AND original_url = ?5
                  RETURNING id",
-                params![new.article_id, new.block_id, kind.as_str(), new.quote, url, origin.as_str()],
+                params![new.article_id, new.block_id, kind.as_str(), new.quote, url, origin.as_str(), new.quote_prefix, new.quote_suffix],
                 |r| r.get(0),
             )
             .optional()?;
@@ -441,7 +461,7 @@ pub fn list(store: &Store, article_id: i64) -> Result<Vec<Sticky>, String> {
 /// Stickies (`s`), each as the JSON of a `Sticky`.
 const STICKY: &str = "SELECT json_object(
         'id', s.id, 'article_id', s.article_id, 'block_id', s.block_id, 'parent', s.parent_message_id, 'origin', s.origin, 'kind', s.kind,
-        'quote', s.quote,
+        'quote', s.quote, 'quote_prefix', s.quote_prefix, 'quote_suffix', s.quote_suffix,
         'messages', json((SELECT json_group_array(json_object(
             'id', m.id, 'question', m.question, 'answer', m.answer, 'citations', json(m.citations))
             ORDER BY m.id) FROM sticky_messages m WHERE m.sticky_id = s.id)))
@@ -455,7 +475,8 @@ pub fn delete(store: &Store, id: i64) -> Result<Option<i64>, String> {
 /// An article's (`?1`) stickies as a JSON array for the export: the block as its ordinal, as in the article's `blocks`, and
 /// the parent as its sticky's index in the array and its own in the `messages` of that.
 pub(crate) const EXPORT: &str = "SELECT json_group_array(json_object(
-        'kind', s.kind, 'origin', s.origin, 'quote', s.quote, 'block_ordinal', b.ordinal, 'created_at', s.created_at,
+        'kind', s.kind, 'origin', s.origin, 'quote', s.quote, 'quote_prefix', s.quote_prefix, 'quote_suffix', s.quote_suffix,
+        'block_ordinal', b.ordinal, 'created_at', s.created_at,
         'messages', json((SELECT json_group_array(json_object(
             'question', m.question, 'answer', m.answer, 'citations', json(m.citations),
             'provider', m.provider, 'model', m.model, 'prompt_version', m.prompt_version, 'created_at', m.created_at)
@@ -564,7 +585,13 @@ mod tests {
         quote: &str,
         question: &str,
     ) -> Result<Sticky, String> {
-        super::ask(s, llm, &Semaphore::new(1), Ask { article_id, block_id, parent: None, origin: StickyOrigin::Text, kind, quote, question }).await
+        super::ask(
+            s,
+            llm,
+            &Semaphore::new(1),
+            Ask { article_id, block_id, parent: None, origin: StickyOrigin::Text, kind, quote, quote_prefix: None, quote_suffix: None, question },
+        )
+        .await
     }
 
     /// Asks about a passage of the answer `n` of `of`, with a block and an origin that `ask` must not take from the caller.
@@ -573,7 +600,17 @@ mod tests {
             s,
             llm,
             &Semaphore::new(1),
-            Ask { article_id: of.article_id, block_id: Some(-1), parent: Some(of.messages[n].id), origin: StickyOrigin::Text, kind, quote, question },
+            Ask {
+                article_id: of.article_id,
+                block_id: Some(-1),
+                parent: Some(of.messages[n].id),
+                origin: StickyOrigin::Text,
+                kind,
+                quote,
+                quote_prefix: None,
+                quote_suffix: None,
+                question,
+            },
         )
         .await
     }
@@ -966,6 +1003,8 @@ mod tests {
             origin: StickyOrigin::Answer,
             kind: StickyKind::Term,
             quote: "q",
+            quote_prefix: None,
+            quote_suffix: None,
             question: "",
         };
         for bad in [on(a, 999), on(other, term.messages[0].id)] {
@@ -1140,7 +1179,17 @@ mod tests {
         assert!(llm.input().starts_with("<excerpt>\nA1\n</excerpt>\n\n<conversation>\n"), "the memo draft too: {}", llm.input());
 
         // As a question asked on an answer is sent again once its sticky is gone: with no parent, and of an answer.
-        let again = Ask { article_id: a, block_id: first, parent: None, origin: StickyOrigin::Answer, kind: StickyKind::Term, quote: "A1 again", question: "" };
+        let again = Ask {
+            article_id: a,
+            block_id: first,
+            parent: None,
+            origin: StickyOrigin::Answer,
+            kind: StickyKind::Term,
+            quote: "A1 again",
+            quote_prefix: None,
+            quote_suffix: None,
+            question: "",
+        };
         let sent = super::ask(&s, &llm, &Semaphore::new(1), again).await.unwrap();
         assert!(
             llm.input().starts_with(&format!("{WAL_SOURCES}<excerpt>\nA1 again\n</excerpt>\n\nExplain in Japanese what the last excerpt above means")),
@@ -1218,6 +1267,8 @@ mod tests {
                             origin: StickyOrigin::Answer,
                             kind: StickyKind::Term,
                             quote: "q",
+                            quote_prefix: None,
+                            quote_suffix: None,
                             question: "",
                         };
                         super::ask(&s, &llm, &turn, new).await
@@ -1227,7 +1278,17 @@ mod tests {
                             &s,
                             &llm,
                             &turn,
-                            Ask { article_id: a, block_id: None, parent: None, origin: StickyOrigin::Text, kind: StickyKind::Term, quote: "q", question: "" },
+                            Ask {
+                                article_id: a,
+                                block_id: None,
+                                parent: None,
+                                origin: StickyOrigin::Text,
+                                kind: StickyKind::Term,
+                                quote: "q",
+                                quote_prefix: None,
+                                quote_suffix: None,
+                                question: "",
+                            },
                         )
                         .await
                     }
@@ -1283,6 +1344,8 @@ mod tests {
                             origin: StickyOrigin::Answer,
                             kind: StickyKind::Term,
                             quote: "q",
+                            quote_prefix: None,
+                            quote_suffix: None,
                             question: "",
                         };
                         super::ask(&s, &llm, &turn, new).await
@@ -1316,7 +1379,17 @@ mod tests {
                             &s,
                             &llm,
                             &turn,
-                            Ask { article_id: a, block_id: None, parent, origin: StickyOrigin::Text, kind: StickyKind::Term, quote: "q", question: "" },
+                            Ask {
+                                article_id: a,
+                                block_id: None,
+                                parent,
+                                origin: StickyOrigin::Text,
+                                kind: StickyKind::Term,
+                                quote: "q",
+                                quote_prefix: None,
+                                quote_suffix: None,
+                                question: "",
+                            },
                         )
                         .await
                     }
@@ -1404,6 +1477,38 @@ mod tests {
         assert_eq!(exported(), ["a0 null", "a1 null", r#"a2 {"message":1,"sticky":1}"#, r#"a3 {"message":0,"sticky":0}"#, r#"a4 {"message":0,"sticky":3}"#]);
         delete(&s, a0.id).unwrap();
         assert_eq!(exported(), ["a1 null", r#"a2 {"message":1,"sticky":0}"#, "a3 null", r#"a4 {"message":0,"sticky":2}"#]);
+    }
+
+    #[tokio::test]
+    async fn the_text_around_a_passage_is_kept_to_its_nearest_characters_and_exported() {
+        let s = Store::open_in_memory().unwrap();
+        let a = add(&s, "https://a.dev/a", "a", WAL);
+        let llm = Fake::new(ANSWER);
+        let (before, after) = (format!("{}ログを先に書く", "x".repeat(40)), format!("の後で{}", "y".repeat(40)));
+        let new = |parent| Ask {
+            article_id: a,
+            block_id: None,
+            parent,
+            origin: StickyOrigin::Text,
+            kind: StickyKind::Term,
+            quote: "WAL",
+            quote_prefix: Some(&before),
+            quote_suffix: Some(&after),
+            question: "",
+        };
+        let on_text = super::ask(&s, &llm, &Semaphore::new(1), new(None)).await.unwrap();
+        let on_answer = super::ask(&s, &llm, &Semaphore::new(1), new(Some(on_text.messages[0].id))).await.unwrap();
+        let kept = (Some(format!("{}ログを先に書く", "x".repeat(25))), Some(format!("の後で{}", "y".repeat(29))));
+        for sticky in [&on_text, &on_answer] {
+            assert_eq!((sticky.quote_prefix.clone(), sticky.quote_suffix.clone()), kept, "32 characters on each side, not bytes");
+        }
+        let none = ask(&s, &llm, a, None, StickyKind::Term, "WAL", "").await.unwrap();
+        assert_eq!((&none.quote_prefix, &none.quote_suffix), (&None, &None));
+        assert_eq!(list(&s, a).unwrap(), [on_text, on_answer, none]);
+        let json: String = s.conn().query_row(EXPORT, [a], |r| r.get(0)).unwrap();
+        let exported: Vec<Value> = serde_json::from_str(&json).unwrap();
+        let contexts = exported.iter().map(|x| (x["quote_prefix"].clone(), x["quote_suffix"].clone())).collect::<Vec<_>>();
+        assert_eq!(contexts, [(json!(kept.0), json!(kept.1)), (json!(kept.0), json!(kept.1)), (Value::Null, Value::Null)]);
     }
 
     #[test]

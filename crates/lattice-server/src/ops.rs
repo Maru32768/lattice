@@ -914,7 +914,12 @@ pub(crate) mod tests {
         let block = s.get_article(a, "ja").unwrap().unwrap().blocks[0].id;
         let turn = tokio::sync::Semaphore::new(1);
         let ask = |article_id, block_id, parent, kind, quote, question| {
-            stickies::ask(s, &Answers(1), &turn, Ask { article_id, block_id, parent, origin: StickyOrigin::Text, kind, quote, question })
+            stickies::ask(
+                s,
+                &Answers(1),
+                &turn,
+                Ask { article_id, block_id, parent, origin: StickyOrigin::Text, kind, quote, quote_prefix: None, quote_suffix: None, question },
+            )
         };
         ask(a, Some(block), None, StickyKind::Question, "write skew", "なぜ?").await.unwrap();
         // The follow-ups keep the ids of stickies and of messages apart, so that neither passes for the other.
@@ -973,7 +978,17 @@ pub(crate) mod tests {
         fetched(s, a, "A", &[SSI, wal]);
         let blocks = || s.get_article(a, "ja").unwrap().unwrap().blocks.into_iter().map(|b| (b.id, b.block.text)).collect::<Vec<_>>();
         let cited = blocks()[1].0;
-        let on = Ask { article_id: a, block_id: Some(cited), parent: None, origin: StickyOrigin::Text, kind: StickyKind::Detail, quote: "log", question: "" };
+        let on = Ask {
+            article_id: a,
+            block_id: Some(cited),
+            parent: None,
+            origin: StickyOrigin::Text,
+            kind: StickyKind::Detail,
+            quote: "log",
+            quote_prefix: None,
+            quote_suffix: None,
+            question: "",
+        };
         let sticky = stickies::ask(s, &Answers(2), &tokio::sync::Semaphore::new(1), on).await.unwrap();
         assert_eq!(sticky.messages[0].citations.iter().map(|c| (c.block_id, c.text.as_str())).collect::<Vec<_>>(), [(cited, wal)]);
         let citations = || async {

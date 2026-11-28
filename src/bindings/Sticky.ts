@@ -11,4 +11,9 @@ block_id: number | null,
 /**
  * The message whose answer the passage was selected in; None for a passage of the article, and once the message is gone.
  */
-parent: number | null, origin: StickyOrigin, kind: StickyKind, quote: string, messages: Array<StickyMessage>, };
+parent: number | null, origin: StickyOrigin, kind: StickyKind, quote: string, 
+/**
+ * The text right before the passage where it was selected, and right after it: of the same text twice in the block or
+ * answer, the one it is. None on a sticky from before they were kept.
+ */
+quote_prefix: string | null, quote_suffix: string | null, messages: Array<StickyMessage>, };

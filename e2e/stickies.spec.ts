@@ -129,6 +129,32 @@ async function askOn(page: Page, kind: Kind, sticky: Locator, nth = 0) {
   await bar(page).getByRole("button", { name: kind, exact: true }).click();
 }
 
+/** Drags over the `nth` (from 0) `word` in the text of `within`. */
+async function dragWord(page: Page, within: Locator, word: string, nth: number) {
+  await page.mouse.move(0, 0);
+  await expect(page.locator(".pop")).toHaveCount(0);
+  const [start, end] = await within.evaluate(
+    (el, [word, nth]) => {
+      const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let left = nth;
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        for (let at = n.textContent!.indexOf(word); at >= 0; at = n.textContent!.indexOf(word, at + 1)) {
+          if (left-- === 0) {
+            const r = document.createRange();
+            r.setStart(n, at);
+            r.setEnd(n, at + word.length);
+            const box = r.getBoundingClientRect();
+            return [box.left + 1, box.right - 1].map((x): [number, number] => [x, box.top + box.height / 2]);
+          }
+        }
+      }
+      throw new Error(`no ${word} ${nth}`);
+    },
+    [word, nth] as const,
+  );
+  await dragTo(page, start, end);
+}
+
 /** Selects `same` again, by a Shift+click where it ends. */
 async function selectAgain(page: Page, same: string) {
   const end = await page.evaluate(() => {
@@ -4369,6 +4395,44 @@ test("単語を登録 on a 用語 sticky saves its word in its sentence with wha
   await navItem(app, "単語帳").click();
   const row = app.locator(".vocab tbody tr").filter({ has: app.locator(".hw").getByText("snapshot", { exact: true }) });
   await expect(row.locator(".explain")).toHaveText(explanation);
+});
+
+test("of a word twice in a block, a 用語 sticky on the later one is marked there and saves its sentence, and a child where it was selected in the answer", async ({
+  app,
+}) => {
+  await openSnapshot(app);
+  const block = app.locator("#b-107");
+  await expect(block).toContainText("Long transactions keep them alive. Monitor them closely.");
+  await dragWord(app, block, "them", 1);
+  expect(await selected(app)).toBe("them");
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  const term = card(app, "用語");
+  await expect(term.locator(".answer")).toHaveText(ANSWERED);
+  /** Of each mark, the text it is in before it: of its sentence in the article, of its answer in one. */
+  const before = () =>
+    app.evaluate(() =>
+      [...(CSS.highlights.get("sticky") ?? [])].map((r) => {
+        const range = r as Range;
+        const within = range.startContainer.parentElement!.closest(".answer, .sent")!;
+        const head = document.createRange();
+        head.setStart(within, 0);
+        head.setEnd(range.startContainer, range.startOffset);
+        return head.toString();
+      }),
+    );
+  expect(await before()).toEqual(["Monitor "]);
+  await term.getByRole("button", { name: "単語を登録" }).click();
+  await expect(term.getByRole("status")).toHaveText("「them」を単語帳に登録しました");
+  expect(((await callsOf(app, "vocab_add")) as { capture: { sentence: string } }[]).map((c) => c.capture.sentence)).toEqual(["Monitor them closely."]);
+
+  // The answer says 出典 three times.
+  await dragWord(app, term.locator(".answer"), "出典", 2);
+  await bar(app).getByRole("button", { name: "用語", exact: true }).click();
+  await expect(child(app, "用語").locator(".answer")).toHaveText(ANSWERED);
+  await frames(app);
+  const [inText, inAnswer] = await before();
+  expect(inText).toBe("Monitor ");
+  expect(inAnswer).toMatch(/書き換わった$/);
 });
 
 test("単語を登録: a 用語 sticky on a word in a translation saves it in the sentence shown, as the Reader's own does", async ({ app }) => {

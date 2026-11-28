@@ -702,7 +702,7 @@ export const handlers = {
     return m;
   },
   chat_threads: () => threads,
-  sticky_ask: ({ articleId, blockId, parent, origin, kind, quote, question }: Parameters<typeof api.stickyAsk>[0]): Sticky => {
+  sticky_ask: ({ articleId, blockId, parent, origin, kind, quote, quotePrefix, quoteSuffix, question }: Parameters<typeof api.stickyAsk>[0]): Sticky => {
     const of = stickies.find((s) => s.article_id === articleId && s.messages.some((m) => m.id === parent));
     if (parent != null && !of) {
       reject("stickies.gone");
@@ -716,6 +716,8 @@ export const handlers = {
       origin: parent == null ? origin : "answer",
       kind,
       quote,
+      quote_prefix: quotePrefix,
+      quote_suffix: quoteSuffix,
       messages: [stickyMessage(articleId, block, question)],
     };
     stickies.push(sticky);

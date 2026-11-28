@@ -70,6 +70,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00049_sticky_origin.sql"),
     include_str!("../db/migrations/00050_note_revision.sql"),
     include_str!("../db/migrations/00051_article_ids.sql"),
+    include_str!("../db/migrations/00052_sticky_context.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38 or 39, whose
 /// definitions 43 replaced: a library before 43 recomputes once. The files of 38 and 39 still say they recompute;
@@ -1870,6 +1871,24 @@ mod tests {
         let s = Store::init(conn).unwrap();
         let origins = crate::stickies::list(&s, 1).unwrap().into_iter().map(|t| (t.id, t.parent, t.origin)).collect::<Vec<_>>();
         assert_eq!(origins, [(1, None, crate::stickies::StickyOrigin::Text), (2, Some(5), crate::stickies::StickyOrigin::Answer)]);
+    }
+
+    #[test]
+    fn sticky_context_migration_leaves_a_sticky_of_an_existing_library_with_none() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("ADD COLUMN quote_prefix")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (1, 'u', 'u', 'd');
+             INSERT INTO stickies (id, article_id, kind, quote) VALUES (1, 1, 'term', 'WAL');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let contexts = crate::stickies::list(&s, 1).unwrap().into_iter().map(|t| (t.id, t.quote, t.quote_prefix, t.quote_suffix)).collect::<Vec<_>>();
+        assert_eq!(contexts, [(1, "WAL".to_string(), None, None)]);
     }
 
     #[test]
