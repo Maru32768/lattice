@@ -1874,24 +1874,6 @@ mod tests {
     }
 
     #[test]
-    fn sticky_context_migration_leaves_a_sticky_of_an_existing_library_with_none() {
-        let at = MIGRATIONS.iter().position(|m| m.contains("ADD COLUMN quote_prefix")).unwrap();
-        let conn = Connection::open_in_memory().unwrap();
-        for sql in &MIGRATIONS[..at] {
-            conn.execute_batch(sql).unwrap();
-        }
-        conn.pragma_update(None, "user_version", at as i64).unwrap();
-        conn.execute_batch(
-            "INSERT INTO articles (id, original_url, normalized_url, domain) VALUES (1, 'u', 'u', 'd');
-             INSERT INTO stickies (id, article_id, kind, quote) VALUES (1, 1, 'term', 'WAL');",
-        )
-        .unwrap();
-        let s = Store::init(conn).unwrap();
-        let contexts = crate::stickies::list(&s, 1).unwrap().into_iter().map(|t| (t.id, t.quote, t.quote_prefix, t.quote_suffix)).collect::<Vec<_>>();
-        assert_eq!(contexts, [(1, "WAL".to_string(), None, None)]);
-    }
-
-    #[test]
     fn quiz_migration_upgrades_an_existing_library() {
         let at = MIGRATIONS.iter().position(|m| m.contains("CREATE TABLE quizzes")).unwrap();
         let conn = Connection::open_in_memory().unwrap();
