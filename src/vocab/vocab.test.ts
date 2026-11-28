@@ -123,6 +123,11 @@ test("wordIn: of a word twice, the place that reads as where its sticky was sele
     "after characters of two code units",
   );
   assert.deepEqual(
+    wordIn("Deadlocks happen. A lock is held.", "lock", { prefix: "Dead", suffix: "s happen. A lock" }),
+    { surface: "lock", sentence: "A lock is held." },
+    "selected inside a longer word, where it is a word of its own",
+  );
+  assert.deepEqual(
     wordIn(text, "log", { prefix: "Writers tail the", suffix: " as it grows." }),
     { surface: "log", sentence: "Readers tail the log as it grows." },
     "the place where one side still reads so",
