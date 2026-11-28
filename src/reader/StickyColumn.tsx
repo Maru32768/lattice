@@ -6,7 +6,7 @@ import { sendsOn, useSendKey } from "../chat/sendKey";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
-import { GAP, ROOM, cardsOf, findPassage, isFollowUp, isSame, roomOf, stack, type Ask, type FollowUp, type PassageAsk } from "./stickies";
+import { GAP, ROOM, cardsOf, findPassage, isFollowUp, isSame, roomOf, stack, type Ask, type FollowUp, type Passage, type PassageAsk } from "./stickies";
 import { CONTEXT_CHARS, collapse, type QuoteContext } from "../vocab/vocab";
 import { deleteSticky, changeAsk, changeDraft, draftNote, dropAsk, dropDraft, foldSticky, openAsk, sendAsk, useStickies, type Draft } from "./useStickies";
 import "./stickies.css";
@@ -223,7 +223,7 @@ const cardsIn = (column: HTMLElement, article: HTMLElement) =>
 const NOT_SELECTED = "button, textarea, .blk-label, .pop";
 
 /** The text of `within` right before `range` and right after it, the text there being the same as `passageIn` reads. */
-export function contextOf(range: Range, within: Element): QuoteContext {
+export function contextOf(range: Range, within: Element): Pick<Passage, "quotePrefix" | "quoteSuffix"> {
   const side = (before: boolean) => {
     const [node, offset] = before ? [range.startContainer, range.startOffset] : [range.endContainer, range.endOffset];
     if (!within.contains(node)) {
@@ -242,7 +242,7 @@ export function contextOf(range: Range, within: Element): QuoteContext {
     const chars = [...collapse(text.textContent)];
     return (before ? chars.slice(-CONTEXT_CHARS) : chars.slice(0, CONTEXT_CHARS)).join("");
   };
-  return { prefix: side(true), suffix: side(false) };
+  return { quotePrefix: side(true), quoteSuffix: side(false) };
 }
 
 /** The passage in `within`'s text that starts in `from`'s, as the reader selected it with `context` around it. */

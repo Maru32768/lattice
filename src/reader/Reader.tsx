@@ -1045,9 +1045,8 @@ export function Reader({
       }
     }
     const [first, last] = [taken[0] ?? block, taken.at(-1) ?? block];
-    const { prefix, suffix } = contextOf(range, el);
     return {
-      passage: { blockId: block.id, parent: null, origin: "text" as const, quote, quotePrefix: prefix, quoteSuffix: suffix },
+      passage: { blockId: block.id, parent: null, origin: "text" as const, quote, ...contextOf(range, el) },
       agentRef: articleRef(a.id, [first.id, last.id]),
       ...barAt(range, view),
     };
@@ -1074,15 +1073,13 @@ export function Reader({
       return null;
     }
     const block = answer.closest<HTMLElement>(".sticky")!.dataset.block;
-    const { prefix, suffix } = contextOf(range, answer);
     return {
       passage: {
         blockId: block ? Number(block) : null,
         parent: Number(answer.dataset.message),
         origin: "answer" as const,
         quote,
-        quotePrefix: prefix,
-        quoteSuffix: suffix,
+        ...contextOf(range, answer),
       },
       ...barAt(range, view),
     };
