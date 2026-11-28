@@ -108,6 +108,13 @@ test("wordIn: a whole word in its sentence, first where it has its own case", ()
   assert.equal(wordIn(text, "cat"), null);
 });
 
+test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no space after it", () => {
+  assert.deepEqual(wordIn("WALを先に書く。次にfsyncを呼ぶ。", "fsync"), { surface: "fsync", sentence: "次にfsyncを呼ぶ。" });
+  const text = "「速い！」MVCCは古い版を残す。それで読む側が待たない？";
+  assert.equal(sentenceAt(text, text.indexOf("MVCC"), text.indexOf("MVCC") + 4), "MVCCは古い版を残す。", "after a closing bracket too");
+  assert.equal(sentenceAt(text, 0, 3), "「速い！」");
+});
+
 test("wordIn: Japanese, written with no spaces, ends no word", () => {
   assert.deepEqual(wordIn("PostgreSQLはこれをMVCCで実装している。", "mvcc"), { surface: "MVCC", sentence: "PostgreSQLはこれをMVCCで実装している。" });
   assert.deepEqual(wordIn("分離でもwrite\nskewは起こる。", "write skew"), { surface: "write skew", sentence: "分離でもwrite skewは起こる。" });
