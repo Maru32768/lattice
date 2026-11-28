@@ -304,8 +304,11 @@ test("a sticky's explanation is its first answer without the markers it cites an
 test("of a passage in a block 300,000 times, it is the one that reads as where it was selected, found in time", () => {
   const n = 150_000;
   const text = `${"a. ".repeat(n)}b a. ${"a. ".repeat(n)}`;
+  const start = performance.now();
   assert.deepEqual(findPassage([text], 1, "a", [], { prefix: "b", suffix: null }), [
     [0, 3 * n + 2],
     [0, 3 * n + 3],
   ]);
+  // About 0.3 s; reading the whole text at each place took seconds.
+  assert.ok(performance.now() - start < 5_000);
 });

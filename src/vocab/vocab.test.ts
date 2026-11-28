@@ -184,5 +184,8 @@ test("wordIn: Japanese, written with no spaces, ends no word", () => {
 
 test("wordIn: of a word in a block 300,000 times, it is the place its sticky was selected, found in time", () => {
   const text = `${"a. ".repeat(150_000)}b a. ${"a. ".repeat(150_000)}`;
+  const start = performance.now();
   assert.equal(wordIn(text, "a", { prefix: "b ", suffix: null })?.sentence, "b a.");
+  // About 0.3 s; reading the whole text at each place took seconds.
+  assert.ok(performance.now() - start < 5_000);
 });
