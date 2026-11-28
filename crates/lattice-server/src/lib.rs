@@ -533,6 +533,22 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_phone_page_has_no_regex_lookbehind() {
+        let dist = concat!(env!("CARGO_MANIFEST_DIR"), "/mobile-dist");
+        for file in std::fs::read_dir(dist).unwrap() {
+            let path = file.unwrap().path();
+            if path.extension().is_some_and(|e| e == "js") {
+                let js = std::fs::read_to_string(&path).unwrap();
+                assert!(
+                    !js.contains("(?<=") && !js.contains("(?<!"),
+                    "{}: Safari before 16.4 cannot parse a lookbehind, and the page would not load",
+                    path.display()
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn a_stopped_server_frees_its_port_for_the_next() {
         let (app, _, _) = app();
