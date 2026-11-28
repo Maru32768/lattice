@@ -4488,6 +4488,9 @@ test("of a word twice after the same 32 characters, and before more than 32, a ç
   const block = shell.locator("#b-106");
   await expect(block).toContainText(text);
   expect(await termTwice(shell, block, "log", 1)).toEqual(["Every reader that starts tails the log last, until the writer closes the file."]);
+  expect(await asked(shell)).toMatchObject([
+    { quote: "log", quotePrefix: "ery reader that starts tails the", quoteSuffix: "last, until the writer closes th" },
+  ]);
   expect(await marksBefore(shell)).toEqual([expect.stringMatching(/log first\. Every reader that starts tails the $/)]);
 });
 
