@@ -16,8 +16,11 @@ export function isWord(s: string): boolean {
   return v.length > 0 && v.length <= MAX_SURFACE && /[A-Za-z]/u.test(v) && !/[\r\n]/u.test(s.trim());
 }
 
-/** A sentence end: terminal punctuation (and closing quotes or brackets) before a space, or a line break. Japanese puts no space after its own. */
-const END = /[.!?]["'”’)\]]*(?=\s|$)|[。！？]+[」』）】〕〉》］"'”’)\]]*|\n/gu;
+/**
+ * A sentence end: terminal punctuation (and closing quotes or brackets) before a space, or a line break. Japanese puts no
+ * space after its own, and goes on after a quote or bracket that kana follows: 「なぜ遅い？」と問う。
+ */
+const END = /[.!?]["'”’)\]]*(?=\s|$)|[。！？]+(?![。！？]|[」』）】〕〉》］"'”’)\]]+[ぁ-ゟ])[」』）】〕〉》］"'”’)\]]*|\n/gu;
 
 /** The sentence holding [start, end) of `text`, whitespace collapsed; a long one is cut to a window around the word. */
 export function sentenceAt(text: string, start: number, end: number): string {

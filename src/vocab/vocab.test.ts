@@ -154,6 +154,15 @@ test("wordIn and sentenceAt: a Japanese sentence ends at its own stop, with no s
   assert.equal(at("なぜ速い？WALを先に書くから。", "WAL"), "WALを先に書くから。", "after a question");
   assert.equal(at("本当に速い？！WALを先に書く。", "WAL"), "WALを先に書く。", "after stops one after another");
   assert.equal(at("本当に速い？！WALを先に書く。", "本当"), "本当に速い？！");
+  assert.equal(
+    at("前の文。「なぜ遅いのか？」とPostgreSQLの開発者は問う。次の文。", "PostgreSQL"),
+    "「なぜ遅いのか？」とPostgreSQLの開発者は問う。",
+    "a quote the sentence goes on after",
+  );
+  assert.equal(at("彼は「WALを使う。」と言った。", "WAL"), "彼は「WALを使う。」と言った。");
+  assert.equal(at("WALを使う（詳しくは後述。）のでfsyncは速い。", "fsync"), "WALを使う（詳しくは後述。）のでfsyncは速い。");
+  assert.equal(at("「なぜ？！」と問う。", "問う"), "「なぜ？！」と問う。");
+  assert.equal(at("速い。しかしWALは要る。", "WAL"), "しかしWALは要る。", "a stop with no bracket before kana");
   for (const t of [
     "（先に書く。）次にfsyncを呼ぶ。",
     "【先に書く。】次にfsyncを呼ぶ。",
