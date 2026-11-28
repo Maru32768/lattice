@@ -128,6 +128,11 @@ test("wordIn: of a word twice, the place that reads as where its sticky was sele
     "the place where one side still reads so",
   );
   assert.deepEqual(
+    wordIn("Readers tail the log. Writers append to the log.", "log", { prefix: "Writers append to the", suffix: "." }),
+    { surface: "log", sentence: "Writers append to the log." },
+    "where only the side before tells them apart",
+  );
+  assert.deepEqual(
     wordIn(text, "log", { prefix: "Writers tail the", suffix: " when it shrinks." }),
     { surface: "log", sentence: "The log is append-only." },
     "none reads so",

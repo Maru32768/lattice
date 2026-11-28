@@ -258,6 +258,14 @@ test("of a passage twice, it is the one that reads as where it was selected, whi
     ],
     "where one side still reads so",
   );
+  assert.deepEqual(
+    findPassage(["Readers tail the log. Writers append to the log."], 1, "log", [], { prefix: "Writers append to the", suffix: "." }),
+    [
+      [0, 44],
+      [0, 47],
+    ],
+    "where only the side before tells them apart",
+  );
   for (const context of [
     { prefix: "Writers tail the", suffix: " when it shrinks." },
     { prefix: null, suffix: null },
