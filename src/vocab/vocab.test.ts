@@ -213,7 +213,8 @@ test("wordIn: of a word in a block 300,000 times, it is the place its sticky was
   const start = performance.now();
   assert.equal(wordIn(text, "a", { prefix: "b ", suffix: null })?.sentence, "b a.");
   // About 0.3 s; reading the whole text at each place took seconds.
-  assert.ok(performance.now() - start < 5_000);
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed < 5_000, `${Math.round(elapsed)} ms`);
 });
 
 test("sentenceAt: of a run of 100,000 stops that a bracket and kana follow, the window around the word, found in time", () => {

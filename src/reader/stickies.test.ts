@@ -310,5 +310,6 @@ test("of a passage in a block 300,000 times, it is the one that reads as where i
     [0, 3 * n + 3],
   ]);
   // About 0.3 s; reading the whole text at each place took seconds.
-  assert.ok(performance.now() - start < 5_000);
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed < 5_000, `${Math.round(elapsed)} ms`);
 });
